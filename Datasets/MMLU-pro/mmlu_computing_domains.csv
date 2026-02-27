@@ -1,0 +1,6 @@
+Domain,Questions,Percentage,Relevance_Type,Difficulty_Level,Target_Candidate,Description
+Mathematics,1351,11.23,Logic & Reasoning,Advanced,Mid to Senior,"Discrete Math, Logic, Computational Thinking"
+Physics,1299,10.8,Computational Physics,Advanced,Senior (Scientific),"Simulations, Numerical Methods, ML Applications"
+Engineering,969,8.05,System Logic,Advanced,Senior (Systems),"Embedded Systems, Hardware-Software Interaction"
+Economics,844,7.01,Algorithmic Thinking,Advanced,Senior (FinTech),"Game Theory, Optimization, Trading Algorithms"
+Computer Science,410,3.41,Direct CS Knowledge,Graduate Level,Senior/Expert,"Algorithms, Data Structures, Security, Complexity Theory"

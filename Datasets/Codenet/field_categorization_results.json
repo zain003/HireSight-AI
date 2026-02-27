@@ -1,0 +1,749 @@
+{
+  "total_files": 3999,
+  "language_stats": {
+    "English": 2656,
+    "Japanese": 1343
+  },
+  "field_stats": {
+    "Basic Programming & Logic": 2111,
+    "Machine Learning & AI": 135,
+    "Competitive Programming": 971,
+    "Computational Geometry": 204,
+    "General Problem Solving": 403,
+    "Computational Mathematics": 7,
+    "Software Development - Frontend": 15,
+    "Software Development - Backend": 22,
+    "Computer Graphics & Game Development": 13,
+    "Data Structures & Algorithms": 61,
+    "String Processing & Text Analysis": 31,
+    "Network Programming": 4,
+    "Cryptography & Security": 8,
+    "Systems Programming": 2,
+    "Graph Theory & Networks": 8,
+    "Data Science & Analytics": 4
+  },
+  "non_english_files": [
+    {
+      "filename": "p00030.html",
+      "language": "Japanese",
+      "title": "整数の和"
+    },
+    {
+      "filename": "p00031.html",
+      "language": "Japanese",
+      "title": "Weight"
+    },
+    {
+      "filename": "p00032.html",
+      "language": "Japanese",
+      "title": "プラスティック板"
+    },
+    {
+      "filename": "p00033.html",
+      "language": "Japanese",
+      "title": "玉"
+    },
+    {
+      "filename": "p00034.html",
+      "language": "Japanese",
+      "title": "鉄道路線"
+    },
+    {
+      "filename": "p00035.html",
+      "language": "Japanese",
+      "title": "凸？"
+    },
+    {
+      "filename": "p00036.html",
+      "language": "Japanese",
+      "title": "平面上の図形"
+    },
+    {
+      "filename": "p00037.html",
+      "language": "Japanese",
+      "title": "格子上の経路"
+    },
+    {
+      "filename": "p00038.html",
+      "language": "Japanese",
+      "title": "ポーカー"
+    },
+    {
+      "filename": "p00039.html",
+      "language": "Japanese",
+      "title": "ローマ数字"
+    },
+    {
+      "filename": "p00040.html",
+      "language": "Japanese",
+      "title": "アフィン暗号"
+    },
+    {
+      "filename": "p00041.html",
+      "language": "Japanese",
+      "title": "式"
+    },
+    {
+      "filename": "p00042.html",
+      "language": "Japanese",
+      "title": "泥棒"
+    },
+    {
+      "filename": "p00043.html",
+      "language": "Japanese",
+      "title": "パズル"
+    },
+    {
+      "filename": "p00044.html",
+      "language": "Japanese",
+      "title": "素数 II"
+    },
+    {
+      "filename": "p00045.html",
+      "language": "Japanese",
+      "title": "Sum and Average"
+    },
+    {
+      "filename": "p00046.html",
+      "language": "Japanese",
+      "title": "標高差"
+    },
+    {
+      "filename": "p00047.html",
+      "language": "Japanese",
+      "title": "カップゲーム"
+    },
+    {
+      "filename": "p00048.html",
+      "language": "Japanese",
+      "title": "階級"
+    },
+    {
+      "filename": "p00049.html",
+      "language": "Japanese",
+      "title": "血液型"
+    },
+    {
+      "filename": "p00050.html",
+      "language": "Japanese",
+      "title": "りんごと桃"
+    },
+    {
+      "filename": "p00051.html",
+      "language": "Japanese",
+      "title": "整数の差"
+    },
+    {
+      "filename": "p00052.html",
+      "language": "Japanese",
+      "title": "階乗 II"
+    },
+    {
+      "filename": "p00053.html",
+      "language": "Japanese",
+      "title": "素数の和"
+    },
+    {
+      "filename": "p00054.html",
+      "language": "Japanese",
+      "title": "小数位の和"
+    },
+    {
+      "filename": "p00055.html",
+      "language": "Japanese",
+      "title": "数列"
+    },
+    {
+      "filename": "p00056.html",
+      "language": "Japanese",
+      "title": "ゴールドバッハの予想"
+    },
+    {
+      "filename": "p00057.html",
+      "language": "Japanese",
+      "title": "領域の数"
+    },
+    {
+      "filename": "p00058.html",
+      "language": "Japanese",
+      "title": "直交判定"
+    },
+    {
+      "filename": "p00059.html",
+      "language": "Japanese",
+      "title": "長方形の重なり"
+    },
+    {
+      "filename": "p00060.html",
+      "language": "Japanese",
+      "title": "カードゲー ム"
+    },
+    {
+      "filename": "p00061.html",
+      "language": "Japanese",
+      "title": "Rank Checker"
+    },
+    {
+      "filename": "p00062.html",
+      "language": "Japanese",
+      "title": "一番下の行の数字は?"
+    },
+    {
+      "filename": "p00063.html",
+      "language": "Japanese",
+      "title": "回文"
+    },
+    {
+      "filename": "p00064.html",
+      "language": "Japanese",
+      "title": "暗証番号"
+    },
+    {
+      "filename": "p00065.html",
+      "language": "Japanese",
+      "title": "取引"
+    },
+    {
+      "filename": "p00066.html",
+      "language": "Japanese",
+      "title": "三目並べ"
+    },
+    {
+      "filename": "p00067.html",
+      "language": "Japanese",
+      "title": "島の数"
+    },
+    {
+      "filename": "p00068.html",
+      "language": "Japanese",
+      "title": "輪ゴム"
+    },
+    {
+      "filename": "p00069.html",
+      "language": "Japanese",
+      "title": "あみだくじ II"
+    },
+    {
+      "filename": "p00070.html",
+      "language": "Japanese",
+      "title": "Combination of Number Sequences"
+    },
+    {
+      "filename": "p00071.html",
+      "language": "Japanese",
+      "title": "爆弾の連鎖"
+    },
+    {
+      "filename": "p00072.html",
+      "language": "Japanese",
+      "title": "灯篭"
+    },
+    {
+      "filename": "p00073.html",
+      "language": "Japanese",
+      "title": "四角すいの表面積"
+    },
+    {
+      "filename": "p00074.html",
+      "language": "Japanese",
+      "title": "ビデオテープ"
+    },
+    {
+      "filename": "p00075.html",
+      "language": "Japanese",
+      "title": "BMI"
+    },
+    {
+      "filename": "p00076.html",
+      "language": "Japanese",
+      "title": "宝探し II"
+    },
+    {
+      "filename": "p00077.html",
+      "language": "Japanese",
+      "title": "ランレングス"
+    },
+    {
+      "filename": "p00078.html",
+      "language": "Japanese",
+      "title": "魔方陣"
+    },
+    {
+      "filename": "p00079.html",
+      "language": "Japanese",
+      "title": "凸 n 角形の面積"
+    },
+    {
+      "filename": "p00080.html",
+      "language": "Japanese",
+      "title": "３乗根"
+    },
+    {
+      "filename": "p00081.html",
+      "language": "Japanese",
+      "title": "線対称"
+    },
+    {
+      "filename": "p00082.html",
+      "language": "Japanese",
+      "title": "メリーゴーランド"
+    },
+    {
+      "filename": "p00083.html",
+      "language": "Japanese",
+      "title": "西暦和暦変換"
+    },
+    {
+      "filename": "p00084.html",
+      "language": "Japanese",
+      "title": "検索エンジン"
+    },
+    {
+      "filename": "p00085.html",
+      "language": "Japanese",
+      "title": "ヨセフのおイモ"
+    },
+    {
+      "filename": "p00086.html",
+      "language": "Japanese",
+      "title": "パトロール"
+    },
+    {
+      "filename": "p00087.html",
+      "language": "Japanese",
+      "title": "未熟者の数式"
+    },
+    {
+      "filename": "p00088.html",
+      "language": "Japanese",
+      "title": "博士が愛した符号"
+    },
+    {
+      "filename": "p00089.html",
+      "language": "Japanese",
+      "title": "最短経路"
+    },
+    {
+      "filename": "p00090.html",
+      "language": "Japanese",
+      "title": "シールの重なり"
+    },
+    {
+      "filename": "p00091.html",
+      "language": "Japanese",
+      "title": "Blur"
+    },
+    {
+      "filename": "p00092.html",
+      "language": "Japanese",
+      "title": "正方形探索"
+    },
+    {
+      "filename": "p00093.html",
+      "language": "Japanese",
+      "title": "うるう年"
+    },
+    {
+      "filename": "p00094.html",
+      "language": "Japanese",
+      "title": "坪面積の計算"
+    },
+    {
+      "filename": "p00095.html",
+      "language": "Japanese",
+      "title": "ワカサギ釣り大会"
+    },
+    {
+      "filename": "p00096.html",
+      "language": "Japanese",
+      "title": "４つの整数の和 II"
+    },
+    {
+      "filename": "p00097.html",
+      "language": "Japanese",
+      "title": "整数の和 II"
+    },
+    {
+      "filename": "p00098.html",
+      "language": "Japanese",
+      "title": "Maximum Sum Sequence II"
+    },
+    {
+      "filename": "p00099.html",
+      "language": "Japanese",
+      "title": "ワカサギ釣り大会 2"
+    },
+    {
+      "filename": "p00108.html",
+      "language": "Japanese",
+      "title": "出現頻度操作"
+    },
+    {
+      "filename": "p00110.html",
+      "language": "Japanese",
+      "title": "覆面算"
+    },
+    {
+      "filename": "p00111.html",
+      "language": "Japanese",
+      "title": "博士の暗号"
+    },
+    {
+      "filename": "p00112.html",
+      "language": "Japanese",
+      "title": "ミルクショップ"
+    },
+    {
+      "filename": "p00113.html",
+      "language": "Japanese",
+      "title": "循環小数"
+    },
+    {
+      "filename": "p00114.html",
+      "language": "Japanese",
+      "title": "電子蝿"
+    },
+    {
+      "filename": "p00115.html",
+      "language": "Japanese",
+      "title": "宇宙船 UAZ アドバンス号"
+    },
+    {
+      "filename": "p00116.html",
+      "language": "Japanese",
+      "title": "長方形探索"
+    },
+    {
+      "filename": "p00117.html",
+      "language": "Japanese",
+      "title": "大工の褒美"
+    },
+    {
+      "filename": "p00118.html",
+      "language": "Japanese",
+      "title": "Property Distribution"
+    },
+    {
+      "filename": "p00119.html",
+      "language": "Japanese",
+      "title": "太郎君の執念"
+    },
+    {
+      "filename": "p00120.html",
+      "language": "Japanese",
+      "title": "パティシエ"
+    },
+    {
+      "filename": "p00121.html",
+      "language": "Japanese",
+      "title": "7 パズル"
+    },
+    {
+      "filename": "p00122.html",
+      "language": "Japanese",
+      "title": "ぴょん吉の夏"
+    },
+    {
+      "filename": "p00123.html",
+      "language": "Japanese",
+      "title": "スピードスケートバッジテスト"
+    },
+    {
+      "filename": "p00124.html",
+      "language": "Japanese",
+      "title": "リーグ戦のスコアシート"
+    },
+    {
+      "filename": "p00125.html",
+      "language": "Japanese",
+      "title": "日数"
+    },
+    {
+      "filename": "p00126.html",
+      "language": "Japanese",
+      "title": "パズル"
+    },
+    {
+      "filename": "p00127.html",
+      "language": "Japanese",
+      "title": "ポケベル打ち"
+    },
+    {
+      "filename": "p00128.html",
+      "language": "Japanese",
+      "title": "そろばん"
+    },
+    {
+      "filename": "p00129.html",
+      "language": "Japanese",
+      "title": "かくれんぼう"
+    },
+    {
+      "filename": "p00130.html",
+      "language": "Japanese",
+      "title": "列車"
+    },
+    {
+      "filename": "p00131.html",
+      "language": "Japanese",
+      "title": "博士の光電管"
+    },
+    {
+      "filename": "p00132.html",
+      "language": "Japanese",
+      "title": "ジグソーパズル"
+    },
+    {
+      "filename": "p00133.html",
+      "language": "Japanese",
+      "title": "パターンの回転"
+    },
+    {
+      "filename": "p00134.html",
+      "language": "Japanese",
+      "title": "出口調査"
+    },
+    {
+      "filename": "p00135.html",
+      "language": "Japanese",
+      "title": "時計の短い針と長い針"
+    },
+    {
+      "filename": "p00136.html",
+      "language": "Japanese",
+      "title": "度数分布"
+    },
+    {
+      "filename": "p00137.html",
+      "language": "Japanese",
+      "title": "平方採中法"
+    },
+    {
+      "filename": "p00138.html",
+      "language": "Japanese",
+      "title": "陸上競技大会"
+    }
+  ],
+  "field_examples": {
+    "Basic Programming & Logic": [
+      {
+        "filename": "p00000.html",
+        "title": "QQ"
+      },
+      {
+        "filename": "p00003.html",
+        "title": "Is it a Right Triangle?"
+      },
+      {
+        "filename": "p00004.html",
+        "title": "Simultaneous Equation"
+      }
+    ],
+    "Machine Learning & AI": [
+      {
+        "filename": "p00001.html",
+        "title": "List of Top 3 Hills"
+      },
+      {
+        "filename": "p00013.html",
+        "title": "Switching Railroad Cars"
+      },
+      {
+        "filename": "p00038.html",
+        "title": "ポーカー"
+      }
+    ],
+    "Competitive Programming": [
+      {
+        "filename": "p00002.html",
+        "title": "Digit Number"
+      },
+      {
+        "filename": "p00074.html",
+        "title": "ビデオテープ"
+      },
+      {
+        "filename": "p00075.html",
+        "title": "BMI"
+      }
+    ],
+    "Computational Geometry": [
+      {
+        "filename": "p00011.html",
+        "title": "Drawing Lots"
+      },
+      {
+        "filename": "p00014.html",
+        "title": "Integral"
+      },
+      {
+        "filename": "p00247.html",
+        "title": "氷の迷路"
+      }
+    ],
+    "General Problem Solving": [
+      {
+        "filename": "p00091.html",
+        "title": "Blur"
+      },
+      {
+        "filename": "p00094.html",
+        "title": "坪面積の計算"
+      },
+      {
+        "filename": "p00238.html",
+        "title": "No Title"
+      }
+    ],
+    "Computational Mathematics": [
+      {
+        "filename": "p00150.html",
+        "title": "Twin Prime"
+      },
+      {
+        "filename": "p00618.html",
+        "title": "Problem D: Course Planning for Lazy Students"
+      },
+      {
+        "filename": "p00707.html",
+        "title": "The Secret Number"
+      }
+    ],
+    "Software Development - Frontend": [
+      {
+        "filename": "p00270.html",
+        "title": "鉄道路線"
+      },
+      {
+        "filename": "p00364.html",
+        "title": "Bange Hills Tower"
+      },
+      {
+        "filename": "p00548.html",
+        "title": "No Title"
+      }
+    ],
+    "Software Development - Backend": [
+      {
+        "filename": "p00278.html",
+        "title": "勉強会"
+      },
+      {
+        "filename": "p00350.html",
+        "title": "文字列ゲーム"
+      },
+      {
+        "filename": "p00420.html",
+        "title": "化学物質アルファ"
+      }
+    ],
+    "Computer Graphics & Game Development": [
+      {
+        "filename": "p00343.html",
+        "title": "必勝７並べ"
+      },
+      {
+        "filename": "p00495.html",
+        "title": "たのしいカードゲーム(Card Game is Fun)"
+      },
+      {
+        "filename": "p00575.html",
+        "title": "ソーシャルゲーム (Social Game)"
+      }
+    ],
+    "Data Structures & Algorithms": [
+      {
+        "filename": "p00382.html",
+        "title": "Taxi"
+      },
+      {
+        "filename": "p00587.html",
+        "title": "Binary Tree Intersection And Union"
+      },
+      {
+        "filename": "p00690.html",
+        "title": "A Long Ride on a Railway"
+      }
+    ],
+    "String Processing & Text Analysis": [
+      {
+        "filename": "p00656.html",
+        "title": "Problem J: BD Shelf"
+      },
+      {
+        "filename": "p00718.html",
+        "title": "Problem C: Numeral System"
+      },
+      {
+        "filename": "p00745.html",
+        "title": "Problem F: Tighten Up!"
+      }
+    ],
+    "Network Programming": [
+      {
+        "filename": "p00693.html",
+        "title": "Cyber Guardian"
+      },
+      {
+        "filename": "p01525.html",
+        "title": "F - Acceleration of Network"
+      },
+      {
+        "filename": "p01989.html",
+        "title": "No Title"
+      }
+    ],
+    "Cryptography & Security": [
+      {
+        "filename": "p00694.html",
+        "title": "Strange Key"
+      },
+      {
+        "filename": "p01552.html",
+        "title": "問題名 YAML"
+      },
+      {
+        "filename": "p02459.html",
+        "title": "Map: Search"
+      }
+    ],
+    "Systems Programming": [
+      {
+        "filename": "p00940.html",
+        "title": "No Title"
+      },
+      {
+        "filename": "p02264.html",
+        "title": "No Title"
+      }
+    ],
+    "Graph Theory & Networks": [
+      {
+        "filename": "p01098.html",
+        "title": "No Title"
+      },
+      {
+        "filename": "p02064.html",
+        "title": "No Title"
+      },
+      {
+        "filename": "p02188.html",
+        "title": "No Title"
+      }
+    ],
+    "Data Science & Analytics": [
+      {
+        "filename": "p01853.html",
+        "title": "B : 平均値の嘘 / Lie with Mean Value"
+      },
+      {
+        "filename": "p02381.html",
+        "title": "Standard Deviation"
+      },
+      {
+        "filename": "p03275.html",
+        "title": "No Title"
+      }
+    ]
+  }
+}
