@@ -32,3 +32,15 @@ yarn-error.log*
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# PDF and Document files
+*.pdf
+*.docx
+*.doc
+
+# Image files
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
