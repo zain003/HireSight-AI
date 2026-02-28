@@ -1,0 +1,166 @@
+# ============================================
+# HireSIGHT AI - Root .gitignore
+# ============================================
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# ---------- Node.js / Next.js ----------
+node_modules/
+.pnp
+.pnp.js
+.next/
+out/
+coverage/
+.vercel/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------- Environment files ----------
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# ---------- IDE / Editor ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# ---------- OS generated ----------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ---------- Markdown ----------
+*.md
+
+# ---------- Documents & Media ----------
+*.pdf
+*.docx
+*.doc
+*.pptx
+*.ppt
+*.xlsx
+*.xls
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.ico
+*.pem
+
+# ---------- Datasets folder ----------
+Datasets/
+
+# ---------- Document folders ----------
+Documents/
+Slides/
+Tech-Stack/
+Workflow/
+
+# ---------- Uploads ----------
+uploads/
+
+# ---------- Logs ----------
+*.log
+logs/
+
+# ---------- Database ----------
+*.db
+*.sqlite
+*.sqlite3
+
+# ---------- Docker ----------
+postgres_data/
+
+# ---------- ML Models ----------
+models/
+
+# ---------- Alembic migrations ----------
+Code/backend/alembic/versions/*.py
+!Code/backend/alembic/versions/__init__.py
+
+# ---------- Misc ----------
+*.bak
+*.tmp
+*.temp
+package-lock.json
