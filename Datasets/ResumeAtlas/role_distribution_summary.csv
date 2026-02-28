@@ -1,0 +1,13 @@
+Role,Resume_Count,Percentage,Avg_Confidence,Required_Skills
+Software Engineer,2,20.0,47.14,"python, java, c++, javascript, git"
+Full Stack Developer,2,20.0,45.72,"javascript, html, css, node.js, react"
+Data Scientist,1,10.0,58.06,"python, machine learning, statistics, sql"
+DevOps Engineer,1,10.0,64.29,"docker, kubernetes, jenkins, git, linux"
+Mobile Developer,1,10.0,42.86,"android, ios, java, kotlin, swift"
+Cloud Architect,1,10.0,60.0,"aws, azure, cloud, architecture, terraform"
+Data Engineer,1,10.0,68.57,"python, sql, spark, hadoop, etl"
+Machine Learning Engineer,1,10.0,77.14,"python, machine learning, tensorflow, pytorch, deep learning"
+Frontend Developer,0,0.0,0.0,"javascript, html, css, react, typescript"
+Backend Developer,0,0.0,0.0,"python, java, node.js, sql, api"
+QA Engineer,0,0.0,0.0,"testing, automation, selenium, junit, quality assurance"
+Security Engineer,0,0.0,0.0,"security, cybersecurity, penetration testing, encryption, firewall"

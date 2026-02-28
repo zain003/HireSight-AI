@@ -1,0 +1,59 @@
+# Root .gitignore for HireSIGHT AI Platform
+
+# PDF files (resumes, documents, reports)
+*.pdf
+
+# Document files
+*.docx
+*.doc
+
+# Image files (uploaded resumes)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads directory
+uploads/
+backend/uploads/
+
+# Docker volumes
+postgres_data/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node modules
+node_modules/

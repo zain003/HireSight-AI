@@ -1,0 +1,25 @@
+Domain,Question_Count,Percentage,Parent_Domain
+Overview,362,7.48,Data Structure and Algorithm
+Processes and Threads,350,7.23,Operating System
+Data Link Layer,316,6.53,Computer Network
+Network Layer,300,6.2,Computer Network
+Central Processing Unit,244,5.04,Computer Organization
+Storage System,224,4.63,Computer Organization
+Data Representation and Operation,218,4.51,Computer Organization
+Memory Management,216,4.46,Operating System
+Tree,214,4.42,Data Structure and Algorithm
+Application Layer,204,4.22,Computer Network
+Graph,184,3.8,Data Structure and Algorithm
+Input/Output Management,184,3.8,Operating System
+Transport Layer,182,3.76,Computer Network
+Sorting,178,3.68,Data Structure and Algorithm
+"Stack, Queue, and Array",176,3.64,Data Structure and Algorithm
+File Management,166,3.43,Operating System
+Physical Layer,164,3.39,Computer Network
+Searching,158,3.27,Data Structure and Algorithm
+Instruction System,156,3.22,Computer Organization
+Input/Output System,156,3.22,Computer Organization
+Overview and Architecture,148,3.06,Computer Organization
+Linear List,138,2.85,Data Structure and Algorithm
+Bus,134,2.77,Computer Organization
+String,66,1.36,Data Structure and Algorithm
