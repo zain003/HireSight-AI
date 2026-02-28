@@ -102,7 +102,8 @@ async def parse_resume(
     Pipeline:
     1. Uploads the resume file
     2. Extracts text (pdfplumber / python-docx / Tesseract OCR)
-    3. Uses SBERT + regex to extract skills, job titles, education, projects, certs
+    3. Uses BERT-NER (yashpwr/resume-ner-bert-v2) to extract entities:
+       Skills, Job Titles, Companies, Education, Experience
     4. Detects domain using weighted scoring on job titles + skills
     5. Updates user profile with all extracted information
     

@@ -27,8 +27,12 @@ class Settings(BaseSettings):
     ALLOWED_EXTENSIONS: set = {".pdf", ".docx", ".doc", ".png", ".jpg", ".jpeg"}
     
     # AI/ML Models
-    SBERT_MODEL: str = "all-MiniLM-L6-v2"
+    NER_MODEL: str = "yashpwr/resume-ner-bert-v2"
+    NER_CONFIDENCE_THRESHOLD: float = 0.5
     OPENAI_API_KEY: Optional[str] = None
+    
+    # CORS
+    CORS_ORIGINS: str = "http://localhost:3000"
     
     # OCR
     TESSERACT_PATH: Optional[str] = None
@@ -36,6 +40,8 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"
 
 
 settings = Settings()
+

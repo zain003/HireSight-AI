@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     g++ \
     postgresql-client \
     tesseract-ocr \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
@@ -28,6 +29,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     postgresql-client \
     tesseract-ocr \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python dependencies from builder

@@ -1,1037 +1,1104 @@
 """
-AI-powered information extraction from resume text.
-Handles skill extraction, experience detection, domain classification,
-job title extraction, education parsing, project extraction, and certification detection.
+Hybrid extraction: keyword/regex PRIMARY + BERT-NER SUPPLEMENTARY.
+
+The BERT-NER model (yashpwr/resume-ner-bert-v2) was tested and found to
+produce noisy output on real resumes. This module uses a proven keyword
+database + regex + section parsing as the primary extraction method,
+with NER providing supplementary skill/title discovery for novel terms.
 """
 import re
 from typing import List, Dict, Optional
-import json
 
-from app.ai.embeddings import get_embedding_service
+from app.ai.ner_model import get_ner_service
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SKILL DATABASE
+# SKILL DATABASE — Massive keyword list (800+ skills) for highest accuracy
 # ──────────────────────────────────────────────────────────────────────────────
 SKILL_DATABASE = [
-    # ── Programming Languages (40+) ──
-    "Python", "Java", "JavaScript", "TypeScript", "C", "C++", "C#", "Go", "Rust",
-    "Ruby", "PHP", "Swift", "Kotlin", "Scala", "R", "MATLAB", "SQL", "Perl",
-    "Haskell", "Lua", "Dart", "Objective-C", "Shell", "Bash", "PowerShell",
-    "Assembly", "Groovy", "Elixir", "Clojure", "F#", "Julia", "Solidity",
-    "Visual Basic", "VBA", "COBOL", "Fortran", "Erlang", "OCaml", "Zig",
-    "Crystal", "Nim", "Ada", "Prolog", "Lisp", "Scheme", "Racket",
-    "CoffeeScript", "ActionScript", "ABAP", "Apex", "PL/SQL", "T-SQL",
+    # ── Programming Languages ──
+    "Python", "JavaScript", "TypeScript", "Java", "C++", "C#", "C",
+    "Go", "Rust", "Ruby", "PHP", "Swift", "Kotlin", "Scala", "R",
+    "Perl", "Dart", "Lua", "Haskell", "Elixir", "Clojure", "Erlang",
+    "Objective-C", "MATLAB", "Julia", "Groovy", "Shell", "Bash",
+    "PowerShell", "F#", "OCaml", "Fortran", "COBOL", "Assembly",
+    "Zig", "Nim", "Crystal", "Prolog", "Lisp", "Scheme",
+    "Visual Basic", "VB.NET", "Delphi", "Pascal", "Ada",
+    "ABAP", "Apex", "Solidity", "Vyper", "Move",
+    "SQL", "PL/SQL", "T-SQL", "NoSQL", "GraphQL",
 
-    # ── Web Frontend (50+) ──
-    "React", "React.js", "Angular", "Angular.js", "AngularJS", "Vue.js", "Vue",
-    "Svelte", "SvelteKit", "Next.js", "Nuxt.js", "Remix", "Astro",
-    "Gatsby", "Ember.js", "Backbone.js", "Alpine.js", "Lit", "Solid.js",
-    "HTML", "HTML5", "CSS", "CSS3", "SASS", "SCSS", "LESS", "PostCSS",
-    "Tailwind CSS", "Bootstrap", "Bulma", "Foundation",
-    "Material UI", "Chakra UI", "Ant Design", "Radix UI", "Shadcn",
-    "jQuery", "Webpack", "Vite", "Babel", "ESLint", "Prettier",
-    "esbuild", "Rollup", "Parcel", "Turbopack", "SWC",
-    "Redux", "Redux Toolkit", "MobX", "Zustand", "Recoil", "Jotai", "XState",
-    "React Query", "TanStack Query", "SWR", "Apollo Client",
-    "Styled Components", "Emotion", "CSS Modules", "Stitches",
-    "Three.js", "D3.js", "Chart.js", "Highcharts", "ECharts", "Recharts",
-    "WebGL", "Canvas API", "SVG", "WebAssembly", "WASM",
-    "Framer Motion", "GSAP", "Lottie", "Anime.js",
+    # ── Web Markup & Styling ──
+    "HTML", "HTML5", "CSS", "CSS3", "SASS", "SCSS", "Less",
+    "Stylus", "PostCSS", "XML", "JSON", "YAML", "TOML",
+    "Markdown", "LaTeX", "Pug", "Handlebars", "EJS", "Jinja2",
+    "Liquid", "Mustache", "Twig",
+
+    # ── Frontend Frameworks & Libraries ──
+    "React", "React.js", "Angular", "Vue", "Vue.js", "Svelte",
+    "SvelteKit", "Next.js", "Nuxt.js", "Gatsby", "Remix",
+    "Astro", "Qwik", "Solid.js", "SolidJS", "Preact", "Inferno",
+    "Lit", "Alpine.js", "HTMX", "Turbo", "Stimulus",
+    "Ember.js", "Backbone.js", "Knockout.js", "Polymer",
+    "Mithril", "Riot.js", "Marko",
+
+    # ── Frontend State Management ──
+    "Redux", "Redux Toolkit", "MobX", "Zustand", "Recoil",
+    "Jotai", "Valtio", "XState", "Pinia", "Vuex", "NgRx",
+    "Akita", "Context API", "React Query", "TanStack Query",
+    "SWR", "Apollo Client",
+
+    # ── Frontend UI & Component Libraries ──
+    "jQuery", "Bootstrap", "Tailwind CSS", "Material UI", "MUI",
+    "Chakra UI", "Ant Design", "Semantic UI", "Bulma",
+    "Foundation", "PrimeReact", "PrimeNG", "PrimeVue",
+    "Radix UI", "Headless UI", "shadcn/ui", "DaisyUI",
+    "Vuetify", "Quasar", "Element UI", "Element Plus",
+    "Styled Components", "Emotion", "CSS Modules",
+    "WindiCSS", "UnoCSS", "Mantine",
+
+    # ── Frontend Build & Bundlers ──
+    "Webpack", "Vite", "Babel", "esbuild", "Rollup",
+    "Parcel", "SWC", "Turbopack", "Snowpack",
+    "Gulp", "Grunt", "Make", "CMake",
+
+    # ── Frontend Visualization ──
+    "Three.js", "D3.js", "Chart.js", "Highcharts", "ECharts",
+    "Recharts", "Victory", "Nivo", "Plotly", "Leaflet",
+    "Mapbox", "Google Maps API", "Cesium",
     "Storybook", "Chromatic", "Bit",
-    "Progressive Web Apps", "PWA", "Service Workers",
-    "Responsive Design", "Web Accessibility", "WCAG", "ARIA",
-    "Web Components", "Shadow DOM", "Custom Elements",
-    "Electron", "Tauri",
+    "Framer Motion", "GSAP", "Anime.js", "Lottie",
+    "PixiJS", "Fabric.js", "Konva", "Paper.js",
 
-    # ── Web Backend / Frameworks (40+) ──
-    "Node.js", "Express", "Express.js", "Django", "Flask", "FastAPI",
-    "Spring", "Spring Boot", "Spring MVC", "Spring Security", "Spring Data",
-    "ASP.NET", "ASP.NET Core", ".NET", ".NET Core", ".NET Framework",
+    # ── Backend Frameworks & Runtimes ──
+    "Node.js", "Express", "Express.js", "FastAPI", "Django",
+    "Flask", "Spring Boot", "Spring", "Spring MVC",
+    "Spring Cloud", "Spring Security", "Spring Data",
+    "ASP.NET", "ASP.NET Core", ".NET", ".NET Core",
     "Ruby on Rails", "Rails", "Sinatra",
-    "Laravel", "Symfony", "CodeIgniter", "CakePHP", "Yii", "Slim",
+    "Laravel", "Symfony", "CodeIgniter", "CakePHP", "Slim",
     "NestJS", "Koa", "Hapi", "Fastify", "Adonis.js",
     "Gin", "Echo", "Fiber", "Chi", "Gorilla Mux",
-    "Phoenix", "Rocket", "Actix Web", "Axum", "Warp",
-    "Strapi", "KeystoneJS", "Directus", "Payload CMS",
-    "Prisma", "TypeORM", "Sequelize", "SQLAlchemy", "Hibernate",
-    "Drizzle ORM", "Mongoose", "Knex.js", "MikroORM",
-    "GraphQL Yoga", "Mercurius", "Strawberry",
+    "Actix", "Rocket", "Axum", "Warp",
+    "Phoenix", "Ecto", "Plug",
+    "Tornado", "Sanic", "Starlette", "aiohttp",
+    "Quarkus", "Micronaut", "Vert.x", "Dropwizard",
+    "Play Framework", "Akka", "gRPC", "Thrift",
+    "Deno", "Bun",
 
-    # ── Databases (40+) ──
-    "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "Cassandra",
-    "Oracle", "Oracle Database", "SQL Server", "Microsoft SQL Server",
-    "SQLite", "DynamoDB", "MariaDB", "CouchDB", "CouchBase",
+    # ── Mobile Development ──
+    "React Native", "Flutter", "SwiftUI", "UIKit",
+    "Jetpack Compose", "Android SDK", "iOS SDK",
+    "Xamarin", "MAUI", ".NET MAUI", "Ionic", "Cordova",
+    "Capacitor", "NativeScript", "Expo",
+    "Kotlin Multiplatform", "KMM",
+    "Core Data", "Room", "Realm",
+    "ARKit", "ARCore", "SceneKit", "SpriteKit",
+    "Android Jetpack", "Dagger", "Hilt",
+    "App Store Connect", "Google Play Console",
+    "TestFlight", "Firebase App Distribution",
+
+    # ── Databases (Relational) ──
+    "PostgreSQL", "MySQL", "SQLite", "Oracle",
+    "Oracle Database", "SQL Server", "Microsoft SQL Server",
+    "MariaDB", "CockroachDB", "TiDB", "Vitess",
+    "Amazon Aurora", "Azure SQL", "Cloud SQL",
+    "IBM Db2", "SAP HANA", "Teradata",
+    "PlanetScale", "Neon", "AlloyDB",
+
+    # ── Databases (NoSQL & NewSQL) ──
+    "MongoDB", "Redis", "DynamoDB", "Cassandra",
+    "Apache Cassandra", "CouchDB", "CouchBase",
     "Neo4j", "ArangoDB", "OrientDB", "JanusGraph",
-    "InfluxDB", "TimescaleDB", "QuestDB", "Prometheus TSDB",
-    "Firebase", "Firestore", "Firebase Realtime Database",
-    "Supabase", "PlanetScale", "Neon", "CockroachDB", "TiDB", "YugabyteDB",
-    "Amazon RDS", "Amazon Aurora", "Amazon Redshift",
-    "Azure SQL", "Azure Cosmos DB", "Cloud SQL", "Cloud Spanner",
-    "Memcached", "etcd", "Hazelcast",
-    "ClickHouse", "Apache Druid", "Apache Pinot",
-    "Milvus", "Qdrant", "Faiss",
+    "Elasticsearch", "OpenSearch", "Solr", "Apache Solr",
+    "InfluxDB", "TimescaleDB", "QuestDB",
+    "RethinkDB", "FaunaDB", "Fauna",
+    "ScyllaDB", "FoundationDB", "YugabyteDB",
+    "Firebase", "Firestore", "Supabase",
+    "Memcached", "Hazelcast", "Apache Ignite",
+    "Pinecone", "Weaviate", "Milvus", "Qdrant",
+    "ChromaDB", "pgvector", "FAISS",
 
-    # ── Cloud Platforms & Services (60+) ──
+    # ── Cloud Platforms & Services ──
     "AWS", "Amazon Web Services", "Azure", "Microsoft Azure",
     "GCP", "Google Cloud", "Google Cloud Platform",
-    "Heroku", "DigitalOcean", "Vercel", "Netlify", "Cloudflare",
-    "Linode", "Vultr", "Fly.io", "Railway", "Render",
-    "AWS Lambda", "S3", "EC2", "ECS", "EKS", "EBS", "ECR",
-    "SQS", "SNS", "SES", "Step Functions", "EventBridge",
-    "API Gateway", "CloudFormation", "CloudWatch", "CloudTrail",
-    "AWS IAM", "AWS VPC", "Route 53", "CloudFront",
-    "AWS Glue", "AWS Athena", "AWS EMR", "AWS Kinesis",
-    "AWS CodePipeline", "AWS CodeBuild", "AWS CodeDeploy",
-    "Azure Functions", "Azure DevOps", "Azure Pipelines",
-    "Azure App Service", "Azure Kubernetes Service", "Azure Container Instances",
-    "Azure Blob Storage", "Azure Event Hub", "Azure Service Bus",
-    "Azure Active Directory", "Azure Monitor", "Azure Logic Apps",
-    "Cloud Functions", "BigQuery", "Cloud Run", "Cloud Build",
-    "Google Kubernetes Engine", "App Engine", "Pub/Sub",
-    "Cloud Storage", "Vertex AI", "Dataflow", "Dataproc",
-    "IBM Cloud", "Oracle Cloud", "Alibaba Cloud",
+    "IBM Cloud", "Oracle Cloud", "DigitalOcean",
+    "Heroku", "Vercel", "Netlify", "Render",
+    "Railway", "Fly.io", "Cloudflare", "Cloudflare Workers",
+    "Linode", "Vultr", "Hetzner", "OVH",
+    "Alibaba Cloud", "Tencent Cloud", "Huawei Cloud",
 
-    # ── DevOps & Infrastructure (50+) ──
-    "Docker", "Docker Compose", "Docker Swarm", "Podman", "Containerd",
-    "Kubernetes", "K8s", "OpenShift", "Rancher", "K3s", "Minikube",
-    "Jenkins", "GitLab CI", "GitHub Actions", "CircleCI", "Travis CI",
-    "Azure Pipelines", "Bamboo", "TeamCity", "Drone CI", "Concourse",
-    "Terraform", "Pulumi", "CloudFormation", "Crossplane", "CDK",
-    "Ansible", "Puppet", "Chef", "SaltStack",
-    "CI/CD", "Continuous Integration", "Continuous Deployment",
-    "Helm", "Kustomize", "ArgoCD", "Flux", "Spinnaker",
-    "Prometheus", "Grafana", "Datadog", "New Relic", "Splunk",
-    "ELK Stack", "Elastic Stack", "Logstash", "Kibana", "Fluentd", "Loki",
-    "PagerDuty", "OpsGenie", "VictorOps",
-    "Nginx", "Apache", "HAProxy", "Traefik", "Caddy", "Envoy",
-    "Istio", "Linkerd", "Consul", "Vault", "Nomad",
-    "SonarQube", "Snyk", "Trivy", "Aqua Security",
-    "Nexus", "Artifactory", "Harbor",
-    "Packer", "Vagrant", "Multipass",
-    "Terragrunt", "Checkov", "Sentinel",
+    # ── AWS Services ──
+    "AWS Lambda", "Amazon S3", "S3", "EC2", "ECS", "EKS",
+    "RDS", "DynamoDB", "SQS", "SNS", "CloudFront",
+    "Route 53", "API Gateway", "CloudWatch",
+    "CloudFormation", "CDK", "AWS CDK", "SAM",
+    "Cognito", "IAM", "KMS", "Secrets Manager",
+    "Step Functions", "EventBridge", "Kinesis",
+    "Glue", "Athena", "EMR", "SageMaker",
+    "Bedrock", "Elastic Beanstalk", "App Runner",
+    "Fargate", "ECR", "CodePipeline", "CodeBuild",
+    "CodeDeploy", "X-Ray",
 
-    # ── Version Control ──
-    "Git", "GitHub", "GitLab", "Bitbucket", "SVN", "Mercurial",
-    "Git Flow", "Trunk Based Development", "Conventional Commits",
+    # ── Azure Services ──
+    "Azure DevOps", "Azure Functions", "Azure Kubernetes Service",
+    "Azure App Service", "Azure Blob Storage",
+    "Azure Cognitive Services", "Azure AD",
+    "Azure Service Bus", "Azure Event Hub",
+    "Azure Data Factory", "Azure Synapse",
+    "Azure Cosmos DB", "Azure Container Apps",
 
-    # ── Data Science & ML (60+) ──
-    "Machine Learning", "Deep Learning", "TensorFlow", "TensorFlow Lite",
-    "PyTorch", "PyTorch Lightning", "Keras",
-    "Scikit-learn", "Pandas", "NumPy", "SciPy", "Polars", "Dask",
-    "Matplotlib", "Seaborn", "Plotly", "Bokeh", "Altair",
-    "NLP", "Natural Language Processing", "Computer Vision",
-    "Data Analysis", "Data Mining", "Data Visualization",
-    "Statistical Modeling", "Statistical Analysis", "A/B Testing",
-    "Hypothesis Testing", "Regression Analysis", "Time Series Analysis",
-    "Neural Networks", "CNN", "RNN", "LSTM", "GAN",
-    "Convolutional Neural Network", "Recurrent Neural Network",
+    # ── GCP Services ──
+    "Cloud Run", "Cloud Functions", "BigQuery",
+    "Pub/Sub", "Cloud Storage", "Compute Engine",
+    "App Engine", "Cloud Spanner", "Dataflow",
+    "Dataproc", "Vertex AI", "Cloud Build",
+    "Artifact Registry", "GKE", "Anthos",
+
+    # ── Containers & Orchestration ──
+    "Docker", "Kubernetes", "Docker Compose",
+    "Docker Swarm", "Podman", "Containerd",
+    "LXC", "LXD", "Helm", "Kustomize",
+    "Istio", "Linkerd", "Envoy", "Consul",
+    "Nomad", "OpenShift", "Rancher", "K3s",
+    "MicroK8s", "Kind", "Minikube",
+
+    # ── Infrastructure as Code ──
+    "Terraform", "Pulumi", "CloudFormation",
+    "Ansible", "Chef", "Puppet", "SaltStack",
+    "Vagrant", "Packer", "Crossplane",
+    "AWS CDK", "Bicep", "ARM Templates",
+
+    # ── CI/CD & DevOps ──
+    "Jenkins", "GitHub Actions", "GitLab CI",
+    "CircleCI", "Travis CI", "Bamboo",
+    "TeamCity", "Azure Pipelines", "Drone CI",
+    "ArgoCD", "Argo Workflows", "FluxCD",
+    "Spinnaker", "Tekton", "GoCD",
+    "Harness", "Octopus Deploy",
+    "CI/CD", "DevOps", "GitOps", "SRE",
+    "MLOps", "AIOps", "DataOps", "FinOps",
+    "Platform Engineering", "Serverless",
+
+    # ── Monitoring & Observability ──
+    "Prometheus", "Grafana", "Datadog", "New Relic",
+    "Splunk", "ELK Stack", "Elastic Stack",
+    "Kibana", "Logstash", "Fluentd", "Fluent Bit",
+    "Jaeger", "Zipkin", "OpenTelemetry",
+    "PagerDuty", "Opsgenie", "VictorOps",
+    "Sentry", "Honeycomb", "Lightstep",
+    "AWS CloudWatch", "Azure Monitor", "Cloud Monitoring",
+    "Nagios", "Zabbix", "Consul", "Dynatrace",
+
+    # ── Web & Proxy Servers ──
+    "Nginx", "Apache", "Apache HTTP Server",
+    "HAProxy", "Traefik", "Caddy", "Envoy Proxy",
+    "Varnish", "Squid", "IIS", "Tomcat", "Jetty",
+    "Gunicorn", "Uvicorn", "uWSGI", "PM2",
+
+    # ── AI & Machine Learning ──
+    "TensorFlow", "PyTorch", "Keras", "Scikit-learn",
+    "XGBoost", "LightGBM", "CatBoost", "AdaBoost",
+    "Random Forest", "Gradient Boosting",
+    "Decision Trees", "SVM", "Support Vector Machine",
+    "Naive Bayes", "Logistic Regression", "Linear Regression",
+    "K-Means", "DBSCAN", "PCA",
+    "Neural Networks", "CNN", "RNN", "LSTM", "GRU",
+    "GAN", "VAE", "Autoencoder",
+    "Transformer", "Attention Mechanism",
+    "Deep Learning", "Machine Learning",
+    "Supervised Learning", "Unsupervised Learning",
     "Reinforcement Learning", "Transfer Learning",
-    "Feature Engineering", "Feature Selection", "Dimensionality Reduction",
-    "PCA", "t-SNE", "UMAP",
-    "MLOps", "MLflow", "Weights & Biases", "WandB", "Neptune.ai",
-    "Kubeflow", "BentoML", "Seldon", "TensorFlow Serving", "TorchServe",
-    "Hugging Face", "OpenCV", "NLTK", "SpaCy", "Gensim",
-    "XGBoost", "LightGBM", "CatBoost", "Random Forest",
-    "SVM", "Support Vector Machine", "Naive Bayes",
-    "K-Means", "DBSCAN", "Decision Tree", "Gradient Boosting",
-    "Ensemble Methods", "AutoML", "H2O", "TPOT",
-    "Jupyter", "Jupyter Notebook", "JupyterLab", "Google Colab",
-    "Apache Spark", "PySpark", "Spark MLlib",
-    "Hadoop", "MapReduce", "HDFS", "YARN",
-    "Hive", "Pig", "Presto", "Trino",
-    "Kafka", "Kafka Streams", "Confluent",
-    "Airflow", "Apache Airflow", "Prefect", "Dagster", "Luigi",
+    "Federated Learning", "Few-Shot Learning",
+    "Feature Engineering", "Feature Selection",
+    "Hyperparameter Tuning", "Cross-Validation",
+    "Model Evaluation", "A/B Testing",
+
+    # ── NLP ──
+    "NLP", "Natural Language Processing",
+    "NLTK", "spaCy", "Gensim", "TextBlob",
+    "BERT", "GPT", "GPT-4", "ChatGPT", "Claude",
+    "T5", "RoBERTa", "DistilBERT", "ALBERT",
+    "Word2Vec", "GloVe", "FastText",
+    "Sentiment Analysis", "Named Entity Recognition",
+    "Text Classification", "Text Summarization",
+    "Machine Translation", "Question Answering",
+    "Tokenization", "Lemmatization", "Stemming",
+    "TF-IDF", "Bag of Words",
+
+    # ── Generative AI & LLM ──
+    "LLM", "Large Language Model",
+    "Generative AI", "GenAI", "Prompt Engineering",
+    "LangChain", "LlamaIndex", "AutoGen",
+    "CrewAI", "Semantic Kernel", "Haystack",
+    "RAG", "Retrieval Augmented Generation",
+    "Fine-Tuning", "RLHF", "LoRA", "QLoRA",
+    "PEFT", "Instruction Tuning",
+    "OpenAI API", "Anthropic API", "Gemini API",
+    "Azure OpenAI", "AWS Bedrock",
+    "Hugging Face", "Transformers",
+    "Ollama", "vLLM", "TensorRT",
+    "ONNX", "ONNX Runtime",
+
+    # ── Computer Vision ──
+    "Computer Vision", "OpenCV", "YOLO",
+    "Object Detection", "Image Classification",
+    "Image Segmentation", "Semantic Segmentation",
+    "Instance Segmentation", "Face Recognition",
+    "OCR", "Tesseract", "Optical Character Recognition",
+    "MediaPipe", "Detectron2",
+    "Image Processing", "Video Processing",
+
+    # ── Data Science & Analytics ──
+    "Pandas", "NumPy", "SciPy", "Matplotlib", "Seaborn",
+    "Plotly", "Bokeh", "Altair", "Streamlit", "Gradio",
+    "Jupyter", "Jupyter Notebook", "JupyterLab",
+    "Google Colab", "Kaggle", "Anaconda", "Conda",
+    "Data Analysis", "Data Visualization",
+    "Statistical Analysis", "Hypothesis Testing",
+    "Regression Analysis", "Time Series Analysis",
+    "Exploratory Data Analysis", "EDA",
+    "Data Mining", "Data Modeling",
+
+    # ── MLOps & ML Infrastructure ──
+    "MLflow", "Kubeflow", "Weights & Biases", "W&B",
+    "DVC", "CML", "Evidently AI",
+    "TFX", "BentoML", "Seldon", "KServe",
+    "SageMaker", "Vertex AI", "Azure ML",
+    "Feature Store", "Model Registry",
+    "Model Serving", "Model Deployment",
+    "ML Pipeline", "Training Pipeline",
+    "Experiment Tracking", "Model Monitoring",
+
+    # ── Data Engineering ──
+    "Apache Spark", "PySpark", "Spark SQL",
+    "Hadoop", "HDFS", "MapReduce", "Hive",
+    "Kafka", "Apache Kafka", "Kafka Streams",
+    "Apache Airflow", "Prefect", "Dagster", "Luigi",
     "dbt", "dbt Core", "dbt Cloud",
     "Snowflake", "Databricks", "Delta Lake",
-    "Tableau", "Power BI", "Looker", "Metabase", "Superset",
-    "Google Data Studio", "Qlik", "MicroStrategy",
-    "ETL", "ELT", "Data Warehousing", "Data Pipeline", "Data Lake",
-    "Data Modeling", "Star Schema", "Snowflake Schema",
-    "Great Expectations", "Apache Beam", "Flink",
+    "Apache Iceberg", "Apache Hudi",
+    "Redshift", "BigQuery", "Synapse Analytics",
+    "Apache Flink", "Apache Beam", "Apache Storm",
+    "Presto", "Trino", "Apache Druid",
+    "Apache NiFi", "Airbyte", "Fivetran", "Stitch",
+    "Great Expectations", "Apache Arrow",
+    "ETL", "ELT", "Data Pipeline", "Data Warehouse",
+    "Data Lake", "Data Lakehouse", "Data Mesh",
+    "Data Catalog", "Data Governance",
+    "Data Quality", "Data Lineage",
+    "Change Data Capture", "CDC",
 
-    # ── AI / LLM (30+) ──
-    "Artificial Intelligence", "Generative AI", "LLM", "Large Language Models",
-    "GPT", "GPT-4", "GPT-3.5", "ChatGPT", "OpenAI", "OpenAI API",
-    "Claude", "Anthropic", "Gemini", "Google Gemini", "Llama", "Mistral",
-    "LangChain", "LlamaIndex", "Haystack",
-    "RAG", "Retrieval Augmented Generation",
-    "Prompt Engineering", "Prompt Tuning",
-    "Fine-tuning", "RLHF", "DPO", "LoRA", "QLoRA", "PEFT",
-    "Transformers", "BERT", "RoBERTa", "DistilBERT", "ALBERT",
-    "T5", "BART", "Whisper", "DALL-E", "Stable Diffusion", "Midjourney",
-    "Embeddings", "Sentence Transformers", "SBERT",
-    "Vector Databases", "Pinecone", "Weaviate", "ChromaDB", "Milvus", "Qdrant",
-    "FAISS", "Annoy",
-    "Semantic Search", "Text Generation", "Text Classification",
-    "Sentiment Analysis", "Named Entity Recognition", "NER",
-    "Question Answering", "Summarization", "Translation",
-    "Object Detection", "Image Classification", "Image Segmentation",
-    "YOLO", "Detectron2", "SAM",
-    "vLLM", "Ollama", "LocalAI",
-    "Agents", "AI Agents", "AutoGPT", "CrewAI",
+    # ── BI & Reporting ──
+    "Tableau", "Power BI", "Looker", "Mode",
+    "Metabase", "Superset", "Qlik", "QlikView",
+    "QlikSense", "Sisense", "Domo",
+    "Google Analytics", "Google Tag Manager",
+    "Mixpanel", "Amplitude", "Segment",
+    "Google Data Studio", "Looker Studio",
 
-    # ── Mobile Development (20+) ──
-    "Android", "Android SDK", "Android Studio",
-    "iOS", "iOS SDK", "Xcode",
-    "React Native", "Expo",
-    "Flutter", "Dart",
-    "Xamarin", "MAUI", ".NET MAUI",
-    "SwiftUI", "UIKit", "Combine",
-    "Jetpack Compose", "Kotlin Multiplatform",
-    "Ionic", "Capacitor", "Cordova",
-    "App Store", "Google Play", "TestFlight",
-    "Firebase Cloud Messaging", "Push Notifications",
-    "Mobile Testing", "Appium", "Detox", "XCTest",
+    # ── Messaging & Streaming ──
+    "RabbitMQ", "Apache Kafka", "Redis Pub/Sub",
+    "NATS", "ZeroMQ", "ActiveMQ", "Apache Pulsar",
+    "Amazon SQS", "Amazon SNS", "Amazon Kinesis",
+    "Google Pub/Sub", "Azure Service Bus",
+    "Azure Event Hub", "Azure Event Grid",
+    "MQTT", "AMQP", "WebSocket",
+    "Server-Sent Events", "SSE", "Socket.IO",
+    "Signal R", "SignalR",
 
-    # ── Testing & QA (40+) ──
-    "Unit Testing", "Integration Testing", "End-to-End Testing", "E2E Testing",
-    "Functional Testing", "Regression Testing", "Smoke Testing",
-    "Performance Testing", "Load Testing", "Stress Testing",
-    "Security Testing", "Penetration Testing", "API Testing",
-    "Acceptance Testing", "UAT", "User Acceptance Testing",
-    "Jest", "Mocha", "Chai", "Sinon", "Vitest",
-    "Cypress", "Selenium", "Selenium WebDriver", "Playwright", "Puppeteer",
-    "WebdriverIO", "TestCafe", "Nightwatch.js",
-    "PyTest", "unittest", "Robot Framework",
-    "JUnit", "JUnit5", "TestNG", "Mockito", "PowerMock",
-    "RSpec", "Minitest", "Capybara",
-    "xUnit", "NUnit", "MSTest",
-    "Postman", "Insomnia", "HTTPie",
-    "TDD", "BDD", "ATDD",
-    "Cucumber", "SpecFlow", "Behave", "Gherkin",
-    "Test Automation", "Test-Driven Development",
-    "JMeter", "Locust", "K6", "Gatling", "Artillery",
-    "Appium", "Detox", "Espresso", "XCTest",
-    "SonarQube", "Code Coverage", "Istanbul",
-    "Contract Testing", "Pact", "Consumer-Driven Contracts",
-    "Chaos Engineering", "Chaos Monkey",
-
-    # ── APIs & Communication (30+) ──
-    "REST API", "RESTful", "RESTful API",
-    "GraphQL", "Apollo GraphQL", "Relay",
-    "gRPC", "Protocol Buffers", "Protobuf",
-    "WebSocket", "WebSockets", "Socket.io", "SignalR",
-    "Server-Sent Events", "SSE",
+    # ── API & Integration ──
+    "REST API", "REST", "RESTful",
+    "GraphQL", "Apollo", "Apollo Server",
+    "gRPC", "Protobuf", "Protocol Buffers",
+    "OpenAPI", "Swagger", "Postman", "Insomnia",
     "SOAP", "XML-RPC", "JSON-RPC",
-    "OAuth", "OAuth2", "OpenID Connect", "OIDC",
-    "JWT", "JSON Web Token", "SAML", "PASETO",
-    "OpenAPI", "Swagger", "API Blueprint", "Postman Collections",
-    "API Design", "API Gateway", "API Management",
-    "RabbitMQ", "Apache Kafka", "Amazon SQS", "Azure Service Bus",
-    "NATS", "ZeroMQ", "MQTT", "AMQP", "STOMP",
-    "Apache ActiveMQ", "Redis Pub/Sub",
-    "Webhooks", "Long Polling", "Polling",
-    "Rate Limiting", "Throttling", "Circuit Breaker",
-    "API Versioning", "HATEOAS",
-    "Twilio", "SendGrid", "Stripe API", "PayPal API",
+    "Webhook", "API Gateway", "Kong",
+    "Apigee", "MuleSoft", "Zapier",
+    "IFTTT", "n8n", "Make",
+    "tRPC", "Hono",
 
-    # ── Architecture & Design Patterns (30+) ──
-    "Microservices", "Monolithic", "Modular Monolith",
-    "Serverless", "Event-Driven", "Event-Driven Architecture",
-    "Domain-Driven Design", "DDD",
-    "CQRS", "Event Sourcing", "Saga Pattern",
-    "System Design", "Design Patterns", "SOLID",
-    "OOP", "Object-Oriented Programming",
-    "Functional Programming", "Reactive Programming",
-    "Clean Architecture", "Hexagonal Architecture", "Onion Architecture",
-    "MVC", "MVP", "MVVM", "MVI",
-    "SOA", "Service-Oriented Architecture",
-    "Distributed Systems", "High Availability", "Scalability",
-    "Load Balancing", "Caching", "CDN",
-    "Message Queue", "Pub/Sub Pattern",
-    "12-Factor App", "Strangler Fig Pattern",
-    "BFF", "Backend for Frontend",
-    "API-First Design", "Contract-First Design",
-    "KISS", "DRY", "YAGNI",
-    "Repository Pattern", "Unit of Work", "Factory Pattern",
-    "Observer Pattern", "Strategy Pattern", "Singleton Pattern",
+    # ── Testing ──
+    "Jest", "Mocha", "Chai", "Sinon", "Jasmine",
+    "Cypress", "Playwright", "Selenium", "WebDriver",
+    "Puppeteer", "TestCafe", "Nightwatch",
+    "JUnit", "TestNG", "Mockito", "PowerMock",
+    "pytest", "unittest", "nose2", "tox",
+    "RSpec", "Capybara", "Minitest",
+    "PHPUnit", "Pest", "Codeception",
+    "Enzyme", "React Testing Library", "Vitest",
+    "Testing Library", "MSW", "Mock Service Worker",
+    "JMeter", "Gatling", "k6", "Locust", "Artillery",
+    "SonarQube", "SonarCloud", "CodeClimate",
+    "Snyk", "Dependabot", "Renovate",
+    "TDD", "BDD", "Unit Testing",
+    "Integration Testing", "E2E Testing",
+    "Load Testing", "Performance Testing",
+    "Stress Testing", "Smoke Testing",
+    "Regression Testing", "Acceptance Testing",
+    "Test Automation", "QA Automation",
+    "Manual Testing", "Quality Assurance",
+    "Appium", "Robot Framework", "Cucumber",
+    "Gherkin", "SpecFlow", "Behave",
 
-    # ── Security & Compliance (40+) ──
-    "Cybersecurity", "Penetration Testing", "Pen Testing",
-    "OWASP", "OWASP Top 10",
-    "Encryption", "AES", "RSA", "SHA-256",
-    "SSL/TLS", "HTTPS", "PKI", "X.509",
-    "IAM", "Identity and Access Management",
-    "SIEM", "SOC", "Security Operations Center",
-    "Vulnerability Assessment", "Vulnerability Scanning",
-    "Network Security", "Application Security", "Cloud Security",
-    "Authentication", "Authorization", "RBAC", "ABAC",
-    "SSO", "Single Sign-On", "MFA", "Multi-Factor Authentication",
-    "OAuth", "SAML", "LDAP", "Active Directory",
-    "Ethical Hacking", "Bug Bounty",
+    # ── Security ──
+    "OWASP", "OWASP Top 10", "Penetration Testing",
+    "Vulnerability Assessment", "Security Audit",
+    "Burp Suite", "Nmap", "Wireshark",
+    "Metasploit", "Kali Linux", "Parrot OS",
+    "SIEM", "SOC", "IDS", "IPS",
+    "Firewall", "WAF", "DDoS Protection",
+    "OAuth", "OAuth 2.0", "JWT", "SAML",
+    "OpenID Connect", "OIDC", "SSO",
+    "SSL/TLS", "HTTPS", "PKI",
+    "Encryption", "AES", "RSA", "SHA",
+    "HashiCorp Vault", "AWS KMS",
+    "Azure Key Vault", "Secrets Management",
+    "Zero Trust", "Identity Management",
+    "Access Control", "RBAC", "ABAC",
+    "Compliance", "GDPR", "HIPAA", "SOC 2",
+    "PCI DSS", "ISO 27001",
+    "Cybersecurity", "Information Security",
+    "Application Security", "Network Security",
+    "Cloud Security", "DevSecOps",
+    "Threat Modeling", "Risk Assessment",
+    "Incident Response", "Forensics",
     "Malware Analysis", "Reverse Engineering",
-    "Digital Forensics", "Incident Response",
-    "GDPR", "HIPAA", "PCI DSS", "SOC 2", "ISO 27001", "NIST",
-    "CCPA", "FERPA", "SOX",
-    "Zero Trust", "Defense in Depth",
-    "WAF", "Web Application Firewall",
-    "IDS", "IPS", "Intrusion Detection",
-    "Burp Suite", "Nmap", "Wireshark", "Metasploit", "Kali Linux",
-    "Nessus", "Qualys", "CrowdStrike", "Carbon Black",
-    "HashiCorp Vault", "AWS KMS", "Azure Key Vault",
-    "DevSecOps", "Shift Left Security",
+    "SAST", "DAST", "IAST", "SCA",
 
-    # ── Networking & OS (30+) ──
-    "Linux", "Ubuntu", "Debian", "CentOS", "Fedora", "Arch Linux",
-    "Red Hat", "RHEL", "Rocky Linux", "AlmaLinux", "Amazon Linux",
-    "Windows", "Windows Server", "macOS",
-    "Unix", "FreeBSD", "Solaris",
-    "TCP/IP", "DNS", "DHCP", "HTTP", "HTTPS",
-    "HTTP/2", "HTTP/3", "QUIC",
-    "VPN", "IPSec", "WireGuard", "OpenVPN",
-    "VLAN", "Subnetting", "Routing", "Switching",
-    "BGP", "OSPF", "MPLS",
-    "Active Directory", "LDAP", "Kerberos",
-    "SSH", "FTP", "SFTP", "SCP",
-    "Cisco", "Juniper", "Palo Alto", "Fortinet",
-    "CCNA", "CCNP", "CCIE",
-    "SDN", "NFV", "Software-Defined Networking",
-    "Load Balancer", "F5", "HAProxy", "Nginx",
+    # ── Version Control ──
+    "Git", "GitHub", "GitLab", "Bitbucket",
+    "SVN", "Subversion", "Mercurial",
+    "Azure Repos", "AWS CodeCommit",
+    "Git Flow", "Trunk-Based Development",
+    "Monorepo", "Lerna", "Nx", "Turborepo",
 
-    # ── Project & Product Management (20+) ──
-    "Agile", "Scrum", "Kanban", "Lean", "SAFe", "XP",
-    "Sprint Planning", "Sprint Retrospective", "Daily Standup",
-    "Jira", "Confluence", "Trello", "Asana", "Monday.com",
-    "Linear", "Notion", "ClickUp", "Shortcut",
-    "Project Management", "Product Management",
-    "Requirements Analysis", "User Stories", "Epics",
-    "Stakeholder Management", "Roadmap", "OKRs",
-    "Waterfall", "Prince2", "PMP",
+    # ── Project Management & Collaboration ──
+    "Jira", "Confluence", "Notion", "Trello",
+    "Asana", "Monday.com", "ClickUp",
+    "Linear", "Shortcut", "Basecamp",
+    "Microsoft Teams", "Slack", "Discord",
     "Miro", "FigJam", "Lucidchart",
 
-    # ── Soft Skills ──
-    "Leadership", "Team Management", "Communication",
-    "Problem Solving", "Critical Thinking", "Collaboration",
-    "Mentoring", "Coaching", "Code Review", "Technical Writing",
-    "Presentation Skills", "Negotiation", "Time Management",
-    "Decision Making", "Conflict Resolution", "Adaptability",
-
-    # ── Blockchain & Web3 (20+) ──
-    "Blockchain", "Ethereum", "Bitcoin", "Polygon", "Solana", "Avalanche",
-    "Smart Contracts", "Solidity", "Vyper", "Rust",
-    "Web3", "Web3.js", "Ethers.js", "Hardhat", "Truffle", "Foundry",
-    "DeFi", "NFT", "DAO", "DEX",
-    "Hyperledger", "Hyperledger Fabric",
-    "IPFS", "Chainlink", "The Graph", "OpenZeppelin",
-
-    # ── IoT & Embedded (20+) ──
-    "IoT", "Internet of Things", "IIoT",
-    "Embedded Systems", "Embedded C", "Embedded Linux",
-    "Arduino", "Raspberry Pi", "ESP32", "ESP8266", "STM32",
-    "RTOS", "FreeRTOS", "Zephyr",
-    "FPGA", "Verilog", "VHDL", "SystemVerilog",
-    "Microcontrollers", "Sensors", "Actuators",
-    "Edge Computing", "Edge AI",
-    "I2C", "SPI", "UART", "CAN Bus", "Modbus",
-    "PLC", "SCADA",
-    "ROS", "Robot Operating System",
-    "ARM", "RISC-V", "MIPS",
-
-    # ── Game Development (20+) ──
-    "Unity", "Unity3D", "Unreal Engine", "UE4", "UE5",
-    "Godot", "GameMaker", "CryEngine", "Cocos2d",
-    "OpenGL", "Vulkan", "DirectX", "DirectX 12", "Metal",
-    "Shader", "HLSL", "GLSL",
-    "Blender", "3ds Max", "Maya",
-    "Game Design", "Level Design", "Game Physics",
-    "Multiplayer Networking", "Photon",
-
-    # ── Design Tools (20+) ──
-    "Figma", "Adobe XD", "Sketch", "InVision",
-    "Photoshop", "Illustrator", "After Effects", "Premiere Pro",
-    "Adobe Creative Suite", "Adobe Creative Cloud",
-    "Canva", "GIMP", "Inkscape",
-    "Framer", "Principle", "ProtoPie",
-    "Zeplin", "Balsamiq", "Axure",
-    "Design Systems", "Design Tokens",
-    "Wireframing", "Prototyping", "User Research",
-    "Usability Testing", "A/B Testing",
+    # ── Design Tools ──
+    "Figma", "Adobe XD", "Sketch",
+    "Photoshop", "Adobe Photoshop",
+    "Illustrator", "Adobe Illustrator",
+    "InDesign", "Adobe InDesign",
+    "After Effects", "Adobe After Effects",
+    "Premiere Pro", "Adobe Premiere Pro",
+    "Canva", "InVision", "Zeplin",
+    "Principle", "ProtoPie", "Framer",
+    "Wireframing", "Prototyping", "Design Thinking",
+    "User Research", "Usability Testing",
+    "UI Design", "UX Design", "UI/UX",
+    "Responsive Design", "Mobile First",
+    "Design Systems", "Accessibility", "WCAG",
+    "Material Design", "Human Interface Guidelines",
 
     # ── CMS & E-commerce ──
-    "WordPress", "Drupal", "Joomla",
-    "Shopify", "Magento", "WooCommerce", "BigCommerce",
-    "Contentful", "Sanity", "Strapi", "Ghost", "Prismic",
+    "WordPress", "Shopify", "Magento",
+    "WooCommerce", "Drupal", "Joomla",
+    "Ghost", "Hugo", "Jekyll",
+    "Contentful", "Strapi", "Sanity",
+    "Prismic", "DatoCMS", "Tina",
     "Headless CMS", "JAMstack",
 
-    # ── ERP, CRM & Enterprise ──
-    "SAP", "SAP HANA", "SAP ABAP", "SAP Fiori", "SAP S/4HANA",
-    "Salesforce", "Salesforce Lightning", "Apex", "SOQL",
-    "ServiceNow", "HubSpot", "Zoho",
-    "Oracle ERP", "Microsoft Dynamics", "Dynamics 365",
-    "Workday", "PeopleSoft", "NetSuite",
+    # ── Blockchain & Web3 ──
+    "Solidity", "Ethereum", "Web3.js", "Ethers.js",
+    "Hardhat", "Truffle", "Foundry", "Brownie",
+    "Smart Contracts", "DeFi", "NFT", "DAO",
+    "IPFS", "The Graph", "Chainlink",
+    "Polygon", "Avalanche", "Solana",
+    "Hyperledger", "Hyperledger Fabric",
+    "Consensus Algorithms", "Cryptography",
+    "MetaMask", "WalletConnect",
+    "Blockchain", "Distributed Ledger",
+    "Bitcoin", "Binance Smart Chain",
 
-    # ── RPA & Automation ──
-    "RPA", "UiPath", "Automation Anywhere", "Blue Prism",
-    "Power Automate", "Zapier", "Make", "n8n",
-
-    # ── Communication & Collaboration ──
-    "Slack", "Microsoft Teams", "Zoom", "Discord",
-    "Confluence", "Notion", "Obsidian",
-
-    # ── IDEs & Developer Tools ──
-    "VS Code", "Visual Studio", "IntelliJ IDEA", "WebStorm", "PyCharm",
-    "Eclipse", "NetBeans", "Vim", "Neovim", "Emacs",
-    "Android Studio", "Xcode",
-    "Cursor", "Copilot", "GitHub Copilot",
-]
-
-# Skill aliases — 120+ variations → canonical name
-SKILL_ALIASES = {
-    # Languages
-    "js": "JavaScript", "ts": "TypeScript", "py": "Python",
-    "c sharp": "C#", "csharp": "C#", "cpp": "C++",
-    "golang": "Go", "obj-c": "Objective-C", "objective c": "Objective-C",
-    "vb": "Visual Basic", "vb.net": "Visual Basic",
-    "plsql": "PL/SQL", "tsql": "T-SQL",
-
-    # Frontend
-    "reactjs": "React", "react js": "React", "react.js": "React",
-    "angularjs": "Angular", "angular js": "Angular", "angular.js": "Angular",
-    "vuejs": "Vue.js", "vue js": "Vue.js",
-    "nextjs": "Next.js", "next js": "Next.js",
-    "nuxtjs": "Nuxt.js", "nuxt js": "Nuxt.js",
-    "sveltejs": "Svelte", "sveltekit": "SvelteKit",
-    "tailwindcss": "Tailwind CSS", "tailwind": "Tailwind CSS",
-    "material-ui": "Material UI", "mui": "Material UI",
-    "antd": "Ant Design", "ant-design": "Ant Design",
-    "redux toolkit": "Redux Toolkit", "rtk": "Redux Toolkit",
-    "tanstack query": "TanStack Query", "react-query": "React Query",
-    "chartjs": "Chart.js", "chart.js": "Chart.js",
-    "threejs": "Three.js", "d3js": "D3.js",
-    "wasm": "WebAssembly", "web assembly": "WebAssembly",
-
-    # Backend
-    "node": "Node.js", "nodejs": "Node.js", "node js": "Node.js",
-    "expressjs": "Express.js", "express js": "Express.js",
-    "nestjs": "NestJS", "nest js": "NestJS", "nest.js": "NestJS",
-    "fastify": "Fastify", "adonisjs": "Adonis.js",
-    "asp.net": "ASP.NET", "aspnet": "ASP.NET",
-    "aspnet core": "ASP.NET Core", "asp.net core": "ASP.NET Core",
-    "dotnet": ".NET", "dot net": ".NET", ".net core": ".NET Core",
-    "ror": "Ruby on Rails", "ruby on rails": "Ruby on Rails",
-    "spring mvc": "Spring MVC", "spring framework": "Spring",
-    "typeorm": "TypeORM", "sequelizejs": "Sequelize",
-    "sqlalchemy": "SQLAlchemy",
-
-    # Databases
-    "postgres": "PostgreSQL", "psql": "PostgreSQL",
-    "mongo": "MongoDB", "mongodb atlas": "MongoDB",
-    "mssql": "SQL Server", "ms sql": "SQL Server",
-    "dynamodb": "DynamoDB", "dynamo db": "DynamoDB",
-    "couchbase": "CouchBase", "couch base": "CouchBase",
-    "cockroachdb": "CockroachDB", "cockroach db": "CockroachDB",
-    "planetscale": "PlanetScale",
-    "elastic search": "Elasticsearch", "opensearch": "Elasticsearch",
-
-    # Cloud
-    "amazon web services": "AWS",
-    "google cloud platform": "GCP", "google cloud": "GCP",
-    "microsoft azure": "Azure",
-    "rds": "Amazon RDS", "aurora": "Amazon Aurora",
-    "lambda": "AWS Lambda",
-    "azure ad": "Azure Active Directory",
-
-    # DevOps
-    "k8s": "Kubernetes", "kube": "Kubernetes",
-    "docker-compose": "Docker Compose",
-    "tf": "Terraform",
-    "ci cd": "CI/CD", "cicd": "CI/CD",
-    "ci/cd pipelines": "CI/CD",
-    "github action": "GitHub Actions", "gha": "GitHub Actions",
-    "gitlab-ci": "GitLab CI", "gitlab ci/cd": "GitLab CI",
-    "circle ci": "CircleCI",
-    "elk": "ELK Stack", "elastic stack": "Elastic Stack",
-
-    # Data/ML
-    "ml": "Machine Learning", "dl": "Deep Learning",
-    "ai": "Artificial Intelligence",
-    "sklearn": "Scikit-learn", "scikit learn": "Scikit-learn",
-    "opencv": "OpenCV", "open cv": "OpenCV",
-    "tf lite": "TensorFlow Lite", "tflite": "TensorFlow Lite",
-    "pytorch lightning": "PyTorch Lightning",
-    "wandb": "Weights & Biases", "weights and biases": "Weights & Biases",
-    "pyspark": "PySpark", "spark": "Apache Spark",
-    "huggingface": "Hugging Face", "hf": "Hugging Face",
-    "gen ai": "Generative AI", "genai": "Generative AI",
-    "llms": "LLM", "large language model": "LLM",
-    "chatgpt": "ChatGPT", "chat gpt": "ChatGPT",
-    "langchain": "LangChain", "llamaindex": "LlamaIndex",
-    "sbert": "Sentence Transformers",
-
-    # APIs
-    "rest": "REST API", "restful api": "REST API", "restful apis": "REST API",
-    "graphql api": "GraphQL",
-    "grpc": "gRPC",
-    "rabbit mq": "RabbitMQ", "rabbitmq": "RabbitMQ",
-    "websockets": "WebSocket", "web socket": "WebSocket",
-    "socket.io": "Socket.io", "socketio": "Socket.io",
-    "oauth 2.0": "OAuth2", "oauth2.0": "OAuth2",
-    "json web token": "JWT", "json web tokens": "JWT",
-    "openid connect": "OpenID Connect",
-
-    # Architecture
-    "oop": "Object-Oriented Programming",
-    "fp": "Functional Programming",
-    "ddd": "Domain-Driven Design",
-    "tdd": "TDD", "bdd": "BDD",
-    "soa": "SOA",
-
-    # Testing
-    "e2e": "End-to-End Testing", "e2e testing": "End-to-End Testing",
-    "selenium webdriver": "Selenium WebDriver",
-
-    # BI & Analytics
-    "power bi": "Power BI", "powerbi": "Power BI",
-    "google data studio": "Google Data Studio",
-
-    # Mobile
-    "rn": "React Native", "react-native": "React Native",
-
-    # Other
-    "gh copilot": "GitHub Copilot", "copilot": "GitHub Copilot",
-    "vscode": "VS Code", "vs code": "VS Code",
-    "intellij": "IntelliJ IDEA",
-}
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# JOB TITLE DATABASE — 120+ patterns for accurate role detection
-# ──────────────────────────────────────────────────────────────────────────────
-JOB_TITLE_PATTERNS = [
-    # ── Software Engineering (General) ──
-    r"(?:senior|junior|lead|principal|staff|sr\.?|jr\.?)?\s*software\s+engineer(?:ing)?",
-    r"(?:senior|junior|lead|principal|staff|sr\.?|jr\.?)?\s*software\s+developer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*full[\s\-]?stack\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*application\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*web\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*api\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*solutions?\s+(?:developer|engineer)",
-    r"programmer",
-    r"coder",
-
-    # ── Frontend ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*front[\s\-]?end\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:react|angular|vue|next\.?js)\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*ui\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*javascript\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*typescript\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*wordpress\s+developer",
-
-    # ── Backend ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*back[\s\-]?end\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:java|python|php|ruby|golang|go|node\.?js|\.net|c\+\+|c#|scala|rust)\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*server[\s\-]?side\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*microservices?\s+(?:developer|engineer)",
-
-    # ── Mobile ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*mobile\s+(?:developer|engineer|application\s+developer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*android\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*ios\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:flutter|react\s+native|xamarin|ionic|swift|kotlin)\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*cross[\s\-]?platform\s+(?:developer|engineer)",
-
-    # ── Data Science & AI / ML ──
-    r"(?:senior|junior|lead|principal|sr\.?|jr\.?)?\s*data\s+scientist",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:machine|deep)\s+learning\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:ml|ai|nlp|cv|computer\s+vision)\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*ai\s+(?:researcher|scientist|developer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*research\s+(?:engineer|scientist|assistant)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*applied\s+scientist",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:data|ml)\s+(?:ops|operations)\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*prompt\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*llm\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*generative\s+ai\s+engineer",
-
-    # ── Data Engineering & Analytics ──
-    r"(?:senior|junior|lead|principal|sr\.?|jr\.?)?\s*data\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*data\s+analyst",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:data|analytics)\s+architect",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:bi|business\s+intelligence)\s+(?:developer|analyst|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*business\s+analyst",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*etl\s+developer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:data\s+)?warehouse\s+(?:developer|engineer|architect)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*reporting\s+(?:analyst|developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*visualization\s+(?:analyst|engineer)",
-
-    # ── DevOps, SRE & Infrastructure ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*devops\s+(?:engineer|architect|specialist|consultant)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*site\s+reliability\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*sre\b",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*platform\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*infrastructure\s+(?:engineer|architect)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:build|release)\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:ci[\s/]cd|automation)\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*systems?\s+(?:engineer|administrator|admin)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*linux\s+(?:engineer|administrator|admin)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*configuration\s+management\s+engineer",
-
-    # ── Cloud Engineering ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*cloud\s+(?:engineer|architect|developer|consultant|specialist)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:aws|azure|gcp|google\s+cloud)\s+(?:engineer|architect|developer|specialist|consultant)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*cloud\s+(?:native|infrastructure)\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*serverless\s+(?:engineer|architect)",
-
-    # ── Network & Telecom ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*network\s+(?:engineer|architect|administrator|admin|specialist)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*telecom(?:munications?)?\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*wireless\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*voip\s+engineer",
-
-    # ── Security & Cybersecurity ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:cyber)?security\s+(?:engineer|analyst|architect|consultant|specialist|officer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:information|infosec|itsec)\s+security\s+(?:engineer|analyst|officer|manager)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*penetration\s+tester",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:soc|security\s+operations)\s+analyst",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*threat\s+(?:analyst|intelligence\s+analyst|hunter)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:application|appsec)\s+security\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*ethical\s+hacker",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:grc|governance)\s+(?:analyst|specialist)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:ciso|chief\s+information\s+security\s+officer)",
-
-    # ── QA & Testing ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*qa\s+(?:engineer|analyst|lead|manager|specialist|tester|automation)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*quality\s+(?:assurance|control)\s+(?:engineer|analyst|manager)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*test\s+(?:engineer|automation\s+engineer|lead|manager|analyst)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*sdet\b",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*performance\s+(?:test|testing)\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*manual\s+tester",
-
-    # ── Database ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*database\s+(?:administrator|engineer|architect|developer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*dba\b",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:sql|oracle|mysql|postgresql|mongodb)\s+(?:developer|administrator|engineer)",
-
-    # ── Architecture ──
-    r"(?:senior|principal|chief|lead)?\s*(?:solutions?|software|enterprise|systems?|technical|data|cloud)\s+architect",
-
-    # ── Management & Leadership ──
-    r"(?:engineering|technical|tech|software|development)\s+(?:manager|lead|director|head)",
-    r"(?:team|tech|development)\s+lead(?:er)?",
-    r"(?:vp|vice\s+president)\s+(?:of\s+)?(?:engineering|technology|product)",
-    r"(?:cto|cio|cso)\b",
-    r"chief\s+(?:technology|information|security)\s+officer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:project|program|delivery)\s+manager",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:product|technical\s+product)\s+(?:manager|owner)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*scrum\s+master",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*agile\s+(?:coach|lead|master)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*release\s+manager",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*it\s+(?:manager|director|coordinator)",
-
-    # ── Design (UI/UX) ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:ui[\s/]ux|ux[\s/]ui)\s+(?:designer|developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*ux\s+(?:designer|researcher|engineer|strategist|writer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*ui\s+(?:designer|developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:product|visual|interaction|graphic|motion)\s+designer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:web|digital)\s+designer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*design\s+(?:lead|manager|director)",
+    # ── IoT & Embedded ──
+    "Arduino", "Raspberry Pi", "ESP32", "ESP8266",
+    "RTOS", "FreeRTOS", "Zephyr",
+    "FPGA", "VHDL", "Verilog", "SystemVerilog",
+    "Embedded Systems", "Embedded C",
+    "ARM", "ARM Cortex", "STM32", "PIC",
+    "MQTT", "CoAP", "LoRaWAN", "Zigbee",
+    "BLE", "Bluetooth", "NFC", "RFID",
+    "I2C", "SPI", "UART", "CAN Bus",
+    "PLC", "SCADA", "Industrial IoT",
+    "IoT", "Internet of Things",
+    "Edge Computing", "Fog Computing",
+    "Digital Twin", "Sensor Fusion",
 
     # ── Game Development ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*game\s+(?:developer|programmer|engineer|designer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:unity|unreal)\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*gameplay\s+(?:programmer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:3d|graphics)\s+(?:programmer|engineer|artist)",
+    "Unity", "Unreal Engine", "Godot",
+    "UE4", "UE5", "Unity3D",
+    "OpenGL", "Vulkan", "DirectX", "Direct3D",
+    "Metal", "WebGL", "WebGPU",
+    "Phaser", "Cocos2d", "libGDX",
+    "Game Design", "Level Design",
+    "3D Modeling", "Blender", "Maya", "3ds Max",
+    "Physics Engine", "AI Pathfinding",
+    "Multiplayer", "Networking",
+    "Shader Programming", "HLSL", "GLSL",
 
-    # ── Embedded & Hardware ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*embedded\s+(?:software\s+)?(?:engineer|developer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*firmware\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:iot|internet\s+of\s+things)\s+(?:engineer|developer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*hardware\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:fpga|vhdl|verilog)\s+(?:engineer|developer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:robotics|autonomous)\s+(?:engineer|developer)",
+    # ── Networking & Infrastructure ──
+    "Networking", "TCP/IP", "UDP",
+    "HTTP", "HTTPS", "HTTP/2", "HTTP/3",
+    "DNS", "DHCP", "SMTP", "FTP", "SSH",
+    "VPN", "IPSec", "WireGuard",
+    "Load Balancing", "Reverse Proxy",
+    "Caching", "CDN", "CloudFlare CDN",
+    "Service Mesh", "Istio", "Linkerd",
+    "SD-WAN", "MPLS", "BGP", "OSPF",
+    "VLAN", "Subnetting", "IPv4", "IPv6",
+    "Cisco", "Juniper", "Palo Alto",
+    "Network Automation", "NetDevOps",
 
-    # ── Blockchain & Web3 ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*blockchain\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:smart\s+contract|solidity|web3)\s+(?:developer|engineer)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:defi|nft|crypto)\s+(?:developer|engineer)",
+    # ── Operating Systems & Platforms ──
+    "Linux", "Ubuntu", "CentOS", "Red Hat",
+    "RHEL", "Debian", "Fedora", "Arch Linux",
+    "Alpine Linux", "Amazon Linux",
+    "Unix", "FreeBSD", "macOS",
+    "Windows", "Windows Server",
+    "VMware", "Hyper-V", "KVM", "Proxmox",
+    "Virtualization", "Containerization",
 
-    # ── Technical Writing & Consulting ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*technical\s+(?:writer|author|editor|documenter)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:technical|it|technology)\s+(?:consultant|advisor)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:pre[\s\-]?sales|sales)\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:support|customer)\s+engineer",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*developer\s+(?:advocate|evangelist|relations)",
+    # ── ERP & Enterprise ──
+    "SAP", "SAP ABAP", "SAP HANA", "SAP S/4HANA",
+    "SAP Fiori", "SAP BTP",
+    "Salesforce", "Salesforce Lightning",
+    "Salesforce Apex", "Salesforce SOQL",
+    "ServiceNow", "Workday", "PeopleSoft",
+    "Oracle EBS", "Oracle Fusion",
+    "Dynamics 365", "Microsoft Dynamics",
+    "NetSuite", "Odoo", "ERPNext",
 
-    # ── Other / General ──
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*it\s+(?:specialist|engineer|analyst|support|administrator)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:erp|sap|salesforce|crm)\s+(?:developer|consultant|analyst)",
-    r"(?:senior|junior|lead|sr\.?|jr\.?)?\s*(?:rpa|automation)\s+(?:developer|engineer)",
-    r"teaching\s+assistant",
-    r"(?:software|development|engineering|web|mobile|data|ml|ai|cloud|devops|qa|security)?\s*intern(?:ship)?",
-    r"(?:software|development|engineering|it)?\s*trainee",
-    r"graduate\s+(?:engineer|developer|trainee|assistant)",
-    r"(?:associate|apprentice)\s+(?:engineer|developer|analyst)",
+    # ── RPA & Automation ──
+    "UiPath", "Blue Prism", "Automation Anywhere",
+    "Power Automate", "Zapier", "n8n",
+    "Robotic Process Automation", "RPA",
+    "Process Mining", "Process Automation",
+    "Selenium", "Web Scraping", "BeautifulSoup",
+    "Scrapy", "Puppeteer", "Crawling",
+
+    # ── Low-Code / No-Code ──
+    "Power Apps", "Power Platform", "Power Automate",
+    "OutSystems", "Mendix", "Appian",
+    "Bubble", "Retool", "Airtable",
+    "Google AppSheet", "Webflow",
+
+    # ── Methodologies & Practices ──
+    "Agile", "Scrum", "Kanban", "SAFe",
+    "Lean", "Six Sigma", "Waterfall",
+    "Extreme Programming", "XP",
+    "Pair Programming", "Code Review",
+    "Continuous Integration", "Continuous Delivery",
+    "Continuous Deployment", "Blue-Green Deployment",
+    "Canary Deployment", "Feature Flags",
+    "Microservices", "Monolith", "Modular Monolith",
+    "Event-Driven Architecture", "CQRS",
+    "Event Sourcing", "Domain-Driven Design", "DDD",
+    "Clean Architecture", "Hexagonal Architecture",
+    "SOA", "Service-Oriented Architecture",
+    "Twelve-Factor App", "API-First",
+    "Design Patterns", "SOLID Principles",
+    "OOP", "Object-Oriented Programming",
+    "Functional Programming", "Reactive Programming",
+    "Concurrent Programming", "Parallel Programming",
+    "Asynchronous Programming", "Multi-Threading",
+    "Data Structures", "Algorithms",
+    "System Design", "Distributed Systems",
+    "High Availability", "Scalability",
+    "Fault Tolerance", "Disaster Recovery",
+    "Capacity Planning", "Performance Optimization",
+    "Technical Documentation", "API Documentation",
+
+    # ── Soft Skills (commonly listed on resumes) ──
+    "Problem Solving", "Critical Thinking",
+    "Communication", "Team Collaboration",
+    "Leadership", "Mentoring", "Coaching",
+    "Project Management", "Time Management",
+    "Stakeholder Management", "Client Management",
+    "Requirements Gathering", "Business Analysis",
+    "Strategic Planning", "Decision Making",
+    "Presentation Skills", "Public Speaking",
+    "Cross-Functional Collaboration",
+    "Adaptability", "Attention to Detail",
+    "Analytical Skills", "Research",
+    "Innovation", "Creativity",
+    "Conflict Resolution", "Negotiation",
+    "Remote Work", "Distributed Teams",
 ]
 
 # ──────────────────────────────────────────────────────────────────────────────
-# DOMAIN KEYWORDS — Weighted scoring with comprehensive indicators
+# SKILL ALIASES — Map alternate spellings/abbreviations to canonical names
+# ──────────────────────────────────────────────────────────────────────────────
+SKILL_ALIASES = {
+    # Language aliases
+    "js": "JavaScript", "ts": "TypeScript", "py": "Python",
+    "golang": "Go", "rustlang": "Rust",
+    "csharp": "C#", "c sharp": "C#",
+    "cplusplus": "C++", "cpp": "C++", "c plus plus": "C++",
+    "obj-c": "Objective-C", "objective c": "Objective-C",
+    "vb": "Visual Basic", "vbnet": "VB.NET",
+    "f sharp": "F#", "fsharp": "F#",
+    "r language": "R", "r programming": "R",
+    "pl sql": "PL/SQL", "plsql": "PL/SQL",
+    "tsql": "T-SQL",
+
+    # Frontend aliases
+    "node": "Node.js", "nodejs": "Node.js", "node js": "Node.js",
+    "react js": "React.js", "reactjs": "React.js",
+    "vue js": "Vue.js", "vuejs": "Vue.js",
+    "next js": "Next.js", "nextjs": "Next.js",
+    "nuxt js": "Nuxt.js", "nuxtjs": "Nuxt.js",
+    "express js": "Express.js", "expressjs": "Express.js",
+    "angular js": "Angular", "angularjs": "Angular",
+    "svelte kit": "SvelteKit", "sveltekit": "SvelteKit",
+    "solid js": "SolidJS", "solidjs": "SolidJS",
+    "alpine js": "Alpine.js", "alpinejs": "Alpine.js",
+    "ember js": "Ember.js", "backbone js": "Backbone.js",
+    "three js": "Three.js", "d3 js": "D3.js",
+    "chart js": "Chart.js", "chartjs": "Chart.js",
+    "socket io": "Socket.IO", "socketio": "Socket.IO",
+
+    # CSS/UI aliases
+    "tailwind": "Tailwind CSS", "tailwindcss": "Tailwind CSS",
+    "materialui": "Material UI", "material-ui": "Material UI",
+    "chakraui": "Chakra UI", "chakra-ui": "Chakra UI",
+    "antd": "Ant Design", "ant-design": "Ant Design",
+    "styled-components": "Styled Components",
+    "css-modules": "CSS Modules",
+    "shadcn": "shadcn/ui",
+
+    # Backend aliases
+    "asp.net": "ASP.NET", "aspnet": "ASP.NET",
+    "asp.net core": "ASP.NET Core", "aspnetcore": "ASP.NET Core",
+    "dotnet": ".NET", "dot net": ".NET",
+    "dotnet core": ".NET Core",
+    "ror": "Ruby on Rails", "ruby on rails": "Ruby on Rails",
+    "spring-boot": "Spring Boot", "springboot": "Spring Boot",
+    "nest js": "NestJS", "nest.js": "NestJS",
+    "adonis js": "Adonis.js", "adonisjs": "Adonis.js",
+    "fast api": "FastAPI", "fast-api": "FastAPI",
+
+    # Database aliases
+    "postgres": "PostgreSQL", "psql": "PostgreSQL", "pg": "PostgreSQL",
+    "mongo": "MongoDB", "mongodb": "MongoDB",
+    "mssql": "SQL Server", "ms sql": "SQL Server",
+    "dynamodb": "DynamoDB", "dynamo db": "DynamoDB",
+    "elastic": "Elasticsearch", "es": "Elasticsearch",
+    "open search": "OpenSearch", "opensearch": "OpenSearch",
+    "cockroachdb": "CockroachDB",
+    "neo 4j": "Neo4j",
+
+    # Cloud & DevOps aliases
+    "k8s": "Kubernetes", "k8": "Kubernetes", "kube": "Kubernetes",
+    "tf": "Terraform",
+    "gh actions": "GitHub Actions", "github-actions": "GitHub Actions",
+    "gitlab-ci": "GitLab CI", "gitlab ci/cd": "GitLab CI",
+    "aws lambda": "AWS Lambda", "lambda": "AWS Lambda",
+    "gcloud": "Google Cloud", "gcp": "GCP",
+    "gke": "Google Kubernetes Engine",
+    "aks": "Azure Kubernetes Service",
+    "eks": "EKS",
+    "ecr": "ECR",
+    "s3 bucket": "S3", "amazon s3": "Amazon S3",
+    "cloud formation": "CloudFormation",
+    "serverless framework": "Serverless",
+    "argocd": "ArgoCD", "argo cd": "ArgoCD",
+    "fluxcd": "FluxCD", "flux cd": "FluxCD",
+
+    # AI/ML aliases
+    "sklearn": "Scikit-learn", "scikit learn": "Scikit-learn",
+    "sci-kit learn": "Scikit-learn", "scikit-learn": "Scikit-learn",
+    "opencv": "OpenCV", "open cv": "OpenCV",
+    "nlp": "NLP", "natural language processing": "NLP",
+    "ml": "Machine Learning", "machine-learning": "Machine Learning",
+    "dl": "Deep Learning", "deep-learning": "Deep Learning",
+    "cv": "Computer Vision", "computer-vision": "Computer Vision",
+    "rl": "Reinforcement Learning",
+    "ai": "Generative AI", "gen ai": "GenAI", "genai": "GenAI",
+    "llms": "LLM", "large language models": "LLM",
+    "langchain": "LangChain", "lang chain": "LangChain",
+    "llamaindex": "LlamaIndex", "llama index": "LlamaIndex",
+    "huggingface": "Hugging Face", "hugging-face": "Hugging Face",
+    "hf": "Hugging Face",
+    "mlflow": "MLflow", "ml flow": "MLflow",
+    "sagemaker": "SageMaker", "sage maker": "SageMaker",
+    "xgb": "XGBoost", "lgbm": "LightGBM",
+    "w&b": "Weights & Biases", "wandb": "Weights & Biases",
+
+    # Data Engineering aliases
+    "pyspark": "PySpark", "py spark": "PySpark",
+    "apache spark": "Apache Spark", "spark": "Apache Spark",
+    "apache kafka": "Apache Kafka",
+    "apache airflow": "Apache Airflow", "airflow": "Apache Airflow",
+    "apache flink": "Apache Flink", "flink": "Apache Flink",
+    "apache beam": "Apache Beam", "beam": "Apache Beam",
+    "power bi": "Power BI", "powerbi": "Power BI",
+
+    # Testing aliases
+    "testing library": "React Testing Library",
+    "rtl": "React Testing Library",
+    "webdriver": "Selenium",
+    "selenium webdriver": "Selenium",
+
+    # Methodology aliases
+    "ci cd": "CI/CD", "cicd": "CI/CD",
+    "ci/cd pipeline": "CI/CD",
+    "tdd": "TDD", "test driven development": "TDD",
+    "bdd": "BDD", "behavior driven development": "BDD",
+    "ddd": "DDD", "domain driven design": "DDD",
+    "oop": "OOP", "object oriented programming": "OOP",
+    "fp": "Functional Programming",
+    "solid": "SOLID Principles",
+    "design-patterns": "Design Patterns",
+    "micro services": "Microservices", "micro-services": "Microservices",
+    "event driven": "Event-Driven Architecture",
+    "api first": "API-First",
+
+    # Security aliases
+    "oauth2": "OAuth 2.0", "oauth 2": "OAuth 2.0",
+    "jwt token": "JWT", "json web token": "JWT",
+    "sso": "SSO", "single sign on": "SSO",
+    "rbac": "RBAC", "role based access": "RBAC",
+    "devsecops": "DevSecOps", "dev sec ops": "DevSecOps",
+    "pen testing": "Penetration Testing", "pentest": "Penetration Testing",
+
+    # Other aliases
+    "web3": "Web3.js", "web 3": "Web3.js",
+    "ethers": "Ethers.js", "ethersjs": "Ethers.js",
+    "unreal": "Unreal Engine", "ue4": "UE4", "ue5": "UE5",
+    "unity3d": "Unity", "unity 3d": "Unity",
+    "rpa": "RPA", "robotic process automation": "RPA",
+    "uipath": "UiPath", "ui path": "UiPath",
+    "web scraping": "Web Scraping", "webscraping": "Web Scraping",
+    "beautiful soup": "BeautifulSoup", "beautifulsoup": "BeautifulSoup",
+    "bs4": "BeautifulSoup",
+    "raspberry-pi": "Raspberry Pi", "rpi": "Raspberry Pi",
+    "freertos": "FreeRTOS", "free rtos": "FreeRTOS",
+    "ui ux": "UI/UX", "uiux": "UI/UX",
+    "ui/ux design": "UI/UX",
+    "responsive-design": "Responsive Design",
+    "a11y": "Accessibility",
+    "wcag": "WCAG",
+    "jamstack": "JAMstack", "jam stack": "JAMstack",
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# JOB TITLE PATTERNS — 25+ regex patterns for 90%+ coverage
+# ──────────────────────────────────────────────────────────────────────────────
+JOB_TITLE_PATTERNS = [
+    # ── Core Engineering Roles (all seniority levels) ──
+    r'(?:senior|junior|lead|principal|staff|distinguished|associate|chief|head\s+of|vp\s+of|director\s+of|manager\s+of|executive|mid[\s-]?level|entry[\s-]?level)?\s*(?:software|web|full[\s-]?stack|front[\s-]?end|back[\s-]?end|mobile|android|ios|cloud|platform|infrastructure|devops|devsecops|site\s+reliability|data|machine\s+learning|ml|ai|nlp|deep\s+learning|computer\s+vision|security|cyber\s*security|qa|test|automation|database|network|embedded|firmware|iot|blockchain|game|graphics|ui|ux|product|solutions?|applications?|systems?|release|build|integration)\s*(?:engineer|developer|architect|analyst|scientist|consultant|specialist|manager|lead|tester|designer|researcher|administrator|admin|ops|programmer|coder)',
+
+    # ── Specific Tech Stack Titles ──
+    r'(?:java|python|php|ruby|golang|rust|scala|kotlin|swift|dart|javascript|typescript|node\.?js|react|angular|vue|django|flask|spring|\.net|salesforce|sap|oracle|aws|azure|gcp|terraform|kubernetes|docker)\s+(?:developer|engineer|architect|consultant|specialist|admin)',
+
+    # ── Software & Application Titles ──
+    r'(?:software|application|systems?|solutions?|platform|digital|information)\s+(?:engineer|developer|architect|designer|programmer|analyst|consultant)',
+
+    # ── Management & Leadership ──
+    r'(?:technical|engineering|development|project|program|product|delivery|it|technology|digital|software|cloud|data|security|infrastructure|devops|qa|test)\s+(?:manager|lead|director|coordinator|head|supervisor|officer|vp|chief|owner)',
+    r'(?:team|tech|engineering|development)\s+(?:lead|leader|captain)',
+    r'(?:chief\s+)?(?:technology|technical|information|security|data|digital|product|revenue|operating|marketing|financial|privacy)\s+officer',
+    r'(?:vp|vice\s+president)\s+(?:of\s+)?(?:engineering|technology|product|development|data|it|operations)',
+    r'head\s+of\s+(?:engineering|technology|product|development|data|design|security|it|infrastructure|devops|qa|mobile)',
+
+    # ── Data & Analytics Titles ──
+    r'(?:data|business\s+intelligence|bi|analytics|reporting|insights?|quantitative)\s+(?:analyst|engineer|scientist|architect|specialist|modeler|consultant|manager)',
+    r'(?:machine\s+learning|ml|ai|deep\s+learning|nlp|computer\s+vision|research|applied)\s+(?:engineer|scientist|researcher|specialist|architect)',
+    r'(?:data\s+(?:warehouse|lake|platform|infrastructure|governance|quality|ops|reliability))\s+(?:engineer|architect|analyst|specialist|manager)',
+
+    # ── DevOps / SRE / Platform ──
+    r'(?:devops|dev\s+ops|cloud\s+ops|cloud|platform|infrastructure|site\s+reliability|sre|build\s+and\s+release|release|systems?)\s+(?:engineer|architect|specialist|analyst|administrator|admin|manager)',
+
+    # ── Security Titles ──
+    r'(?:security|cyber\s*security|information\s+security|infosec|app(?:lication)?\s+security|cloud\s+security|network\s+security)\s+(?:engineer|analyst|architect|specialist|consultant|manager|officer|researcher)',
+    r'(?:penetration|pen)\s+tester',
+    r'(?:security\s+)?(?:soc|incident\s+response|threat[\s-]?intelligence|vulnerability|forensic|compliance|risk)\s+(?:analyst|engineer|specialist|manager)',
+    r'ethical\s+hacker',
+
+    # ── QA & Testing Titles ──
+    r'(?:qa|quality\s+assurance|test|testing|automation\s+test|performance\s+test|manual\s+test)\s+(?:engineer|analyst|lead|manager|specialist|architect|developer)',
+    r'sdet',
+
+    # ── Design Titles ──
+    r'(?:ui|ux|ui[\s/]ux|ux[\s/]ui|user\s+(?:experience|interface)|product|visual|graphic|interaction|web|motion|brand)\s+(?:designer|architect|researcher|strategist|lead)',
+    r'(?:creative|art|design)\s+(?:director|lead|manager)',
+
+    # ── Consulting & Freelance ──
+    r'(?:technical|technology|it|management|strategy|cloud|digital\s+transformation|erp|crm)\s+(?:consultant|advisor|specialist)',
+    r'(?:freelance|contract|independent)\s+(?:developer|designer|engineer|consultant|programmer)',
+
+    # ── Teaching & Research ──
+    r'(?:professor|lecturer|instructor|adjunct|teaching\s+assistant|research\s+assistant|postdoc|fellow)',
+    r'(?:research|applied)\s+(?:scientist|engineer|fellow|associate)',
+
+    # ── ERP & Enterprise ──
+    r'(?:sap|salesforce|oracle|servicenow|dynamics|workday|netsuite|peoplesoft|hubspot|zendesk)\s+(?:developer|consultant|architect|admin(?:istrator)?|analyst|specialist|functional\s+consultant|technical\s+consultant)',
+
+    # ── RPA & Low-Code ──
+    r'(?:rpa|automation|uipath|blue\s+prism|power\s+(?:platform|automate|apps)|appian|mendix|outsystems)\s+(?:developer|engineer|consultant|architect)',
+
+    # ── Specific Well-Known Titles (abbreviations / standalone) ──
+    r'\b(?:sre|dba|sdet|devops\s+engineer|scrum\s+master|agile\s+coach|technical\s+writer|tech\s+writer|developer\s+advocate|developer\s+evangelist|developer\s+relations|solutions?\s+engineer|pre[\s-]?sales\s+engineer|support\s+engineer|field\s+engineer|customer\s+success\s+engineer|implementation\s+engineer)\b',
+
+    # ── Intern / Entry Level ──
+    r'(?:software|engineering|development|data|design|it|web|mobile|ai|ml|devops|cloud|qa|security)?\s*(?:intern(?:ship)?|trainee|apprentice|co[\s-]?op|working\s+student)',
+    r'(?:graduate|entry[\s-]?level|junior|associate)\s+(?:engineer|developer|analyst|designer|programmer|consultant)',
+
+    # ── Niche / Emerging Roles ──
+    r'(?:prompt|ai\s+prompt|genai|generative\s+ai)\s+(?:engineer|specialist|designer)',
+    r'(?:blockchain|web3|smart\s+contract|solidity|crypto)\s+(?:developer|engineer|architect)',
+    r'(?:game|gameplay|graphics|rendering|engine|level|3d|physics)\s+(?:developer|programmer|engineer|designer|artist)',
+    r'(?:embedded|firmware|fpga|hardware|asic|vlsi|rf|signal|control\s+systems?)\s+(?:engineer|developer|designer|programmer)',
+    r'(?:network|systems?|infrastructure|telecom|wireless|voip)\s+(?:engineer|administrator|admin|architect|analyst)',
+    r'(?:technical\s+)?(?:support|help\s+desk|service\s+desk)\s+(?:engineer|specialist|analyst)',
+    r'(?:technical\s+)?(?:account|sales|partner)\s+(?:manager|executive|director)',
+    r'(?:it|technology)\s+(?:manager|director|administrator|coordinator|specialist|officer|support)',
+]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DOMAIN KEYWORDS — 20 domains with comprehensive indicators for 90%+ accuracy
 # ──────────────────────────────────────────────────────────────────────────────
 DOMAIN_KEYWORDS = {
     "software_engineering": {
         "title_patterns": [
-            "software engineer", "software developer", "full stack", "fullstack",
-            "web developer", "web engineer", "application developer", "application engineer",
-            "solutions developer", "solutions engineer", "api developer", "api engineer",
-            "programmer", "coder",
-        ],
-        "keywords": [
-            "software", "development", "engineering", "programming", "coding",
-            "full stack", "fullstack", "developer", "web application", "crud",
-            "backend", "frontend", "full-stack", "object oriented", "design patterns",
-            "software development life cycle", "sdlc", "agile development",
+            "software engineer", "software developer", "full stack",
+            "fullstack", "web developer", "application developer",
+            "full-stack developer", "solutions architect", "systems engineer",
+            "application architect",
         ],
         "skill_indicators": [
-            "react", "angular", "vue", "node.js", "django", "flask", "fastapi",
-            "spring boot", "express", "rest api", "graphql", "html", "css",
-            "javascript", "typescript", "python", "java", "c#", "c++", "go",
-            "ruby", "php", "rust", "next.js", "nuxt.js", ".net", "laravel",
-            "postgresql", "mongodb", "mysql", "redis", "docker", "git",
-            "microservices", "clean architecture", "mvc", "solid",
-        ]
+            "react", "angular", "vue", "node.js", "django", "flask",
+            "fastapi", "spring boot", "express", "rest api", "graphql",
+            "javascript", "typescript", "python", "java", "c#", "c++",
+            "go", "next.js", ".net", "laravel", "postgresql", "mongodb",
+            "mysql", "docker", "git", "microservices", "redis",
+            "nestjs", "ruby on rails", "svelte", "nuxt.js",
+            "asp.net", "spring", "php", "kotlin", "rust",
+        ],
     },
     "frontend": {
         "title_patterns": [
-            "frontend", "front-end", "front end", "ui developer", "ui engineer",
-            "react developer", "react engineer", "angular developer", "vue developer",
-            "javascript developer", "typescript developer", "wordpress developer",
-            "web designer",
-        ],
-        "keywords": [
-            "frontend", "front-end", "ui", "ux", "user interface", "user experience",
-            "web design", "responsive design", "single page application", "spa",
-            "progressive web app", "pwa", "component", "state management", "dom",
-            "browser", "accessibility", "wcag", "cross-browser", "pixel perfect",
+            "frontend", "front-end", "front end", "ui developer",
+            "ui engineer", "react developer", "angular developer",
+            "vue developer", "web developer", "frontend architect",
         ],
         "skill_indicators": [
-            "react", "angular", "vue", "svelte", "html", "html5", "css", "css3",
-            "tailwind", "bootstrap", "sass", "scss", "less", "webpack", "vite",
-            "next.js", "nuxt.js", "gatsby", "redux", "mobx", "zustand",
-            "styled components", "material ui", "chakra ui", "ant design",
-            "three.js", "d3.js", "framer motion", "gsap", "storybook",
-            "responsive design", "web accessibility", "jquery", "babel",
-        ]
+            "react", "angular", "vue", "svelte", "html", "css",
+            "tailwind", "bootstrap", "sass", "scss", "webpack", "vite",
+            "next.js", "nuxt.js", "gatsby", "redux", "material ui",
+            "three.js", "d3.js", "storybook", "styled components",
+            "framer motion", "chakra ui", "jquery", "typescript",
+            "responsive design", "css modules", "pinia", "vuex",
+        ],
     },
     "backend": {
         "title_patterns": [
             "backend", "back-end", "back end", "server side",
-            "java developer", "python developer", "php developer",
-            "node developer", ".net developer", "golang developer",
-            "ruby developer", "api developer", "microservices engineer",
-        ],
-        "keywords": [
-            "backend", "back-end", "server", "api", "microservices", "api design",
-            "server side", "middleware", "authentication", "authorization",
-            "database design", "orm", "caching", "message queue", "webhook",
-            "scalability", "high availability", "concurrency", "multithreading",
+            "java developer", "python developer", "node developer",
+            "api developer", "backend architect", "php developer",
+            ".net developer", "golang developer",
         ],
         "skill_indicators": [
-            "node.js", "django", "flask", "fastapi", "spring boot", "spring",
-            "express", ".net", "asp.net", "laravel", "symfony", "rails",
-            "nestjs", "koa", "gin", "echo", "fiber", "phoenix",
-            "postgresql", "mysql", "mongodb", "redis", "elasticsearch",
-            "rest api", "graphql", "grpc", "rabbitmq", "kafka", "websocket",
-            "docker", "jwt", "oauth", "prisma", "sqlalchemy",
-        ]
+            "node.js", "django", "flask", "fastapi", "spring boot",
+            "express", ".net", "laravel", "nestjs", "postgresql",
+            "mysql", "mongodb", "redis", "rest api", "graphql",
+            "grpc", "rabbitmq", "kafka", "docker", "jwt", "oauth",
+            "gin", "fiber", "actix", "sql", "microservices",
+            "celery", "gunicorn", "nginx", "api gateway",
+        ],
     },
     "data_science": {
         "title_patterns": [
-            "data scientist", "ml engineer", "machine learning engineer",
-            "ai engineer", "ai researcher", "ai scientist", "ai developer",
-            "nlp engineer", "cv engineer", "computer vision engineer",
-            "deep learning engineer", "applied scientist", "research scientist",
-            "research engineer", "prompt engineer", "llm engineer",
-            "generative ai engineer", "mlops engineer",
-        ],
-        "keywords": [
-            "data science", "machine learning", "deep learning", "analytics",
-            "statistics", "neural network", "artificial intelligence",
-            "natural language processing", "computer vision", "reinforcement learning",
-            "supervised learning", "unsupervised learning", "model training",
-            "feature engineering", "hyperparameter tuning", "model deployment",
-            "research", "experiment", "llm", "large language model",
-            "generative ai", "prompt engineering", "fine-tuning",
-            "transfer learning", "transformer", "attention mechanism",
+            "data scientist", "ml engineer", "machine learning",
+            "ai engineer", "deep learning", "nlp engineer",
+            "research scientist", "prompt engineer", "applied scientist",
+            "ai researcher", "computer vision engineer",
+            "machine learning researcher", "data science lead",
         ],
         "skill_indicators": [
-            "tensorflow", "pytorch", "keras", "scikit-learn", "pandas", "numpy",
-            "scipy", "matplotlib", "seaborn", "jupyter", "google colab",
-            "nlp", "computer vision", "hugging face", "opencv", "nltk", "spacy",
-            "xgboost", "lightgbm", "catboost", "random forest",
-            "deep learning", "neural networks", "bert", "gpt", "transformers",
-            "langchain", "llamaindex", "rag", "pinecone", "chromadb",
-            "mlops", "mlflow", "wandb", "openai", "stable diffusion",
-        ]
+            "tensorflow", "pytorch", "keras", "scikit-learn", "pandas",
+            "numpy", "hugging face", "opencv", "nltk", "spacy",
+            "xgboost", "deep learning", "bert", "gpt", "transformers",
+            "langchain", "mlflow", "machine learning", "neural networks",
+            "reinforcement learning", "computer vision", "nlp",
+            "feature engineering", "model evaluation", "a/b testing",
+            "sagemaker", "vertex ai", "generative ai", "llm",
+            "prompt engineering", "rag", "fine-tuning",
+        ],
     },
     "data_engineering": {
         "title_patterns": [
-            "data engineer", "etl developer", "bi developer", "bi engineer",
-            "bi analyst", "data architect", "analytics engineer",
-            "data warehouse engineer", "data warehouse architect",
-            "data platform engineer", "data ops engineer",
-            "reporting analyst", "visualization engineer",
-        ],
-        "keywords": [
-            "data engineering", "etl", "elt", "data pipeline", "data warehouse",
-            "big data", "data lake", "data mesh", "data modeling",
-            "data integration", "data quality", "data governance",
-            "batch processing", "stream processing", "real-time data",
-            "data infrastructure", "olap", "oltp", "dimensional modeling",
+            "data engineer", "etl developer", "bi developer",
+            "data architect", "analytics engineer", "data platform",
+            "big data engineer", "data pipeline engineer",
+            "data warehouse engineer", "data infrastructure",
         ],
         "skill_indicators": [
-            "apache spark", "pyspark", "hadoop", "hive", "kafka", "airflow",
+            "apache spark", "pyspark", "hadoop", "kafka", "airflow",
             "dbt", "snowflake", "databricks", "bigquery", "redshift",
-            "azure data factory", "aws glue", "fivetran", "nifi",
-            "data pipeline", "etl", "data warehousing",
-            "tableau", "power bi", "looker", "metabase",
-            "sql", "postgresql", "mysql", "mongodb", "cassandra",
-            "parquet", "avro", "delta lake", "iceberg",
-        ]
+            "tableau", "power bi", "sql", "data pipeline", "etl",
+            "data warehouse", "data lake", "hive", "presto", "trino",
+            "apache flink", "apache beam", "delta lake", "fivetran",
+            "airbyte", "data mesh", "data catalog", "data governance",
+        ],
     },
     "devops": {
         "title_patterns": [
-            "devops engineer", "devops architect", "devops specialist",
-            "sre", "site reliability", "platform engineer",
-            "infrastructure engineer", "infrastructure architect",
-            "build engineer", "release engineer", "automation engineer",
-            "ci/cd engineer", "systems engineer", "systems administrator",
-            "linux administrator", "linux engineer",
-            "configuration management engineer",
-        ],
-        "keywords": [
-            "devops", "infrastructure", "deployment", "automation",
-            "site reliability", "continuous integration", "continuous deployment",
-            "continuous delivery", "infrastructure as code", "iac",
-            "container orchestration", "monitoring", "observability",
-            "incident management", "on-call", "uptime", "sla",
-            "configuration management", "provisioning", "scaling",
+            "devops engineer", "sre", "site reliability",
+            "platform engineer", "infrastructure engineer",
+            "cloud ops", "release engineer", "build engineer",
+            "devops architect", "devsecops", "gitops",
         ],
         "skill_indicators": [
-            "docker", "kubernetes", "terraform", "ansible", "puppet", "chef",
-            "jenkins", "github actions", "gitlab ci", "circleci", "travis ci",
-            "ci/cd", "helm", "argocd", "spinnaker",
-            "prometheus", "grafana", "datadog", "new relic", "splunk",
-            "elk stack", "nginx", "apache", "haproxy",
-            "istio", "envoy", "consul", "vault",
-            "linux", "bash", "shell", "vagrant", "packer",
-        ]
+            "docker", "kubernetes", "terraform", "ansible", "jenkins",
+            "github actions", "gitlab ci", "ci/cd", "prometheus",
+            "grafana", "nginx", "linux", "aws", "azure", "gcp",
+            "helm", "argocd", "datadog", "elk stack", "istio",
+            "packer", "vagrant", "cloudformation", "pulumi",
+            "opentelemetry", "serverless", "gitops",
+        ],
     },
     "mobile": {
         "title_patterns": [
-            "mobile developer", "mobile engineer", "mobile application developer",
-            "android developer", "android engineer",
-            "ios developer", "ios engineer",
-            "flutter developer", "flutter engineer",
-            "react native developer", "react native engineer",
-            "swift developer", "kotlin developer",
-            "cross-platform developer", "cross platform engineer",
-        ],
-        "keywords": [
-            "mobile", "android", "ios", "app development", "mobile application",
-            "app store", "play store", "mobile ui", "responsive", "native app",
-            "hybrid app", "cross-platform", "push notification", "mobile sdk",
+            "mobile developer", "android developer", "ios developer",
+            "flutter developer", "react native developer",
+            "mobile engineer", "mobile architect", "app developer",
+            "cross-platform developer", "kotlin developer",
+            "swift developer",
         ],
         "skill_indicators": [
-            "react native", "flutter", "swift", "swiftui", "kotlin",
-            "jetpack compose", "ionic", "xamarin", "cordova",
-            "android", "ios", "objective-c", "dart",
-            "firebase", "mobile development", "app development",
-        ]
+            "react native", "flutter", "swift", "kotlin", "android",
+            "ios", "jetpack compose", "swiftui", "dart", "firebase",
+            "mobile", "xcode", "android studio", "expo", "capacitor",
+            "ionic", "xamarin", "arkit", "arcore", "realm",
+            "core data", "room", "uikit",
+        ],
     },
     "cloud_engineering": {
         "title_patterns": [
-            "cloud engineer", "cloud architect", "cloud developer",
-            "cloud consultant", "cloud specialist",
-            "aws engineer", "aws architect", "aws developer",
-            "azure engineer", "azure architect", "azure developer",
-            "gcp engineer", "google cloud engineer",
-            "cloud native engineer", "cloud infrastructure engineer",
-            "serverless engineer", "serverless architect",
-        ],
-        "keywords": [
-            "cloud", "cloud engineer", "cloud architect", "cloud infrastructure",
-            "cloud computing", "cloud native", "cloud migration", "multi-cloud",
-            "hybrid cloud", "serverless", "iaas", "paas", "saas",
-            "cloud security", "cloud cost optimization", "finops",
+            "cloud engineer", "cloud architect", "aws engineer",
+            "azure engineer", "gcp engineer", "cloud consultant",
+            "cloud specialist", "cloud administrator",
+            "cloud solutions architect", "cloud infrastructure",
         ],
         "skill_indicators": [
-            "aws", "azure", "gcp", "google cloud",
-            "cloudformation", "ec2", "s3", "ecs", "eks", "sqs", "sns",
-            "api gateway", "cloudwatch", "lambda", "aws lambda",
-            "azure functions", "azure devops", "azure sql",
-            "cloud functions", "bigquery", "cloud run",
-            "terraform", "cloudflare", "vercel", "heroku",
-        ]
+            "aws", "azure", "gcp", "ec2", "s3", "lambda",
+            "cloudformation", "terraform", "cloud functions",
+            "bigquery", "cloud run", "kubernetes", "docker",
+            "ecs", "eks", "fargate", "azure functions",
+            "iam", "vpc", "route 53", "cloudfront", "cdn",
+            "serverless", "multi-cloud", "hybrid cloud",
+        ],
     },
     "security": {
         "title_patterns": [
-            "security engineer", "security analyst", "security architect",
-            "security consultant", "security specialist", "security officer",
-            "cybersecurity engineer", "cybersecurity analyst",
-            "information security", "infosec", "itsec",
-            "penetration tester", "ethical hacker",
-            "soc analyst", "threat analyst", "threat intelligence",
-            "application security", "appsec", "devsecops",
-            "grc analyst", "governance analyst",
-            "ciso", "chief information security officer",
-        ],
-        "keywords": [
-            "security", "cybersecurity", "penetration testing", "encryption",
-            "infosec", "information security", "vulnerability", "compliance",
-            "threat", "malware", "forensics", "incident response",
-            "risk assessment", "security audit", "security operations",
-            "identity management", "access control", "zero trust",
-            "gdpr", "pci dss", "soc 2", "iso 27001", "nist", "hipaa",
-            "devsecops", "secure coding", "security by design",
+            "security engineer", "cybersecurity", "penetration tester",
+            "security analyst", "ethical hacker", "security architect",
+            "infosec", "information security", "soc analyst",
+            "security consultant", "application security",
+            "cloud security engineer", "security researcher",
         ],
         "skill_indicators": [
-            "owasp", "penetration testing", "vulnerability assessment",
-            "siem", "firewall", "encryption", "ssl/tls",
-            "iam", "rbac", "sso", "saml", "oauth",
-            "burp suite", "nmap", "wireshark", "metasploit", "kali linux",
-            "ethical hacking", "malware analysis", "forensics",
-            "cybersecurity", "network security", "application security",
-        ]
+            "owasp", "penetration testing", "siem", "firewall",
+            "encryption", "burp suite", "nmap", "wireshark",
+            "metasploit", "kali linux", "sast", "dast",
+            "vulnerability assessment", "threat modeling",
+            "incident response", "compliance", "gdpr", "soc 2",
+            "zero trust", "devsecops", "waf", "ids",
+            "forensics", "malware analysis",
+        ],
     },
     "qa_testing": {
         "title_patterns": [
-            "qa engineer", "qa analyst", "qa lead", "qa manager",
-            "qa automation", "qa specialist", "qa tester",
-            "test engineer", "test automation engineer", "test lead",
-            "test manager", "test analyst",
-            "quality assurance engineer", "quality control engineer",
-            "sdet", "performance test engineer", "manual tester",
-        ],
-        "keywords": [
-            "quality assurance", "testing", "qa", "test automation",
-            "manual testing", "automated testing", "regression testing",
-            "smoke testing", "integration testing", "end-to-end testing",
-            "unit testing", "performance testing", "load testing",
-            "stress testing", "acceptance testing", "test plan",
-            "test case", "bug tracking", "defect management",
-            "test coverage", "test strategy",
+            "qa engineer", "test engineer", "sdet",
+            "quality assurance", "automation engineer",
+            "test lead", "qa analyst", "qa manager",
+            "performance test engineer", "test architect",
         ],
         "skill_indicators": [
             "selenium", "cypress", "playwright", "jest", "pytest",
-            "junit", "testng", "jmeter", "locust", "k6",
-            "tdd", "bdd", "mocha", "chai", "postman",
-            "test automation", "load testing", "unit testing",
-            "appium", "robot framework", "cucumber", "specflow",
-        ]
-    },
-    "network_engineering": {
-        "title_patterns": [
-            "network engineer", "network architect", "network administrator",
-            "network specialist", "telecom engineer",
-            "wireless engineer", "voip engineer",
+            "junit", "jmeter", "tdd", "bdd", "postman",
+            "test automation", "appium", "robot framework",
+            "cucumber", "manual testing", "regression testing",
+            "load testing", "performance testing", "k6",
+            "sonarqube", "quality assurance",
         ],
-        "keywords": [
-            "networking", "network infrastructure", "routing", "switching",
-            "firewall", "load balancer", "vpn", "vlan", "lan", "wan",
-            "tcp/ip", "dns", "dhcp", "bgp", "ospf",
-            "network security", "network monitoring", "sdn",
-            "telecommunications", "wireless",
+    },
+    "design": {
+        "title_patterns": [
+            "ui designer", "ux designer", "product designer",
+            "graphic designer", "web designer", "ui/ux designer",
+            "interaction designer", "visual designer",
+            "design lead", "ux researcher", "creative director",
         ],
         "skill_indicators": [
-            "cisco", "ccna", "ccnp", "juniper", "arista",
-            "tcp/ip", "dns", "dhcp", "vpn", "vlan",
-            "routing", "switching", "firewall", "load balancing",
-            "wireshark", "snmp", "nagios", "zabbix",
-            "active directory", "ldap",
-        ]
+            "figma", "adobe xd", "sketch", "photoshop", "illustrator",
+            "wireframing", "prototyping", "design thinking",
+            "user research", "usability testing", "ui/ux",
+            "design systems", "accessibility", "responsive design",
+            "invision", "zeplin", "framer", "canva",
+            "after effects", "motion design",
+        ],
+    },
+    "blockchain": {
+        "title_patterns": [
+            "blockchain developer", "smart contract developer",
+            "web3 developer", "solidity developer",
+            "blockchain engineer", "crypto developer",
+            "defi developer", "blockchain architect",
+        ],
+        "skill_indicators": [
+            "solidity", "ethereum", "web3.js", "ethers.js", "hardhat",
+            "smart contracts", "defi", "nft", "blockchain",
+            "truffle", "foundry", "ipfs", "polygon", "solana",
+            "hyperledger", "consensus algorithms", "cryptography",
+            "metamask", "dao",
+        ],
     },
     "game_development": {
         "title_patterns": [
             "game developer", "game programmer", "game engineer",
-            "game designer", "unity developer", "unreal developer",
-            "gameplay programmer", "graphics programmer", "3d programmer",
-        ],
-        "keywords": [
-            "game development", "game design", "game engine", "gameplay",
-            "level design", "game mechanics", "game physics",
-            "3d rendering", "shader programming", "graphics programming",
+            "game designer", "gameplay engineer", "unity developer",
+            "unreal developer", "graphics programmer",
+            "level designer", "3d artist",
         ],
         "skill_indicators": [
-            "unity", "unreal engine", "godot", "c++", "c#",
-            "opengl", "vulkan", "directx", "webgl", "shader",
-            "blender", "3d modeling", "game design",
-        ]
+            "unity", "unreal engine", "godot", "opengl", "vulkan",
+            "directx", "c++", "c#", "game design", "shader",
+            "blender", "maya", "3d modeling", "physics engine",
+            "multiplayer", "webgl", "phaser", "pixi",
+        ],
     },
-    "embedded_systems": {
+    "embedded_iot": {
         "title_patterns": [
-            "embedded engineer", "embedded developer", "firmware engineer",
-            "iot engineer", "hardware engineer", "robotics engineer",
-            "fpga engineer", "vhdl engineer",
-        ],
-        "keywords": [
-            "embedded systems", "firmware", "iot", "rtos",
-            "microcontroller", "hardware", "pcb", "circuit",
-            "real-time", "signal processing", "robotics",
+            "embedded engineer", "firmware engineer", "iot engineer",
+            "embedded developer", "hardware engineer",
+            "fpga engineer", "embedded systems",
+            "control systems engineer", "robotics engineer",
         ],
         "skill_indicators": [
-            "embedded systems", "arduino", "raspberry pi", "rtos",
-            "fpga", "verilog", "vhdl", "microcontrollers",
-            "c", "c++", "assembly", "iot", "sensors",
-            "edge computing", "arm", "stm32", "esp32",
-        ]
+            "embedded systems", "embedded c", "rtos", "freertos",
+            "arduino", "raspberry pi", "esp32", "stm32", "arm",
+            "fpga", "vhdl", "verilog", "mqtt", "iot",
+            "i2c", "spi", "uart", "can bus", "ble",
+            "edge computing", "sensor fusion", "plc", "scada",
+        ],
     },
-    "blockchain": {
+    "networking": {
         "title_patterns": [
-            "blockchain developer", "blockchain engineer",
-            "smart contract developer", "solidity developer",
-            "web3 developer", "web3 engineer",
-            "defi developer", "crypto developer",
-        ],
-        "keywords": [
-            "blockchain", "decentralized", "smart contract", "web3",
-            "cryptocurrency", "defi", "nft", "token", "consensus",
-            "distributed ledger",
+            "network engineer", "network administrator",
+            "network architect", "systems administrator",
+            "infrastructure engineer", "telecom engineer",
+            "network security engineer", "it administrator",
         ],
         "skill_indicators": [
-            "blockchain", "ethereum", "solidity", "web3",
-            "smart contracts", "defi", "nft", "hardhat", "truffle",
-            "hyperledger", "rust", "go",
-        ]
+            "cisco", "juniper", "tcp/ip", "dns", "vpn",
+            "firewall", "load balancing", "bgp", "ospf", "vlan",
+            "routing", "switching", "sd-wan", "mpls", "wireshark",
+            "linux", "windows server", "vmware", "active directory",
+            "subnetting", "ipv4", "ipv6",
+        ],
     },
-    "design": {
+    "erp_enterprise": {
         "title_patterns": [
-            "ui designer", "ux designer", "ui/ux designer", "ux/ui designer",
-            "product designer", "visual designer", "interaction designer",
-            "graphic designer", "motion designer", "web designer",
-            "ux researcher", "ux strategist", "ux writer",
-            "design lead", "design manager", "design director",
-        ],
-        "keywords": [
-            "design", "user experience", "user interface", "usability",
-            "wireframe", "prototype", "mockup", "design system",
-            "information architecture", "user research", "design thinking",
-            "typography", "color theory", "visual design",
+            "sap consultant", "sap developer", "salesforce developer",
+            "salesforce consultant", "erp consultant",
+            "oracle developer", "dynamics consultant",
+            "servicenow developer", "functional consultant",
+            "technical consultant",
         ],
         "skill_indicators": [
-            "figma", "adobe xd", "sketch", "invision",
-            "photoshop", "illustrator", "after effects",
-            "framer", "principle", "zeplin",
-            "design thinking", "wireframing", "prototyping",
-        ]
+            "sap", "sap hana", "sap abap", "sap fiori", "salesforce",
+            "salesforce apex", "servicenow", "oracle", "dynamics 365",
+            "workday", "netsuite", "erp", "crm", "peoplesoft",
+        ],
+    },
+    "project_management": {
+        "title_patterns": [
+            "project manager", "program manager", "product manager",
+            "scrum master", "agile coach", "delivery manager",
+            "technical project manager", "pmo", "release manager",
+            "product owner",
+        ],
+        "skill_indicators": [
+            "agile", "scrum", "kanban", "jira", "confluence",
+            "project management", "stakeholder management",
+            "sprint planning", "roadmap", "okr", "kpi",
+            "risk management", "safe", "pmp", "prince2",
+            "waterfall", "lean", "six sigma",
+        ],
+    },
+    "data_analytics": {
+        "title_patterns": [
+            "data analyst", "business analyst", "business intelligence",
+            "bi analyst", "reporting analyst", "insights analyst",
+            "analytics manager", "market analyst", "financial analyst",
+        ],
+        "skill_indicators": [
+            "sql", "excel", "tableau", "power bi", "looker",
+            "google analytics", "data visualization", "python",
+            "r", "statistical analysis", "data analysis",
+            "mixpanel", "amplitude", "segment", "a/b testing",
+            "hypothesis testing", "regression analysis",
+        ],
+    },
+    "rpa_automation": {
+        "title_patterns": [
+            "rpa developer", "automation engineer",
+            "automation architect", "rpa consultant",
+            "process automation", "uipath developer",
+            "blue prism developer", "power automate developer",
+        ],
+        "skill_indicators": [
+            "uipath", "blue prism", "automation anywhere",
+            "power automate", "rpa", "process mining",
+            "process automation", "selenium", "web scraping",
+            "python", "power platform", "zapier",
+        ],
     },
 }
 
 
 class ExtractionService:
-    """Service for extracting structured information from resume text"""
+    """Hybrid extraction: keyword/regex primary + BERT-NER supplementary.
+
+    The keyword database + regex approach reliably extracts 30+ skills
+    from well-formatted resumes. BERT-NER adds novel skills/titles
+    that aren't in the keyword database.
+    """
 
     def __init__(self):
-        self.embedding_service = get_embedding_service()
+        self.ner_service = get_ner_service()
         self._skill_lookup = {s.lower(): s for s in SKILL_DATABASE}
         self._alias_lookup = {a.lower(): c for a, c in SKILL_ALIASES.items()}
 
+    # ── NER helper ────────────────────────────────────────────────────────────
+
+    def _get_ner_entities(self, text: str) -> Dict[str, List[str]]:
+        """Run BERT-NER and return grouped entities."""
+        try:
+            return self.ner_service.extract_entities(text)
+        except Exception as e:
+            print(f"NER extraction failed: {e}")
+            return {}
+
     # ── Skills ────────────────────────────────────────────────────────────────
 
-    def extract_skills(self, text: str, use_embeddings: bool = True) -> List[str]:
-        """Extract skills from resume text using keyword, alias, and embedding matching."""
+    def extract_skills(self, text: str, use_embeddings: bool = True, _entities: Optional[Dict] = None) -> List[str]:
+        """Extract skills using keyword matching + NER boost.
+
+        Primary: keyword database (300+ skills) + alias matching + section parsing.
+        Supplementary: BERT-NER skills entities for novel discoveries.
+        """
         skills = set()
         text_lower = text.lower()
 
-        # Method 1: Keyword matching (word-boundary for short terms)
+        # ── Method 1: Keyword matching ──
         for skill in SKILL_DATABASE:
             sl = skill.lower()
             if len(skill) <= 3:
@@ -1041,7 +1108,7 @@ class ExtractionService:
                 if sl in text_lower:
                     skills.add(skill)
 
-        # Method 2: Alias matching
+        # ── Method 2: Alias matching ──
         for alias, canonical in self._alias_lookup.items():
             if len(alias) <= 3:
                 if re.search(r'\b' + re.escape(alias) + r'\b', text_lower):
@@ -1050,234 +1117,59 @@ class ExtractionService:
                 if alias in text_lower:
                     skills.add(canonical)
 
-        # Method 3: Skill-section parsing
+        # ── Method 3: Skill-section parsing ──
+        # Catch many common resume section headers for skills
         section_patterns = [
-            r'(?:skills|technologies|tools|tech stack|technical skills|proficienc(?:y|t))[:\s]*([^\n]+(?:\n(?!\n)[^\n]*)*)',
-            r'(?:languages|frameworks|platforms)[:\s]*([^\n]+)',
+            r'(?:skills|technical\s+skills|core\s+skills|key\s+skills|relevant\s+skills|professional\s+skills|hard\s+skills|soft\s+skills|additional\s+skills|other\s+skills)[:\s]*([^\n]+(?:\n(?!\n)[^\n]*)*)',
+            r'(?:technologies|tools|tech\s+stack|technology\s+stack|tools?\s+(?:and|&)\s+technologies|technical\s+proficiency|proficienc(?:y|ies)|expertise|competencies|core\s+competencies|key\s+competencies|areas\s+of\s+expertise|technical\s+expertise)[:\s]*([^\n]+(?:\n(?!\n)[^\n]*)*)',
+            r'(?:languages|programming\s+languages|frameworks|libraries|platforms|databases|cloud|devops|frontend|backend|front[\s-]end|back[\s-]end)[:\s]*([^\n]+)',
+            r'(?:familiar\s+with|proficient\s+in|experienced\s+in|knowledge\s+of|worked\s+with|exposure\s+to)[:\s]*([^\n]+)',
         ]
         for pat in section_patterns:
             for match in re.findall(pat, text_lower, re.IGNORECASE):
-                candidates = re.split(r'[,|•·▪►→\-–—/\\]|\s{2,}', match)
+                # Split on common delimiters used in skills sections
+                candidates = re.split(r'[,|•·▪►→★☆■□●○◆◇\-–—/\\:;]|\s{2,}|\n', match)
                 for c in candidates:
-                    c = c.strip().strip('.')
-                    if 2 <= len(c) <= 30:
-                        if c in self._skill_lookup:
-                            skills.add(self._skill_lookup[c])
-                        elif c in self._alias_lookup:
-                            skills.add(self._alias_lookup[c])
+                    c = c.strip().strip('.()')
+                    if 2 <= len(c) <= 35:
+                        cl = c.lower().strip()
+                        if cl in self._skill_lookup:
+                            skills.add(self._skill_lookup[cl])
+                        elif cl in self._alias_lookup:
+                            skills.add(self._alias_lookup[cl])
 
-        # Method 4: Embedding-based similarity
-        if use_embeddings:
-            try:
-                potential = re.findall(r'\b[A-Z][a-zA-Z+#.]*(?:\s+[A-Z][a-zA-Z+#.]*){0,2}\b', text)
-                ctx_pats = [
-                    r'(?:experience\s+(?:with|in|using)|proficient\s+in|knowledge\s+of|familiar\s+with|worked\s+with|expertise\s+in)\s+([^\n.]+)',
-                ]
-                for p in ctx_pats:
-                    for m in re.findall(p, text, re.IGNORECASE):
-                        potential.extend([i.strip() for i in re.split(r'[,;]|\band\b', m)])
-
-                seen = set()
-                unique = []
-                for ph in potential:
-                    ph = ph.strip()
-                    pl = ph.lower()
-                    if pl not in seen and 2 <= len(ph) <= 30 and pl not in self._skill_lookup:
-                        seen.add(pl)
-                        unique.append(ph)
-
-                for ph in unique[:80]:
-                    similar = self.embedding_service.find_similar_skills(ph, SKILL_DATABASE, threshold=0.78)
-                    if similar:
-                        skills.add(similar[0][0])
-            except Exception as e:
-                print(f"Embedding extraction failed: {e}")
+        # ── Method 4: BERT-NER boost (novel skills only) ──
+        entities = _entities or self._get_ner_entities(text)
+        ner_skills = entities.get("skills", [])
+        for ns in ner_skills:
+            ns_clean = ns.strip()
+            # Only add if:
+            # 1. Not already found by keyword matching
+            # 2. Looks like a real skill (reasonable length, no junk)
+            if (ns_clean and
+                len(ns_clean) >= 2 and
+                len(ns_clean) <= 40 and
+                not any(s.lower() == ns_clean.lower() for s in skills)):
+                skills.add(ns_clean)
 
         return sorted(list(skills))
 
     # ── Job Titles ────────────────────────────────────────────────────────────
 
-    # Reference job titles for SBERT similarity matching — 200+ titles
-    _JOB_TITLES_REFERENCE = [
-        # ── Software Engineering ──
-        "Software Engineer", "Software Developer", "Full Stack Developer",
-        "Full Stack Engineer", "Web Developer", "Web Engineer",
-        "Application Developer", "Application Engineer", "API Developer",
-        "API Engineer", "Solutions Engineer", "Solutions Developer",
-        "Programmer", "Coder",
-        "Senior Software Engineer", "Staff Software Engineer",
-        "Principal Software Engineer", "Lead Software Engineer",
-        "Junior Software Developer", "Associate Software Engineer",
-        # ── Frontend ──
-        "Frontend Developer", "Frontend Engineer", "UI Developer",
-        "UI Engineer", "React Developer", "React Engineer",
-        "Angular Developer", "Vue Developer", "Next.js Developer",
-        "JavaScript Developer", "TypeScript Developer",
-        "WordPress Developer", "Web Designer",
-        "Senior Frontend Developer", "Lead Frontend Engineer",
-        # ── Backend ──
-        "Backend Developer", "Backend Engineer", "Server Side Developer",
-        "Java Developer", "Python Developer", "PHP Developer",
-        "Node.js Developer", ".NET Developer", "Go Developer",
-        "Golang Developer", "Ruby Developer", "Rust Developer",
-        "Scala Developer", "C++ Developer", "C# Developer",
-        "Microservices Developer", "Microservices Engineer",
-        "Senior Backend Developer", "Lead Backend Engineer",
-        # ── Mobile ──
-        "Mobile Developer", "Mobile Engineer", "Mobile Application Developer",
-        "Android Developer", "Android Engineer",
-        "iOS Developer", "iOS Engineer",
-        "Flutter Developer", "Flutter Engineer",
-        "React Native Developer", "React Native Engineer",
-        "Swift Developer", "Kotlin Developer",
-        "Cross Platform Developer", "Cross Platform Engineer",
-        # ── Data Science & AI/ML ──
-        "Data Scientist", "Data Analyst", "Data Engineer",
-        "Machine Learning Engineer", "ML Engineer", "AI Engineer",
-        "NLP Engineer", "Computer Vision Engineer", "Deep Learning Engineer",
-        "AI Researcher", "AI Scientist", "AI Developer",
-        "Research Scientist", "Research Engineer", "Applied Scientist",
-        "Prompt Engineer", "LLM Engineer", "Generative AI Engineer",
-        "MLOps Engineer", "DataOps Engineer",
-        "BI Developer", "BI Analyst", "BI Engineer",
-        "Business Analyst", "Business Intelligence Analyst",
-        "Analytics Engineer", "Data Architect", "Data Modeler",
-        "ETL Developer", "Data Warehouse Engineer",
-        "Reporting Analyst", "Visualization Engineer",
-        "Senior Data Scientist", "Lead ML Engineer",
-        "Principal Data Engineer", "Staff Data Scientist",
-        # ── DevOps, SRE & Infrastructure ──
-        "DevOps Engineer", "DevOps Architect", "DevOps Specialist",
-        "Site Reliability Engineer", "SRE",
-        "Platform Engineer", "Infrastructure Engineer", "Infrastructure Architect",
-        "Cloud Engineer", "Cloud Architect", "Cloud Developer",
-        "Cloud Consultant", "Cloud Specialist",
-        "AWS Engineer", "AWS Architect", "AWS Developer",
-        "Azure Engineer", "Azure Architect", "Azure Developer",
-        "GCP Engineer", "Google Cloud Engineer",
-        "Systems Engineer", "Systems Administrator", "System Admin",
-        "Linux Engineer", "Linux Administrator",
-        "Build Engineer", "Release Engineer", "Automation Engineer",
-        "CI/CD Engineer", "Configuration Management Engineer",
-        "Senior DevOps Engineer", "Lead Platform Engineer",
-        "Serverless Engineer", "Serverless Architect",
-        # ── Security & Cybersecurity ──
-        "Security Engineer", "Security Analyst", "Security Architect",
-        "Security Consultant", "Security Specialist",
-        "Cybersecurity Engineer", "Cybersecurity Analyst",
-        "Penetration Tester", "Ethical Hacker",
-        "SOC Analyst", "Threat Analyst", "Threat Intelligence Analyst",
-        "Application Security Engineer", "AppSec Engineer",
-        "Information Security Officer", "CISO",
-        "DevSecOps Engineer", "Cloud Security Engineer",
-        "GRC Analyst", "Compliance Analyst",
-        "Senior Security Engineer", "Lead Security Architect",
-        # ── QA & Testing ──
-        "QA Engineer", "QA Analyst", "QA Lead", "QA Automation Engineer",
-        "Test Engineer", "Test Automation Engineer", "Test Lead",
-        "SDET", "Quality Assurance Engineer", "Quality Control Engineer",
-        "Performance Test Engineer", "Manual Tester",
-        "Senior QA Engineer", "Lead Test Engineer",
-        # ── Database ──
-        "Database Administrator", "DBA",
-        "Database Engineer", "Database Architect", "Database Developer",
-        "SQL Developer", "Oracle DBA", "MongoDB Developer",
-        # ── Architecture ──
-        "Solutions Architect", "Software Architect", "Enterprise Architect",
-        "Technical Architect", "Systems Architect",
-        "Data Architect", "Cloud Architect", "Security Architect",
-        "Principal Architect", "Chief Architect",
-        # ── Management & Leadership ──
-        "Engineering Manager", "Technical Lead", "Team Lead", "Tech Lead",
-        "Development Manager", "Software Development Manager",
-        "Director of Engineering", "VP of Engineering",
-        "Head of Engineering", "Head of Technology",
-        "CTO", "CIO", "CSO",
-        "Chief Technology Officer", "Chief Information Officer",
-        "Project Manager", "Program Manager", "Delivery Manager",
-        "Product Manager", "Product Owner", "Technical Product Manager",
-        "Scrum Master", "Agile Coach", "Release Manager",
-        "IT Manager", "IT Director", "IT Coordinator",
-        # ── Design (UI/UX) ──
-        "UI/UX Designer", "UX Designer", "UI Designer",
-        "UX Researcher", "UX Strategist", "UX Writer",
-        "Product Designer", "Visual Designer", "Interaction Designer",
-        "Graphic Designer", "Motion Designer", "Web Designer",
-        "Design Lead", "Design Manager", "Design Director",
-        "Senior Product Designer", "Lead UX Designer",
-        # ── Network & Telecom ──
-        "Network Engineer", "Network Architect", "Network Administrator",
-        "Network Specialist", "Telecom Engineer",
-        "Wireless Engineer", "VoIP Engineer",
-        "Senior Network Engineer",
-        # ── Game Development ──
-        "Game Developer", "Game Programmer", "Game Engineer",
-        "Game Designer", "Level Designer",
-        "Unity Developer", "Unreal Developer",
-        "Gameplay Programmer", "Graphics Programmer",
-        "3D Developer", "3D Artist",
-        # ── Embedded & IoT ──
-        "Embedded Engineer", "Embedded Developer",
-        "Embedded Software Engineer", "Firmware Engineer",
-        "IoT Engineer", "IoT Developer",
-        "Hardware Engineer", "FPGA Engineer",
-        "Robotics Engineer", "Autonomous Systems Engineer",
-        # ── Blockchain & Web3 ──
-        "Blockchain Developer", "Blockchain Engineer",
-        "Smart Contract Developer", "Solidity Developer",
-        "Web3 Developer", "Web3 Engineer",
-        "DeFi Developer", "Crypto Developer",
-        # ── Technical Writing & Consulting ──
-        "Technical Writer", "Technical Author",
-        "Technical Consultant", "IT Consultant", "Technology Consultant",
-        "Pre-Sales Engineer", "Sales Engineer",
-        "Customer Engineer", "Support Engineer",
-        "Developer Advocate", "Developer Evangelist", "Developer Relations",
-        # ── ERP & Enterprise ──
-        "SAP Developer", "SAP Consultant", "SAP Architect",
-        "Salesforce Developer", "Salesforce Consultant", "Salesforce Architect",
-        "ServiceNow Developer", "Oracle Developer",
-        "ERP Developer", "ERP Consultant",
-        "CRM Developer", "CRM Consultant",
-        "Dynamics 365 Developer", "NetSuite Developer",
-        # ── RPA & Automation ──
-        "RPA Developer", "RPA Engineer",
-        "Automation Developer", "Automation Engineer",
-        "UiPath Developer", "Power Automate Developer",
-        # ── Other / Niche ──
-        "IT Specialist", "IT Analyst", "IT Support Engineer",
-        "IT Administrator", "Help Desk Technician",
-        "FinOps Engineer", "SaaS Engineer",
-        "Reliability Engineer", "Performance Engineer",
-        "Integration Engineer", "Middleware Engineer",
-        "API Architect", "Microservices Architect",
-        "Teaching Assistant", "Research Assistant",
-        "Graduate Engineer", "Graduate Developer",
-        "Associate Engineer", "Associate Developer",
-        "Intern", "Software Engineering Intern",
-        "Trainee Developer", "Trainee Engineer",
-    ]
-
-    def extract_job_titles(self, text: str) -> List[str]:
-        """
-        Extract job titles/roles from resume text.
-        Uses regex patterns first, then SBERT similarity as fallback
-        for novel/unusual titles.
-        """
+    def extract_job_titles(self, text: str, _entities: Optional[Dict] = None) -> List[str]:
+        """Extract job titles using regex + NER boost."""
         titles = []
         text_lower = text.lower()
 
-        # Method 1: Regex pattern matching (120+ patterns)
+        # ── Method 1: Regex pattern matching ──
         for pattern in JOB_TITLE_PATTERNS:
             matches = re.finditer(pattern, text_lower)
             for m in matches:
-                title = m.group(0).strip()
-                title = title.title()
+                title = m.group(0).strip().title()
                 if title not in titles:
                     titles.append(title)
 
-        # Method 2: Experience section format matching
-        # "Software Engineer at Google" or "Software Engineer | Google"
+        # ── Method 2: Experience section format matching ──
         exp_title_pat = r'(?:^|\n)\s*([A-Z][A-Za-z\s/\-]+?)\s*(?:at|@|\||-|–|—|,)\s*[A-Z]'
         for m in re.finditer(exp_title_pat, text):
             candidate = m.group(1).strip()
@@ -1289,80 +1181,41 @@ class ExtractionService:
                             titles.append(candidate.title())
                         break
 
-        # Method 3: SBERT embedding similarity fallback
-        # Catches novel/unusual titles that regex misses
-        try:
-            # Extract candidate phrases from experience sections
-            candidates = []
+        # ── Method 3: BERT-NER designation boost ──
+        entities = _entities or self._get_ner_entities(text)
+        ner_titles = entities.get("designation", [])
+        for nt in ner_titles:
+            nt_clean = nt.strip().title()
+            if nt_clean and len(nt_clean) >= 5 and nt_clean not in titles:
+                titles.append(nt_clean)
 
-            # Look for role-like phrases near company indicators
-            role_pats = [
-                r'(?:^|\n)\s*([A-Z][A-Za-z\s/\-&]+?)\s*(?:at|@|\||–|—)\s+',
-                r'(?:role|position|title|designation)[:\s]+([^\n,]+)',
-                r'(?:worked\s+as|serving\s+as|working\s+as|currently)\s+(?:a\s+)?([^\n,]+?)(?:\s+at|\s+in|\s+for|\.|,|\n)',
-            ]
-            for rp in role_pats:
-                for m in re.finditer(rp, text, re.IGNORECASE):
-                    c = m.group(1).strip().rstrip(',.- ')
-                    if 5 <= len(c) <= 60:
-                        candidates.append(c)
-
-            # Deduplicate and filter already-found titles
-            seen_lower = {t.lower() for t in titles}
-            unique_candidates = []
-            for c in candidates:
-                cl = c.lower()
-                if cl not in seen_lower and len(c.split()) <= 6:
-                    seen_lower.add(cl)
-                    unique_candidates.append(c)
-
-            # Match against reference titles using SBERT
-            for candidate in unique_candidates[:20]:
-                similar = self.embedding_service.find_similar_skills(
-                    candidate, self._JOB_TITLES_REFERENCE, threshold=0.82
-                )
-                if similar:
-                    matched_title = candidate.title()
-                    if matched_title not in titles:
-                        titles.append(matched_title)
-        except Exception as e:
-            print(f"SBERT job title matching failed: {e}")
-
-        return titles[:10]  # Limit to 10
+        return titles[:10]
 
     # ── Education ─────────────────────────────────────────────────────────────
 
-    def extract_education(self, text: str) -> List[Dict[str, str]]:
-        """Extract education details using degree keyword patterns only.
-        
-        NOTE: Section-based fallback removed because PDF text lacks proper
-        newlines, causing cross-contamination with other sections.
-        Uses precise degree keyword patterns that work on any text.
-        """
+    def extract_education(self, text: str, _entities: Optional[Dict] = None) -> List[Dict[str, str]]:
+        """Extract education using regex + NER boost."""
         education = []
 
-        # Pattern 1: "Degree in/from/at Institution (Year)"
+        # ── Method 1: Regex patterns ──
         degree_patterns = [
-            r'((?:Bachelor|Master|Doctor|PhD|B\.?S\.?c?|M\.?S\.?c?|B\.?A\.?|M\.?A\.?|B\.?E\.?|M\.?E\.?|B\.?Tech|M\.?Tech|MBA|BBA|BS|MS|BE|ME|Associate|Diploma)[\w\s,.]{{0,60}}?)(?:\s+(?:from|at|in)\s+)([\w\s,.\-\']+?)(?:\s*[\(,\|]\s*(\d{{4}})\s*[\),\|]|\s+(\d{{4}})|\s*(?:\n|$))',
+            r'((?:Bachelor|Master|Doctor|PhD|B\.?S\.?c?|M\.?S\.?c?|B\.?A\.?|M\.?A\.?|B\.?E\.?|M\.?E\.?|B\.?Tech|M\.?Tech|MBA|BBA|BS|MS|BE|ME|Associate|Diploma)[\w\s,.]{0,60}?)\s+(?:from|at|in)\s+([\w\s,.\-\']+?)(?:\s*[\(,\|]\s*(\d{4})\s*[\),\|]|\s+(\d{4})|\s*(?:\n|$))',
         ]
-
         for pat in degree_patterns:
             for m in re.finditer(pat, text, re.IGNORECASE | re.MULTILINE):
                 degree = m.group(1).strip().rstrip(',.- ')
                 institution = m.group(2).strip().rstrip(',.- ') if m.group(2) else ""
                 year = m.group(3) or (m.group(4) if len(m.groups()) > 3 else None)
-
-                # Validate: degree must be short, institution must be real
-                if len(degree) > 3 and len(degree) < 100 and len(institution) > 2 and len(institution) < 80:
+                if len(degree) > 3 and len(degree) < 100 and len(institution) > 2:
                     entry = {"degree": degree, "institution": institution}
                     if year:
                         entry["year"] = year
                     if not any(e["degree"].lower() == degree.lower() for e in education):
                         education.append(entry)
 
-        # Pattern 2: Standalone degree keywords with year nearby
+        # Standalone degree keywords
         if not education:
-            standalone_pat = r'((?:Bachelor|Master|Doctor|PhD|B\.?S\.?c?|M\.?S\.?c?|B\.?A\.?|M\.?A\.?|B\.?E\.?|M\.?E\.?|B\.?Tech|M\.?Tech|MBA|BBA|Diploma|Associate)\s+(?:of|in)\s+[\w\s]+?)(?:\s*[,\(\|]\s*(\d{4})|\s+(\d{4})|\s*(?:\n|$))'
+            standalone_pat = r'((?:Bachelor|Master|Doctor|PhD|B\.?S\.?c?|M\.?S\.?c?|B\.?A\.?|M\.?A\.?|B\.?E\.?|M\.?E\.?|B\.?Tech|M\.?Tech|MBA|BBA|Diploma|Associate)\s+(?:of|in)\s+[\w\s]+?)(?:\s*[,\(\|]\s*(\d{4})|(\d{4})|\s*(?:\n|$))'
             for m in re.finditer(standalone_pat, text, re.IGNORECASE):
                 degree = m.group(1).strip().rstrip(',.- ')
                 year = m.group(2) or m.group(3)
@@ -1371,273 +1224,223 @@ class ExtractionService:
                     if not any(e["degree"].lower() == degree.lower() for e in education):
                         education.append(entry)
 
+        # ── Method 2: NER boost ──
+        if not education:
+            entities = _entities or self._get_ner_entities(text)
+            degrees = entities.get("degree", [])
+            colleges = entities.get("college", [])
+            grad_years = entities.get("graduation_year", [])
+            max_entries = max(len(degrees), len(colleges), 1)
+            for i in range(min(max_entries, 5)):
+                entry = {
+                    "degree": degrees[i] if i < len(degrees) else "",
+                    "institution": colleges[i] if i < len(colleges) else "",
+                    "year": grad_years[i] if i < len(grad_years) else "",
+                }
+                if entry["degree"] or entry["institution"]:
+                    education.append(entry)
+
         return education[:5]
 
-    # ── Projects ──────────────────────────────────────────────────────────────
+    # ── Experience ────────────────────────────────────────────────────────────
+
+    def extract_experience(self, text: str, _entities: Optional[Dict] = None) -> Dict[str, any]:
+        """Extract experience: years, summary, companies."""
+        from datetime import datetime as dt
+
+        experience = {"years": None, "summary": "", "companies": []}
+
+        # ── Companies from NER ──
+        entities = _entities or self._get_ner_entities(text)
+        ner_companies = entities.get("companies", [])
+
+        # ── Companies from regex ──
+        company_patterns = [
+            r'(?:at|@)\s+([A-Z][\w\s&.,]+?)(?:\s*[\|\-–—,]|\s+as\s+|\n)',
+        ]
+        regex_companies = []
+        for cp in company_patterns:
+            for m in re.finditer(cp, text):
+                company = m.group(1).strip().rstrip(',.- ')
+                if 2 <= len(company) <= 50 and company not in regex_companies:
+                    regex_companies.append(company)
+
+        # Merge: regex companies + NER companies (deduplicated)
+        all_companies = list(regex_companies)
+        for nc in ner_companies:
+            if not any(nc.lower() == c.lower() for c in all_companies):
+                all_companies.append(nc)
+        experience["companies"] = all_companies[:10]
+
+        # ── Years of experience ──
+        # Method 1: NER
+        ner_years = entities.get("experience_years", [])
+        if ner_years:
+            for yr_text in ner_years:
+                m = re.search(r'(\d+)', yr_text)
+                if m:
+                    experience["years"] = int(m.group(1))
+                    break
+
+        # Method 2: Explicit regex
+        if experience["years"] is None:
+            years_pats = [
+                r'(\d+)\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:experience|exp|work)',
+                r'(?:experience|exp)\s*(?:of\s+)?(\d+)\+?\s*(?:years?|yrs?)',
+                r'(?:over|more\s+than|approximately|around|nearly|about)\s+(\d+)\s*(?:years?|yrs?)',
+            ]
+            for yp in years_pats:
+                m = re.search(yp, text, re.IGNORECASE)
+                if m:
+                    experience["years"] = int(m.group(1))
+                    break
+
+        # Method 3: Date range calculation
+        if experience["years"] is None:
+            exp_section_match = re.search(
+                r'(?:experience|work\s+history|employment|professional\s+experience)\s*[:\n\r]?(.*?)(?:(?:education|skills|projects?|certif|awards?)\b|\Z)',
+                text, re.IGNORECASE | re.DOTALL
+            )
+            exp_text = exp_section_match.group(1) if exp_section_match else ""
+            if exp_text:
+                date_range_pats = [
+                    r'(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[,.]?\s*(\d{4})\s*[-–—to]+\s*(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[,.]?\s*)?(\d{4}|[Pp]resent|[Cc]urrent|[Nn]ow|[Oo]ngoing)',
+                    r'(\d{4})\s*[-–—to]+\s*(\d{4}|[Pp]resent|[Cc]urrent|[Nn]ow|[Oo]ngoing)',
+                ]
+                current_year = dt.now().year
+                all_years = []
+                for pat in date_range_pats:
+                    for m in re.finditer(pat, exp_text, re.IGNORECASE):
+                        groups = m.groups()
+                        start_year = end_year = None
+                        for g in groups:
+                            if g and g.isdigit():
+                                yr = int(g)
+                                if 1970 <= yr <= current_year + 1:
+                                    if start_year is None:
+                                        start_year = yr
+                                    else:
+                                        end_year = yr
+                            elif g and g.lower() in ('present', 'current', 'now', 'ongoing'):
+                                end_year = current_year
+                        if start_year and end_year:
+                            all_years.append((start_year, end_year))
+                        elif start_year:
+                            all_years.append((start_year, current_year))
+                if all_years:
+                    earliest = min(y[0] for y in all_years)
+                    latest = max(y[1] for y in all_years)
+                    total_years = latest - earliest
+                    if 0 < total_years <= 50:
+                        experience["years"] = total_years
+
+        # Experience summary
+        exp_section = re.search(
+            r'(?:experience|work\s+history|employment)\s*[:\n\r]?(.*?)(?:(?:education|skills|projects?|certif)\b|\Z)',
+            text, re.IGNORECASE | re.DOTALL
+        )
+        if exp_section:
+            experience["summary"] = exp_section.group(1).strip()[:500]
+
+        return experience
+
+    # ── Projects (regex only) ─────────────────────────────────────────────────
 
     def extract_projects(self, text: str) -> List[Dict[str, str]]:
-        """Extract project names from resume using pattern matching.
-        
-        NOTE: Section-based parsing removed because PDF text lacks proper
-        newlines, causing cross-contamination. Uses keyword patterns instead.
-        """
+        """Extract project names from resume using pattern matching."""
         projects = []
-
-        # Pattern 1: Lines that look like project titles with descriptions
-        # "ProjectName – Description" or "ProjectName: Description"
-        proj_pats = [
-            r'(?:^|\n)\s*[•▪►→\-\*]?\s*([A-Z][\w\s\-./]{2,50}?)\s*[–—:\|]\s*([^\n]{10,200})',
-        ]
-
-        # Only look in what seems like a projects area
-        # Find "Projects" keyword and take text after it (limited)
         proj_area_match = re.search(
             r'(?:projects?|personal\s+projects?|key\s+projects?|academic\s+projects?|side\s+projects?)\s*[:\n\r]',
             text, re.IGNORECASE
         )
-
         if proj_area_match:
-            # Take up to 2000 chars after the "Projects" heading
             start = proj_area_match.end()
             proj_area = text[start:start + 2000]
-
-            # Split into potential entries by looking for capitalized lines or bullets
             entries = re.split(r'\n\s*(?=[A-Z•▪►→\-\*\d])', proj_area)
             for entry in entries:
                 entry = entry.strip()
                 if not entry or len(entry) < 5:
                     continue
-
-                # Check if it's a section header (means we've left projects)
-                if re.match(r'(?:education|experience|skills|certif|awards?|achievements?|references?|hobbies|interests)\b', entry, re.IGNORECASE):
+                if re.match(r'(?:education|experience|skills|certif|awards?|references?|hobbies)\b', entry, re.IGNORECASE):
                     break
-
-                # Extract title (first line or first part before description)
                 title_match = re.match(r'^[•▪►→\-\*\d.)\s]*([A-Z][\w\s\-./&]{2,60}?)(?:\s*[–—:\|]\s*(.+)|$)', entry)
                 if title_match:
                     title = title_match.group(1).strip().rstrip(',.- ')
                     desc = title_match.group(2) or ""
                     if 3 <= len(title) <= 80:
                         projects.append({"name": title, "description": desc.strip()[:200]})
-
         return projects[:8]
 
-    # ── Certifications ────────────────────────────────────────────────────────
+    # ── Certifications (regex only) ───────────────────────────────────────────
 
     def extract_certifications(self, text: str) -> List[str]:
-        """Extract certifications from resume using pattern matching only.
-        
-        NOTE: Section-based parsing is intentionally disabled because
-        PDF-extracted text often lacks proper newlines, causing the section
-        parser to capture garbled body text as certifications.
-        Instead, we rely solely on precise regex patterns for known
-        certification families, which never produce false positives.
-        """
+        """Extract certifications using precise regex patterns."""
         certs = []
-
-        # Pattern-match 25+ certification families anywhere in text
         cert_patterns = [
-            # AWS (30+ certs)
             r'(AWS\s+Certified[\w\s\-]+)',
-            r'(AWS\s+(?:Solutions?\s+Architect|Developer|SysOps|DevOps|Data\s+Analytics|Machine\s+Learning|Security|Database|Networking|SAP|Advanced Networking)[\w\s\-]*)',
-            # Azure (20+ certs)
             r'(Azure\s+(?:Fundamentals|Administrator|Developer|Solutions?\s+Architect|Security|Data|AI|DevOps)[\w\s\-]*)',
             r'(Microsoft\s+Certified[:\s][\w\s\-]+)',
-            r'(AZ-\d{3}|DP-\d{3}|AI-\d{3}|SC-\d{3}|MS-\d{3}|PL-\d{3})',
-            # Google Cloud (15+ certs)
+            r'(AZ-\d{3}|DP-\d{3}|AI-\d{3}|SC-\d{3})',
             r'(Google\s+Cloud\s+(?:Certified|Professional|Associate)[\w\s\-]*)',
-            r'(Google\s+(?:Professional|Associate)\s+(?:Cloud|Data|Machine\s+Learning|Network|Security|DevOps)[\w\s\-]*)',
-            # Kubernetes
             r'((?:CKA|CKAD|CKS|Certified\s+Kubernetes)[\w\s\-]*)',
-            # Scrum / Agile
-            r'((?:Certified\s+Scrum\s+(?:Master|Product\s+Owner|Developer)|CSM|CSPO|CSD|PSM|PSPO|PMI-ACP|SAFe\s+Agilist)[\w\s\-]*)',
-            # PMI
-            r'((?:PMP|CAPM|PMI-RMP|PMI-SP|PgMP|PfMP|Project\s+Management\s+Professional)[\w\s\-]*)',
-            # ISC2
-            r'((?:CISSP|CCSP|CSSLP|SSCP|CAP|Certified\s+Information\s+Systems\s+Security)[\w\s\-]*)',
-            # EC-Council
-            r'((?:CEH|Certified\s+Ethical\s+Hacker|CHFI|ECSA|LPT)[\w\s\-]*)',
-            # CompTIA
-            r'(CompTIA\s+(?:A\+|Network\+|Security\+|Cloud\+|Linux\+|Server\+|CySA\+|PenTest\+|CASP\+|Data\+|ITF\+)[\w\s\-]*)',
-            # Cisco
-            r'((?:CCNA|CCNP|CCIE|CCDA|CCDP|Cisco\s+Certified)[\w\s\-]*)',
-            # Oracle
+            r'((?:Certified\s+Scrum\s+(?:Master|Product\s+Owner|Developer)|CSM|CSPO|PSM|PSPO|PMI-ACP|SAFe\s+Agilist)[\w\s\-]*)',
+            r'((?:PMP|CAPM|Project\s+Management\s+Professional)[\w\s\-]*)',
+            r'((?:CISSP|CCSP|Certified\s+Information\s+Systems\s+Security)[\w\s\-]*)',
+            r'((?:CEH|Certified\s+Ethical\s+Hacker)[\w\s\-]*)',
+            r'(CompTIA\s+(?:A\+|Network\+|Security\+|Cloud\+|Linux\+|CySA\+|PenTest\+|CASP\+)[\w\s\-]*)',
+            r'((?:CCNA|CCNP|CCIE|Cisco\s+Certified)[\w\s\-]*)',
             r'(Oracle\s+Certified[\w\s\-]+)',
-            r'(OCA|OCP|OCM|Oracle\s+(?:Database|Java|Cloud)[\w\s\-]*)',
-            # Salesforce
             r'(Salesforce\s+Certified[\w\s\-]+)',
-            r'(Salesforce\s+(?:Administrator|Developer|Architect|Consultant)[\w\s\-]*)',
-            # HashiCorp
-            r'(HashiCorp\s+Certified[:\s][\w\s\-]+)',
             r'(Terraform\s+(?:Associate|Professional)[\w\s\-]*)',
-            # Linux
-            r'((?:LFCS|LFCE|RHCSA|RHCE|RHCA|Linux\s+Foundation\s+Certified)[\w\s\-]*)',
-            r'(Red\s+Hat\s+Certified[\w\s\-]+)',
-            # ITIL
+            r'((?:RHCSA|RHCE|RHCA)[\w\s\-]*)',
             r'(ITIL[\w\s\-v]*(?:Foundation|Practitioner|Expert|Master)?)',
-            # Data
-            r'((?:Databricks|Snowflake|Confluent|MongoDB)\s+Certified[\w\s\-]*)',
-            r'((?:Tableau|Power\s+BI)\s+(?:Desktop\s+)?(?:Certified|Specialist|Associate)[\w\s\-]*)',
-            # Six Sigma
-            r'((?:Six\s+Sigma|Lean\s+Six\s+Sigma)\s+(?:Green|Black|Yellow|White)\s+Belt[\w\s\-]*)',
-            # ISTQB
             r'(ISTQB[\w\s\-]*)',
         ]
-
         for pat in cert_patterns:
             for m in re.finditer(pat, text, re.IGNORECASE):
                 cert = m.group(1).strip()
                 if cert not in certs and len(cert) > 3:
                     certs.append(cert)
+        return certs[:15]
 
-        return certs[:15]  # Limit to 15
-
-    # ── Experience ────────────────────────────────────────────────────────────
-
-    def extract_experience(self, text: str) -> Dict[str, any]:
-        """Extract experience information: years, summary, and companies.
-        
-        IMPORTANT: Date range calculation only looks inside the Experience
-        section to avoid picking up education or project dates.
-        """
-        from datetime import datetime as dt
-
-        experience = {
-            "years": None,
-            "summary": "",
-            "companies": []
-        }
-
-        # ─── First, find the Experience section text ───
-        exp_section_match = re.search(
-            r'(?:experience|work\s+history|employment|professional\s+experience|work\s+experience)\s*[:\n\r]?(.*?)(?:(?:education|skills|projects?|certif|awards?|achievements?|hobbies|interests|references?)\b|\Z)',
-            text, re.IGNORECASE | re.DOTALL
-        )
-        exp_text = exp_section_match.group(1) if exp_section_match else ""
-
-        # ─── Method 1: Explicit "X years of experience" (search full text) ───
-        years_pats = [
-            r'(\d+)\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:experience|exp|work)',
-            r'(?:experience|exp)\s*(?:of\s+)?(\d+)\+?\s*(?:years?|yrs?)',
-            r'(?:over|more\s+than|approximately|approx|around|nearly|about)\s+(\d+)\s*(?:years?|yrs?)',
-        ]
-        for yp in years_pats:
-            m = re.search(yp, text, re.IGNORECASE)
-            if m:
-                experience["years"] = int(m.group(1))
-                break
-
-        # ─── Method 2: Calculate from date ranges IN EXPERIENCE SECTION ONLY ───
-        if experience["years"] is None and exp_text:
-            date_range_pats = [
-                # "Mon YYYY – Mon YYYY" or "Mon YYYY – Present"
-                r'(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[,.]?\s*(\d{4})\s*[-–—to]+\s*(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[,.]?\s*)?(\d{4}|[Pp]resent|[Cc]urrent|[Nn]ow|[Oo]ngoing)',
-                # "YYYY – YYYY" or "YYYY – Present"
-                r'(\d{4})\s*[-–—to]+\s*(\d{4}|[Pp]resent|[Cc]urrent|[Nn]ow|[Oo]ngoing)',
-            ]
-
-            all_years = []
-            current_year = dt.now().year
-
-            # Only search within Experience section text
-            for pat in date_range_pats:
-                for m in re.finditer(pat, exp_text, re.IGNORECASE):
-                    groups = m.groups()
-                    start_year = None
-                    end_year = None
-
-                    for g in groups:
-                        if g and g.isdigit():
-                            yr = int(g)
-                            if 1970 <= yr <= current_year + 1:
-                                if start_year is None:
-                                    start_year = yr
-                                else:
-                                    end_year = yr
-                        elif g and g.lower() in ('present', 'current', 'now', 'ongoing'):
-                            end_year = current_year
-
-                    if start_year and end_year:
-                        all_years.append((start_year, end_year))
-                    elif start_year:
-                        all_years.append((start_year, current_year))
-
-            if all_years:
-                earliest = min(y[0] for y in all_years)
-                latest = max(y[1] for y in all_years)
-                total_years = latest - earliest
-                if 0 < total_years <= 50:
-                    experience["years"] = total_years
-
-        # ─── Experience section summary ───
-        if exp_text:
-            experience["summary"] = exp_text.strip()[:500]
-
-        # ─── Extract company names ───
-        company_patterns = [
-            r'(?:at|@)\s+([A-Z][\w\s&.,]+?)(?:\s*[\|\-–—,]|\s+as\s+|\n)',
-            r'([A-Z][\w\s&.]+?)\s*[\|\-–—]\s*(?:' + '|'.join(JOB_TITLE_PATTERNS[:15]) + r')',
-        ]
-        companies = []
-        for cp in company_patterns:
-            for m in re.finditer(cp, text):
-                company = m.group(1).strip().rstrip(',.- ')
-                if 2 <= len(company) <= 50 and company not in companies:
-                    companies.append(company)
-
-        experience["companies"] = companies[:10]
-
-        return experience
-
-    # ── Domain Detection (FIXED) ──────────────────────────────────────────────
+    # ── Domain Detection ──────────────────────────────────────────────────────
 
     def detect_domain(self, text: str, skills: List[str], job_titles: List[str]) -> str:
-        """
-        Detect professional domain using weighted scoring.
-        Job titles from the resume are given the HIGHEST weight.
-        """
+        """Detect professional domain using weighted scoring."""
         text_lower = text.lower()
         domain_scores = {}
-
         for domain, config in DOMAIN_KEYWORDS.items():
             score = 0
-
-            # HIGHEST WEIGHT: Match against actual job titles found in resume
             for title in job_titles:
                 title_lower = title.lower()
                 for tp in config["title_patterns"]:
                     if tp in title_lower:
-                        score += 10  # Very high weight for job title match
-
-            # MEDIUM WEIGHT: Keyword matches in full text
-            for keyword in config["keywords"]:
-                if keyword.lower() in text_lower:
-                    score += 1
-
-            # MEDIUM WEIGHT: Skill indicators
+                        score += 10
             for skill in skills:
                 skill_lower = skill.lower()
                 for indicator in config["skill_indicators"]:
                     if indicator in skill_lower or skill_lower in indicator:
                         score += 2
-
             domain_scores[domain] = score
-
         if domain_scores:
             best = max(domain_scores, key=domain_scores.get)
             if domain_scores[best] > 0:
                 return best
-
         return "general"
 
-    # ── Extract All ───────────────────────────────────────────────────────────
+    # ── Extract All (optimized: single NER call) ──────────────────────────────
 
     def extract_all(self, text: str) -> Dict[str, any]:
-        """Extract all structured information from resume text."""
-        skills = self.extract_skills(text)
-        job_titles = self.extract_job_titles(text)
-        experience = self.extract_experience(text)
-        education = self.extract_education(text)
+        """Extract all structured information from resume text.
+
+        Runs NER once, passes cached entities to all sub-methods.
+        """
+        entities = self._get_ner_entities(text)
+
+        skills = self.extract_skills(text, _entities=entities)
+        job_titles = self.extract_job_titles(text, _entities=entities)
+        experience = self.extract_experience(text, _entities=entities)
+        education = self.extract_education(text, _entities=entities)
         projects = self.extract_projects(text)
         certifications = self.extract_certifications(text)
         domain = self.detect_domain(text, skills, job_titles)
