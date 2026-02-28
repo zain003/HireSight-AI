@@ -39,6 +39,11 @@ class Profile(Base):
     skills = Column(Text)  # JSON string of skills
     experience_years = Column(Integer)
     domain = Column(String(100))
+    job_titles = Column(Text)  # JSON string of job titles
+    education = Column(Text)  # JSON string of education entries
+    projects = Column(Text)  # JSON string of projects
+    certifications = Column(Text)  # JSON string of certifications
+    companies = Column(Text)  # JSON string of companies
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

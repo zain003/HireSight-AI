@@ -13,7 +13,9 @@ from app.resume.schemas import (
     ResumeUploadResponse,
     ResumeParseResponse,
     SkillExtractionRequest,
-    ExperienceInfo
+    ExperienceInfo,
+    EducationInfo,
+    ProjectInfo,
 )
 from app.resume.service import ResumeService
 from app.auth.dependencies import get_current_active_user
@@ -97,20 +99,15 @@ async def parse_resume(
     """
     Upload and parse resume file.
     
-    This endpoint:
+    Pipeline:
     1. Uploads the resume file
-    2. Extracts text from the file
-    3. Uses AI to extract skills, experience, and domain
-    4. Updates user profile with extracted information
-    
-    Returns structured data including:
-    - List of extracted skills
-    - Experience information
-    - Detected professional domain
+    2. Extracts text (pdfplumber / python-docx / Tesseract OCR)
+    3. Uses SBERT + regex to extract skills, job titles, education, projects, certs
+    4. Detects domain using weighted scoring on job titles + skills
+    5. Updates user profile with all extracted information
     
     Requires authentication.
     """
-    # First, upload the file
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in settings.ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -118,27 +115,26 @@ async def parse_resume(
             detail=f"File type not allowed. Allowed types: {', '.join(settings.ALLOWED_EXTENSIONS)}"
         )
     
-    # Create user-specific directory
     user_dir = os.path.join(settings.UPLOAD_DIR, f"user_{current_user.id}")
     os.makedirs(user_dir, exist_ok=True)
-    
-    # Generate unique filename
     file_path = os.path.join(user_dir, f"resume_{current_user.id}{file_ext}")
     
-    # Save file
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        # Parse resume and save to profile
         resume_service = ResumeService(db)
         extracted_data = resume_service.save_resume_to_profile(current_user.id, file_path)
         
         return ResumeParseResponse(
             skills=extracted_data["skills"],
+            job_titles=extracted_data["job_titles"],
             experience=ExperienceInfo(**extracted_data["experience"]),
+            education=[EducationInfo(**e) for e in extracted_data["education"]],
+            projects=[ProjectInfo(**p) for p in extracted_data["projects"]],
+            certifications=extracted_data["certifications"],
             domain=extracted_data["domain"],
-            raw_text_length=extracted_data["raw_text_length"]
+            raw_text_length=extracted_data["raw_text_length"],
         )
     
     except FileProcessingError as e:

@@ -120,38 +120,55 @@ class AuthService:
         """Get user profile"""
         return self.db.query(Profile).filter(Profile.user_id == user_id).first()
     
-    def update_profile_resume(self, user_id: int, resume_path: str, skills: str = None, domain: str = None) -> Profile:
+    def update_profile_resume(
+        self, user_id: int, resume_path: str,
+        skills: str = None, domain: str = None,
+        job_titles: str = None, education: str = None,
+        projects: str = None, certifications: str = None,
+        companies: str = None, experience_years: int = None,
+        job_role: str = None,
+    ) -> Profile:
         """
         Update profile with resume information.
         Creates profile if it doesn't exist.
-        
-        Args:
-            user_id: User ID
-            resume_path: Path to uploaded resume
-            skills: Extracted skills (JSON string)
-            domain: Detected domain
-            
-        Returns:
-            Updated profile object
         """
         profile = self.db.query(Profile).filter(Profile.user_id == user_id).first()
         
         if not profile:
-            # Auto-create profile if it doesn't exist
             profile = Profile(
                 user_id=user_id,
                 resume_path=resume_path,
                 skills=skills,
-                domain=domain
+                domain=domain,
+                job_titles=job_titles,
+                education=education,
+                projects=projects,
+                certifications=certifications,
+                companies=companies,
+                experience_years=experience_years,
+                job_role=job_role,
             )
             self.db.add(profile)
         else:
-            # Update existing profile
             profile.resume_path = resume_path
             if skills:
                 profile.skills = skills
             if domain:
                 profile.domain = domain
+            if job_titles:
+                profile.job_titles = job_titles
+            if education:
+                profile.education = education
+            if projects:
+                profile.projects = projects
+            if certifications:
+                profile.certifications = certifications
+            if companies:
+                profile.companies = companies
+            if experience_years is not None:
+                profile.experience_years = experience_years
+            if job_role:
+                profile.job_role = job_role
             profile.updated_at = datetime.utcnow()
         
         self.db.commit()

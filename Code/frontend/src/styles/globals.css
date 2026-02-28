@@ -1,28 +1,99 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ── CSS Custom Properties ── */
+:root {
+  --deep-night: #11001C;
+  --royal-plum: #290025;
+  --dark-berry: #35012C;
+  --neon-violet: #4F0147;
+  --neon-glow: #9B30FF;
+  --neon-glow-light: #BF40FF;
+  --surface: #FFFFFF;
+  --surface-subtle: #F9F5FC;
+  --text-muted: #6B5B7B;
+}
+
+/* ── Base Resets ── */
 * {
   box-sizing: border-box;
   padding: 0;
   margin: 0;
 }
 
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Oxygen', 'Ubuntu', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: var(--surface);
+  color: var(--deep-night);
+  max-width: 100vw;
+  overflow-x: hidden;
 }
 
 a {
   color: inherit;
   text-decoration: none;
+}
+
+/* ── Smooth Transitions (global default) ── */
+button, a, input, textarea, select {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Custom Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--surface-subtle);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--dark-berry);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neon-violet);
+}
+
+/* ── Utility: Neon text glow ── */
+@layer utilities {
+  .text-neon-glow {
+    text-shadow: 0 0 10px rgba(155, 48, 255, 0.5), 0 0 30px rgba(155, 48, 255, 0.2);
+  }
+
+  .border-neon {
+    border-color: var(--neon-violet);
+    box-shadow: 0 0 8px rgba(79, 1, 71, 0.15);
+  }
+
+  .glass-card {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(79, 1, 71, 0.08);
+  }
+
+  .neon-btn {
+    background: linear-gradient(135deg, var(--neon-violet), var(--neon-glow));
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(79, 1, 71, 0.35), 0 0 40px rgba(155, 48, 255, 0.10);
+  }
+
+  .neon-btn:hover {
+    box-shadow: 0 6px 28px rgba(79, 1, 71, 0.45), 0 0 60px rgba(155, 48, 255, 0.18);
+    transform: translateY(-1px);
+  }
+
+  .neon-btn:active {
+    transform: translateY(0);
+  }
 }

@@ -54,6 +54,11 @@ class ProfileResponse(BaseModel):
     resume_path: Optional[str] = None
     skills: Optional[str] = None
     domain: Optional[str] = None
+    job_titles: Optional[str] = None
+    education: Optional[str] = None
+    projects: Optional[str] = None
+    certifications: Optional[str] = None
+    companies: Optional[str] = None
     created_at: datetime
     
     class Config:

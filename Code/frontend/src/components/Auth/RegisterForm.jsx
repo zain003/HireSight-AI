@@ -28,7 +28,6 @@ export default function RegisterForm() {
     e.preventDefault();
     setError('');
 
-    // Validate passwords match
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -47,73 +46,82 @@ export default function RegisterForm() {
     }
   };
 
+  const inputClass =
+    'w-full px-4 py-3 bg-surface-subtle border border-deep-night/[0.08] rounded-xl text-deep-night placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-neon-violet/30 focus:border-neon-violet/40';
+
   return (
-    <div className="max-w-md mx-auto mt-8 p-6 bg-white rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-6 text-center">Register</h2>
-      
+    <div className="p-8 bg-white rounded-2xl shadow-card border border-deep-night/[0.06] transition-shadow duration-300 hover:shadow-card-hover">
+      <h2 className="text-2xl font-bold mb-1 text-center text-deep-night">Create Account</h2>
+      <p className="text-text-muted text-sm text-center mb-8">Join HireSIGHT AI today</p>
+
       {error && (
-        <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">
+        <div className="mb-5 p-3.5 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
           {error}
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
-        <div className="mb-4">
-          <label className="block text-gray-700 mb-2">Email</label>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-deep-night text-sm font-medium mb-1.5">Email</label>
           <input
             type="email"
             name="email"
             value={formData.email}
             onChange={handleChange}
-            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="you@example.com"
+            className={inputClass}
             required
           />
         </div>
 
-        <div className="mb-4">
-          <label className="block text-gray-700 mb-2">Username</label>
+        <div>
+          <label className="block text-deep-night text-sm font-medium mb-1.5">Username</label>
           <input
             type="text"
             name="username"
             value={formData.username}
             onChange={handleChange}
-            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Choose a username"
+            className={inputClass}
             required
           />
         </div>
 
-        <div className="mb-4">
-          <label className="block text-gray-700 mb-2">Full Name</label>
+        <div>
+          <label className="block text-deep-night text-sm font-medium mb-1.5">Full Name</label>
           <input
             type="text"
             name="full_name"
             value={formData.full_name}
             onChange={handleChange}
-            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Your full name"
+            className={inputClass}
           />
         </div>
 
-        <div className="mb-4">
-          <label className="block text-gray-700 mb-2">Password</label>
+        <div>
+          <label className="block text-deep-night text-sm font-medium mb-1.5">Password</label>
           <input
             type="password"
             name="password"
             value={formData.password}
             onChange={handleChange}
-            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Min. 8 characters"
+            className={inputClass}
             required
             minLength={8}
           />
         </div>
 
-        <div className="mb-6">
-          <label className="block text-gray-700 mb-2">Confirm Password</label>
+        <div>
+          <label className="block text-deep-night text-sm font-medium mb-1.5">Confirm Password</label>
           <input
             type="password"
             name="confirmPassword"
             value={formData.confirmPassword}
             onChange={handleChange}
-            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Repeat your password"
+            className={inputClass}
             required
           />
         </div>
@@ -121,16 +129,26 @@ export default function RegisterForm() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+          className="w-full neon-btn py-3.5 rounded-xl font-semibold text-base tracking-wide disabled:opacity-50 disabled:cursor-not-allowed mt-2"
         >
-          {loading ? 'Registering...' : 'Register'}
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Creating account...
+            </span>
+          ) : (
+            'Create Account'
+          )}
         </button>
       </form>
 
-      <p className="mt-4 text-center text-gray-600">
+      <p className="mt-6 text-center text-text-muted text-sm">
         Already have an account?{' '}
-        <a href="/login" className="text-blue-600 hover:underline">
-          Login
+        <a href="/login" className="text-neon-violet font-medium hover:text-neon-glow hover:underline">
+          Sign in
         </a>
       </p>
     </div>
