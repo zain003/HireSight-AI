@@ -1156,6 +1156,126 @@ class ExtractionService:
 
     # ── Job Titles ────────────────────────────────────────────────────────────
 
+    def _add_spaces_to_title(self, title: str) -> str:
+        """Add spaces between concatenated words in job titles.
+        
+        Examples:
+            'softwareengineer' -> 'Software Engineer'
+            'juniorsoftwareengineer' -> 'Junior Software Engineer'
+            'mlops' -> 'MLOps'
+        """
+        # If title already has proper spacing (multiple words), return as-is with title case
+        if ' ' in title and len(title.split()) > 1:
+            # Check if it's not the weird spaced-out version
+            words = title.split()
+            if all(len(w) > 1 for w in words):
+                return title.title()
+        
+        # Common job title words to split on
+        job_words = [
+            'software', 'engineer', 'developer', 'architect', 'manager', 'lead', 'senior', 
+            'junior', 'principal', 'staff', 'associate', 'chief', 'director', 'analyst',
+            'scientist', 'consultant', 'specialist', 'administrator', 'admin', 'designer',
+            'researcher', 'tester', 'programmer', 'coder', 'frontend', 'backend', 'fullstack',
+            'full', 'stack', 'mobile', 'android', 'ios', 'cloud', 'platform', 'infrastructure',
+            'devops', 'devsecops', 'site', 'reliability', 'data', 'machine', 'learning',
+            'deep', 'nlp', 'security', 'cyber', 'quality', 'assurance', 'database', 'network',
+            'embedded', 'firmware', 'blockchain', 'game', 'graphics', 'product', 'solutions',
+            'applications', 'systems', 'release', 'build', 'integration', 'web', 'api',
+            'mlops', 'aiops', 'dataops', 'sre', 'qa', 'ui', 'ux', 'technical', 'head',
+            'vice', 'president', 'executive', 'officer', 'team', 'tech', 'development',
+            'business', 'intelligence', 'analytics', 'reporting', 'insights', 'quantitative',
+            'automation', 'test', 'testing', 'manual', 'performance', 'load', 'stress',
+            'penetration', 'ethical', 'hacker', 'incident', 'response', 'threat', 'vulnerability',
+            'compliance', 'risk', 'forensic', 'visual', 'interaction', 'user', 'experience',
+            'interface', 'creative', 'art', 'freelance', 'contract', 'independent', 'professor',
+            'lecturer', 'instructor', 'teaching', 'assistant', 'research', 'postdoc', 'fellow',
+            'applied', 'functional', 'process', 'field', 'customer', 'success', 'implementation',
+            'support', 'sales', 'partner', 'account', 'delivery', 'program', 'project', 'scrum',
+            'master', 'agile', 'coach', 'owner', 'entry', 'level', 'mid', 'intern', 'internship',
+            'trainee', 'apprentice', 'graduate', 'working', 'student', 'prompt', 'generative',
+            'smart', 'contract', 'solidity', 'crypto', 'gameplay', 'rendering', 'engine',
+            'physics', 'hardware', 'asic', 'vlsi', 'signal', 'control', 'telecom', 'wireless',
+            'voip', 'help', 'desk', 'service', 'pmo', 'market', 'financial', 'rpa', 'blue',
+            'prism', 'power', 'automate', 'apps', 'mining', 'warehouse', 'lake', 'pipeline',
+            'governance', 'catalog', 'lineage', 'mesh', 'ops', 'bi', 'etl', 'elt', 'change',
+            'capture', 'cdc', 'streaming', 'messaging', 'kafka', 'spark', 'hadoop', 'airflow',
+            'dbt', 'snowflake', 'databricks', 'bigquery', 'redshift', 'tableau', 'looker',
+            'metabase', 'superset', 'qlik', 'sisense', 'domo', 'mixpanel', 'amplitude', 'segment',
+        ]
+        
+        title_lower = title.lower().strip()
+        
+        # Special case: if the entire title is a known tech abbreviation, handle it
+        if title_lower == 'mlops':
+            return 'MLOps'
+        elif title_lower == 'devops':
+            return 'DevOps'
+        elif title_lower == 'aiops':
+            return 'AIOps'
+        elif title_lower == 'dataops':
+            return 'DataOps'
+        
+        result = []
+        i = 0
+        
+        while i < len(title_lower):
+            matched = False
+            # Try to match the longest word first
+            for word in sorted(job_words, key=len, reverse=True):
+                if title_lower[i:].startswith(word):
+                    result.append(word.capitalize())
+                    i += len(word)
+                    matched = True
+                    break
+            
+            if not matched:
+                # If no word matched, just add the character
+                result.append(title_lower[i])
+                i += 1
+        
+        # Join and clean up
+        formatted = ' '.join(result)
+        
+        # Handle common tech abbreviations that should stay together
+        formatted = formatted.replace('M Lops', 'MLOps')
+        formatted = formatted.replace('Ml Ops', 'MLOps')
+        formatted = formatted.replace('Mlops', 'MLOps')
+        formatted = formatted.replace('Dev Ops', 'DevOps')
+        formatted = formatted.replace('Devops', 'DevOps')
+        formatted = formatted.replace('Dev Sec Ops', 'DevSecOps')
+        formatted = formatted.replace('Devsecops', 'DevSecOps')
+        formatted = formatted.replace('Ai Ops', 'AIOps')
+        formatted = formatted.replace('Aiops', 'AIOps')
+        formatted = formatted.replace('Data Ops', 'DataOps')
+        formatted = formatted.replace('Dataops', 'DataOps')
+        formatted = formatted.replace('Ai ', 'AI ')
+        formatted = formatted.replace('Ml ', 'ML ')
+        formatted = formatted.replace('Nlp ', 'NLP ')
+        formatted = formatted.replace('Ui ', 'UI ')
+        formatted = formatted.replace('Ux ', 'UX ')
+        formatted = formatted.replace('Api ', 'API ')
+        formatted = formatted.replace('Aws ', 'AWS ')
+        formatted = formatted.replace('Gcp ', 'GCP ')
+        formatted = formatted.replace('Sre ', 'SRE ')
+        formatted = formatted.replace('Qa ', 'QA ')
+        formatted = formatted.replace('Sdet ', 'SDET ')
+        formatted = formatted.replace('Bi ', 'BI ')
+        formatted = formatted.replace('Etl ', 'ETL ')
+        formatted = formatted.replace('Elt ', 'ELT ')
+        formatted = formatted.replace('Cdc ', 'CDC ')
+        
+        # Normalize multiple spaces to single space
+        formatted = re.sub(r'\s+', ' ', formatted)
+        
+        # Filter out weird spaced-out results (like "p r o f e s s i o n a l")
+        words = formatted.split()
+        if len(words) > 3 and all(len(w) == 1 for w in words[:3]):
+            # This is likely a weird spaced-out result, skip it
+            return ""
+        
+        return formatted.strip()
+
     def extract_job_titles(self, text: str, _entities: Optional[Dict] = None) -> List[str]:
         """Extract job titles using regex + NER boost."""
         titles = []
@@ -1165,8 +1285,11 @@ class ExtractionService:
         for pattern in JOB_TITLE_PATTERNS:
             matches = re.finditer(pattern, text_lower)
             for m in matches:
-                title = m.group(0).strip().title()
-                if title not in titles:
+                title = m.group(0).strip()
+                # Format title with proper spacing
+                title = self._add_spaces_to_title(title)
+                # Filter out invalid titles (too short, contains newlines, etc.)
+                if title and title not in titles and len(title) > 3 and '\n' not in title:
                     titles.append(title)
 
         # ── Method 2: Experience section format matching ──
@@ -1177,16 +1300,18 @@ class ExtractionService:
                 cl = candidate.lower()
                 for tp in JOB_TITLE_PATTERNS:
                     if re.search(tp, cl):
-                        if candidate.title() not in titles:
-                            titles.append(candidate.title())
+                        # Format title with proper spacing
+                        formatted_title = self._add_spaces_to_title(candidate)
+                        if formatted_title and formatted_title not in titles and len(formatted_title) > 3 and '\n' not in formatted_title:
+                            titles.append(formatted_title)
                         break
 
         # ── Method 3: BERT-NER designation boost ──
         entities = _entities or self._get_ner_entities(text)
         ner_titles = entities.get("designation", [])
         for nt in ner_titles:
-            nt_clean = nt.strip().title()
-            if nt_clean and len(nt_clean) >= 5 and nt_clean not in titles:
+            nt_clean = self._add_spaces_to_title(nt.strip())
+            if nt_clean and len(nt_clean) >= 5 and nt_clean not in titles and '\n' not in nt_clean:
                 titles.append(nt_clean)
 
         return titles[:10]
