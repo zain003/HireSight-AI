@@ -3,12 +3,10 @@ API routes for resume module.
 Follows Clean Architecture - API Layer.
 """
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from sqlalchemy.orm import Session
 import os
 import shutil
 from pathlib import Path
 
-from app.db.session import get_db
 from app.resume.schemas import (
     ResumeUploadResponse,
     ResumeParseResponse,
@@ -34,8 +32,7 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 @router.post("/upload", response_model=ResumeUploadResponse)
 async def upload_resume(
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     Upload resume file.
@@ -53,7 +50,7 @@ async def upload_resume(
             detail=f"File type not allowed. Allowed types: {', '.join(settings.ALLOWED_EXTENSIONS)}"
         )
     
-    # Create user-specific directory
+    # Create user-specific directory (using string ID for MongoDB)
     user_dir = os.path.join(settings.UPLOAD_DIR, f"user_{current_user.id}")
     os.makedirs(user_dir, exist_ok=True)
     
@@ -93,8 +90,7 @@ async def upload_resume(
 @router.post("/parse", response_model=ResumeParseResponse)
 async def parse_resume(
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     Upload and parse resume file.
@@ -105,7 +101,8 @@ async def parse_resume(
     3. Uses BERT-NER (yashpwr/resume-ner-bert-v2) to extract entities:
        Skills, Job Titles, Companies, Education, Experience
     4. Detects domain using weighted scoring on job titles + skills
-    5. Updates user profile with all extracted information
+    5. Classifies skills into Experienced vs Known categories
+    6. Updates user profile with all extracted information
     
     Requires authentication.
     """
@@ -124,8 +121,8 @@ async def parse_resume(
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        resume_service = ResumeService(db)
-        extracted_data = resume_service.save_resume_to_profile(current_user.id, file_path)
+        resume_service = ResumeService()
+        extracted_data = await resume_service.save_resume_to_profile(str(current_user.id), file_path)
         
         return ResumeParseResponse(
             skills=extracted_data["skills"],
@@ -157,8 +154,7 @@ async def parse_resume(
 @router.post("/extract-skills")
 async def extract_skills(
     request: SkillExtractionRequest,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     Extract skills from raw text.
@@ -170,7 +166,7 @@ async def extract_skills(
     
     Requires authentication.
     """
-    resume_service = ResumeService(db)
+    resume_service = ResumeService()
     skills = resume_service.extract_skills_from_text(request.text, request.use_embeddings)
     
     return {

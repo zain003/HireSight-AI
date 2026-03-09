@@ -1,68 +1,112 @@
 """
-Database models for authentication module.
+MongoDB document models for authentication module.
 Follows Clean Architecture - Data Layer.
+Uses Beanie ODM (Object Document Mapper) for MongoDB.
 """
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
-from sqlalchemy.orm import relationship
+from beanie import Document, Indexed, Link
+from pydantic import Field, EmailStr
+from typing import Optional, List
 from datetime import datetime
 
-from app.db.session import Base
 
-
-class User(Base):
-    """User model for authentication"""
-    __tablename__ = "users"
+class User(Document):
+    """User document for authentication"""
     
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    username = Column(String(100), unique=True, index=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
-    full_name = Column(String(255))
-    is_active = Column(Integer, default=1)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    email: Indexed(EmailStr, unique=True)
+    username: Indexed(str, unique=True)
+    hashed_password: str
+    full_name: Optional[str] = None
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
     
-    # Relationships
-    profile = relationship("Profile", back_populates="user", uselist=False)
-    sessions = relationship("Session", back_populates="user")
+    class Settings:
+        name = "users"  # Collection name
+        indexes = [
+            "email",
+            "username",
+        ]
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "email": "user@example.com",
+                "username": "johndoe",
+                "full_name": "John Doe",
+                "is_active": True,
+            }
+        }
 
 
-class Profile(Base):
+class Profile(Document):
     """User profile with job role and difficulty preferences"""
-    __tablename__ = "profiles"
     
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
-    job_role = Column(String(100))
-    difficulty_level = Column(String(50))  # easy, medium, hard
-    resume_path = Column(String(500))
-    skills = Column(Text)  # JSON string of skills
-    experience_years = Column(Integer)
-    domain = Column(String(100))
-    job_titles = Column(Text)  # JSON string of job titles
-    education = Column(Text)  # JSON string of education entries
-    projects = Column(Text)  # JSON string of projects
-    certifications = Column(Text)  # JSON string of certifications
-    companies = Column(Text)  # JSON string of companies
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    user_id: Indexed(str)  # Reference to User._id
+    job_role: Optional[str] = None
+    difficulty_level: Optional[str] = None  # easy, medium, hard
+    resume_path: Optional[str] = None
     
-    # Relationships
-    user = relationship("User", back_populates="profile")
+    # Skills stored as native lists (no JSON serialization needed!)
+    skills: Optional[List[str]] = Field(default_factory=list)
+    experienced_skills: Optional[List[str]] = Field(default_factory=list)
+    known_skills: Optional[List[str]] = Field(default_factory=list)
+    
+    # Other fields as native types
+    experience_years: Optional[int] = None
+    domain: Optional[str] = None
+    job_titles: Optional[List[str]] = Field(default_factory=list)
+    education: Optional[List[dict]] = Field(default_factory=list)
+    projects: Optional[List[dict]] = Field(default_factory=list)
+    certifications: Optional[List[str]] = Field(default_factory=list)
+    companies: Optional[List[str]] = Field(default_factory=list)
+    
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Settings:
+        name = "profiles"
+        indexes = [
+            "user_id",
+        ]
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_id": "507f1f77bcf86cd799439011",
+                "job_role": "Software Engineer",
+                "difficulty_level": "medium",
+                "skills": ["Python", "FastAPI", "MongoDB"],
+                "experienced_skills": ["Python", "FastAPI"],
+                "known_skills": ["MongoDB"],
+            }
+        }
 
 
-class Session(Base):
+class Session(Document):
     """Interview session tracking"""
-    __tablename__ = "sessions"
     
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(String(100), unique=True, index=True, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    job_role = Column(String(100))
-    difficulty_level = Column(String(50))
-    status = Column(String(50), default="active")  # active, completed, abandoned
-    created_at = Column(DateTime, default=datetime.utcnow)
-    completed_at = Column(DateTime, nullable=True)
+    session_id: Indexed(str, unique=True)
+    user_id: Indexed(str)  # Reference to User._id
+    job_role: str
+    difficulty_level: str
+    status: str = "active"  # active, completed, abandoned
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None
     
-    # Relationships
-    user = relationship("User", back_populates="sessions")
+    class Settings:
+        name = "sessions"
+        indexes = [
+            "session_id",
+            "user_id",
+        ]
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "session_id": "session_abc123",
+                "user_id": "507f1f77bcf86cd799439011",
+                "job_role": "Software Engineer",
+                "difficulty_level": "medium",
+                "status": "active",
+            }
+        }

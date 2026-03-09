@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "AI Interview Platform"
     DEBUG: bool = False
     
-    # Database
-    DATABASE_URL: str = "postgresql://user:password@localhost:5432/interview_platform"
+    # Database (MongoDB)
+    MONGODB_URL: str = "mongodb://interview_user:interview_pass@localhost:27017/interview_platform?authSource=admin"
     
     # JWT Authentication
     SECRET_KEY: str = "your-secret-key-change-in-production"

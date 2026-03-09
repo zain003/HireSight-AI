@@ -3,7 +3,7 @@ Pydantic schemas for authentication module.
 Follows Clean Architecture - Schema Layer.
 """
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -28,12 +28,9 @@ class UserLogin(BaseModel):
 
 class UserResponse(UserBase):
     """Schema for user response"""
-    id: int
-    is_active: int
+    id: str  # MongoDB ObjectId as string
+    is_active: bool
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 
 # Profile Schemas
@@ -46,23 +43,22 @@ class ProfileCreate(BaseModel):
 
 class ProfileResponse(BaseModel):
     """Schema for profile response"""
-    id: int
-    user_id: int
+    id: str  # MongoDB ObjectId as string
+    user_id: str
     job_role: Optional[str] = None
     difficulty_level: Optional[str] = None
     experience_years: Optional[int] = None
     resume_path: Optional[str] = None
-    skills: Optional[str] = None
+    skills: Optional[List[str]] = None  # Native list (no JSON serialization!)
+    experienced_skills: Optional[List[str]] = None
+    known_skills: Optional[List[str]] = None
     domain: Optional[str] = None
-    job_titles: Optional[str] = None
-    education: Optional[str] = None
-    projects: Optional[str] = None
-    certifications: Optional[str] = None
-    companies: Optional[str] = None
+    job_titles: Optional[List[str]] = None
+    education: Optional[List[dict]] = None
+    projects: Optional[List[dict]] = None
+    certifications: Optional[List[str]] = None
+    companies: Optional[List[str]] = None
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 
 # Session Schemas
@@ -74,16 +70,13 @@ class SessionCreate(BaseModel):
 
 class SessionResponse(BaseModel):
     """Schema for session response"""
-    id: int
+    id: str  # MongoDB ObjectId as string
     session_id: str
-    user_id: int
+    user_id: str
     job_role: str
     difficulty_level: str
     status: str
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 
 # Token Schemas
@@ -95,5 +88,5 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     """Token payload data"""
-    user_id: Optional[int] = None
+    user_id: Optional[str] = None  # Changed from int to str
     username: Optional[str] = None

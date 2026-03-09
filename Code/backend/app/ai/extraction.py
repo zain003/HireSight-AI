@@ -1553,6 +1553,85 @@ class ExtractionService:
                 return best
         return "general"
 
+    # ── Skill Classification ──────────────────────────────────────────────────
+
+    def _extract_experience_and_project_sections(self, text: str) -> str:
+        """Extract text from experience and project sections only."""
+        text_lower = text.lower()
+        combined_text = ""
+        
+        # Experience section patterns
+        experience_patterns = [
+            r'(?:experience|work\s+experience|professional\s+experience|employment\s+history|work\s+history)[:\s]*(.+?)(?=\n\s*(?:education|projects|skills|certifications|awards|publications|references|$))',
+            r'(?:professional\s+background|career\s+history|employment)[:\s]*(.+?)(?=\n\s*(?:education|projects|skills|certifications|$))',
+        ]
+        
+        for pattern in experience_patterns:
+            matches = re.findall(pattern, text_lower, re.IGNORECASE | re.DOTALL)
+            for match in matches:
+                combined_text += " " + match
+        
+        # Project section patterns
+        project_patterns = [
+            r'(?:projects|personal\s+projects|key\s+projects|major\s+projects|project\s+experience|academic\s+projects)[:\s]*(.+?)(?=\n\s*(?:education|experience|skills|certifications|awards|publications|references|$))',
+            r'(?:portfolio|work\s+samples|case\s+studies)[:\s]*(.+?)(?=\n\s*(?:education|experience|skills|certifications|$))',
+        ]
+        
+        for pattern in project_patterns:
+            matches = re.findall(pattern, text_lower, re.IGNORECASE | re.DOTALL)
+            for match in matches:
+                combined_text += " " + match
+        
+        return combined_text.lower()
+
+    def classify_skills(self, text: str, skills: List[str], projects: List[str]) -> Dict[str, List[str]]:
+        """
+        Classify skills into two categories:
+        1. Experienced Skills: Skills mentioned in experience/project sections
+        2. Known Skills: Skills mentioned elsewhere (skills section, summary, etc.)
+        
+        Args:
+            text: Full resume text
+            skills: List of all extracted skills
+            projects: List of extracted projects
+            
+        Returns:
+            Dict with 'experienced_skills' and 'known_skills' lists
+        """
+        # Extract experience and project sections
+        experience_project_text = self._extract_experience_and_project_sections(text)
+        
+        # Also include project descriptions
+        for project in projects:
+            experience_project_text += " " + project.lower()
+        
+        experienced_skills = []
+        known_skills = []
+        
+        for skill in skills:
+            skill_lower = skill.lower()
+            
+            # Check if skill appears in experience/project sections
+            # Use word boundary for short skills (<=3 chars) to avoid false matches
+            if len(skill) <= 3:
+                # For short skills like "Go", "R", "C", use word boundary
+                pattern = r'\b' + re.escape(skill_lower) + r'\b'
+                if re.search(pattern, experience_project_text):
+                    experienced_skills.append(skill)
+                else:
+                    known_skills.append(skill)
+            else:
+                # For longer skills, simple substring match is fine
+                if skill_lower in experience_project_text:
+                    experienced_skills.append(skill)
+                else:
+                    known_skills.append(skill)
+        
+        return {
+            "experienced_skills": experienced_skills,
+            "known_skills": known_skills
+        }
+
     # ── Extract All (optimized: single NER call) ──────────────────────────────
 
     def extract_all(self, text: str) -> Dict[str, any]:
@@ -1569,9 +1648,14 @@ class ExtractionService:
         projects = self.extract_projects(text)
         certifications = self.extract_certifications(text)
         domain = self.detect_domain(text, skills, job_titles)
+        
+        # ✅ NEW: Classify skills into experienced vs known
+        skill_classification = self.classify_skills(text, skills, projects)
 
         return {
-            "skills": skills,
+            "skills": skills,  # Keep all skills for backward compatibility
+            "experienced_skills": skill_classification["experienced_skills"],
+            "known_skills": skill_classification["known_skills"],
             "job_titles": job_titles,
             "experience": experience,
             "education": education,

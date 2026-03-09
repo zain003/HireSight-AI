@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.db.session import engine, Base
+from app.db.mongodb import connect_to_mongo, close_mongo_connection
 from app.auth.routes import router as auth_router
 from app.resume.routes import router as resume_router
 
@@ -15,11 +15,12 @@ from app.resume.routes import router as resume_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
-    # Startup: Create database tables
-    Base.metadata.create_all(bind=engine)
-    print("✓ Database tables created")
+    # Startup: Connect to MongoDB
+    await connect_to_mongo()
+    print("✓ MongoDB connected and initialized")
     yield
-    # Shutdown: Cleanup if needed
+    # Shutdown: Close MongoDB connection
+    await close_mongo_connection()
     print("✓ Application shutdown")
 
 

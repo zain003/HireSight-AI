@@ -1,20 +1,21 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
-  db:
-    image: postgres:14-alpine
-    container_name: hiresight_db
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: hiresight_mongodb
     environment:
-      POSTGRES_DB: interview_platform
-      POSTGRES_USER: interview_user
-      POSTGRES_PASSWORD: interview_pass
+      MONGO_INITDB_ROOT_USERNAME: interview_user
+      MONGO_INITDB_ROOT_PASSWORD: interview_pass
+      MONGO_INITDB_DATABASE: interview_platform
     ports:
-      - "5432:5432"
+      - "27017:27017"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U interview_user -d interview_platform"]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,7 +29,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://interview_user:interview_pass@db:5432/interview_platform
+      - MONGODB_URL=mongodb://interview_user:interview_pass@mongodb:27017/interview_platform?authSource=admin
       - SECRET_KEY=your-secret-key-change-in-production-use-openssl-rand-hex-32
       - ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
@@ -40,7 +41,7 @@ services:
       - ./backend/uploads:/app/uploads
       - ./backend/app:/app/app
     depends_on:
-      db:
+      mongodb:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -65,4 +66,5 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
+  mongodb_data:
+  mongodb_config:

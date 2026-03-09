@@ -4,9 +4,7 @@ Provides reusable dependencies for route protection.
 """
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.orm import Session
 
-from app.db.session import get_db
 from app.core.security import decode_access_token
 from app.auth.models import User
 from app.auth.service import AuthService
@@ -16,17 +14,13 @@ from app.auth.service import AuthService
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
-async def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
-) -> User:
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
     """
     Dependency to get current authenticated user.
     Validates JWT token and returns user object.
     
     Args:
         token: JWT token from Authorization header
-        db: Database session
         
     Returns:
         Current user object
@@ -45,13 +39,13 @@ async def get_current_user(
     if payload is None:
         raise credentials_exception
     
-    user_id: int = payload.get("user_id")
+    user_id: str = payload.get("user_id")
     if user_id is None:
         raise credentials_exception
     
     # Get user from database
-    auth_service = AuthService(db)
-    user = auth_service.get_user_by_id(user_id)
+    auth_service = AuthService()
+    user = await auth_service.get_user_by_id(user_id)
     
     if user is None:
         raise credentials_exception
