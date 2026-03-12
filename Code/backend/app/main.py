@@ -4,7 +4,9 @@ This is the core of our Modular Monolith architecture.
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+import os
 
 from app.core.config import settings
 from app.db.mongodb import MongoDB
@@ -44,6 +46,11 @@ app.add_middleware(
 # Register module routers
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(resume_router, prefix="/resume", tags=["Resume"])
+
+# Serve uploaded/static files (e.g., landing page illustration) from UPLOAD_DIR
+upload_dir = os.path.abspath(settings.UPLOAD_DIR)
+os.makedirs(upload_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=upload_dir), name="uploads")
 
 
 @app.get("/")
