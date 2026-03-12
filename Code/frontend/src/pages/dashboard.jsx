@@ -5,12 +5,21 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import authService from '@/services/authService';
 import ResumeUpload from '@/components/Resume/ResumeUpload';
+import jobService from '@/services/jobService';
+import resumeService from '@/services/resumeService';
+import { useRef } from 'react';
 
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [jobPosts, setJobPosts] = useState([]);
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [matchResult, setMatchResult] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [notification, setNotification] = useState('');
+  const fileInputRef = useRef();
 
   useEffect(() => {
     if (!authService.isAuthenticated()) {
@@ -18,6 +27,7 @@ export default function Dashboard() {
       return;
     }
     loadUserData();
+    loadJobPosts();
   }, [router]);
 
   const loadUserData = async () => {
@@ -38,13 +48,55 @@ export default function Dashboard() {
     }
   };
 
-  const handleUploadSuccess = () => loadUserData();
+  const loadJobPosts = async () => {
+    try {
+      const posts = await jobService.getAllJobPosts();
+      setJobPosts(posts);
+    } catch (err) {
+      // handle error
+    }
+  };
+
+  const handleJobSelect = (e) => {
+    const job = jobPosts.find(j => j.id === e.target.value);
+    setSelectedJob(job);
+    setMatchResult(null);
+    setNotification('');
+  };
+
+  // Handle match result from ResumeUpload
+  const handleMatchResult = (result) => {
+    setMatchResult(result);
+    if (result && typeof result.match_percent === 'number') {
+      if (result.match_percent >= 75) {
+        setNotification('Accepted! You will be redirected to the interview test session.');
+        setTimeout(() => router.push('/interview'), 3000);
+      } else {
+        setNotification('You do not meet the criteria for this job. Better luck next time!');
+      }
+    }
+  };
+
   const handleLogout = () => authService.logout();
 
   // Safe JSON parse helper
   const parseJSON = (str) => {
     if (!str) return [];
+    // Backend now stores/returns arrays natively (MongoDB + Pydantic)
+    if (Array.isArray(str)) return str;
+    if (typeof str === 'object') return str;
     try { return JSON.parse(str); } catch { return []; }
+  };
+
+  // Handle resume upload success: reload profile
+  const handleUploadSuccess = async () => {
+    try {
+      const profileData = await authService.getProfile();
+      setProfile(profileData);
+      setNotification('Resume parsed and profile updated!');
+    } catch (err) {
+      setNotification('Resume parsed, but failed to reload profile.');
+    }
   };
 
   if (loading) {
@@ -101,13 +153,14 @@ export default function Dashboard() {
           <p className="text-text-muted mt-1">Here&apos;s your interview preparation overview</p>
         </div>
 
-        {/* ── Top Row: Profile + Upload ── */}
+
+
+        {/* ── Top Row: Profile + Job Selection + Upload ── */}
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Profile Card */}
           <div className="p-6 rounded-2xl bg-white border border-deep-night/[0.06] shadow-card relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-neon-violet to-neon-glow rounded-r" />
             <h3 className="text-lg font-bold text-deep-night mb-5 pl-4">Your Profile</h3>
-
             {profile ? (
               <div className="space-y-5 pl-4">
                 {/* Domain & Role */}
@@ -121,7 +174,6 @@ export default function Dashboard() {
                     <p className="text-deep-night font-medium text-sm">{profile.experience_years ? `${profile.experience_years} years` : 'Not set'}</p>
                   </div>
                 </div>
-
                 {/* Job Titles */}
                 {jobTitles.length > 0 && (
                   <div>
@@ -135,7 +187,6 @@ export default function Dashboard() {
                     </div>
                   </div>
                 )}
-
                 {/* Skills */}
                 {skills.length > 0 && (
                   <div>
@@ -149,7 +200,6 @@ export default function Dashboard() {
                     </div>
                   </div>
                 )}
-
                 {!skills.length && !jobTitles.length && (
                   <p className="text-text-muted text-sm">Upload your resume to populate your profile!</p>
                 )}
@@ -168,9 +218,90 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Resume Upload */}
-          <div>
-            <ResumeUpload onUploadSuccess={handleUploadSuccess} />
+          {/* Job Post Selection + Resume Upload + Match Result */}
+          <div className="space-y-6">
+            {/* Job Post Selection */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-deep-night mb-2">Select a Job Post</label>
+              <select
+                className="w-full p-2 border border-deep-night/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-neon-violet"
+                value={selectedJob?.id || ''}
+                onChange={handleJobSelect}
+              >
+                <option value="" disabled>Select a job...</option>
+                {jobPosts.map((job) => (
+                  <option key={job.id} value={job.id}>{job.title}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Show job details if selected */}
+            {selectedJob && (
+              <div className="mb-4 p-4 bg-surface-subtle rounded-xl border border-deep-night/10">
+                <h4 className="font-semibold text-deep-night mb-2">{selectedJob.title}</h4>
+                <p className="text-text-muted mb-2">{selectedJob.description}</p>
+                <div>
+                  <span className="text-xs font-medium text-text-muted uppercase">Required Skills:</span>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {selectedJob.required_skills?.map((skill, i) => (
+                      <span key={i} className="px-2 py-1 bg-neon-violet/10 text-neon-violet rounded-lg text-xs font-medium">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Resume Upload */}
+            <ResumeUpload selectedJob={selectedJob} onUploadSuccess={handleUploadSuccess} onMatchResult={handleMatchResult} />
+            {!selectedJob && (
+              <p className="text-text-muted text-xs mt-2">Please select a job post to enable resume upload.</p>
+            )}
+
+            {/* Match Result Section */}
+            {matchResult && (
+              <div className="mt-4 p-4 bg-white border border-neon-violet/20 rounded-xl shadow-card">
+                <h4 className="font-semibold text-neon-violet mb-2">Skill Match Result</h4>
+                <div className="flex items-center gap-4 mb-2">
+                  <span className="text-2xl font-bold text-deep-night">{matchResult.match_percent}%</span>
+                  <div className="flex-1 h-4 bg-surface-subtle rounded-full overflow-hidden">
+                    <div
+                      className={`h-4 rounded-full ${matchResult.match_percent >= 75 ? 'bg-green-400' : matchResult.match_percent >= 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
+                      style={{ width: `${matchResult.match_percent}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="text-sm text-text-muted mb-2">
+                  {matchResult.match_percent >= 75 ? (
+                    <span className="text-green-600 font-semibold">Accepted! Redirecting to interview session...</span>
+                  ) : (
+                    <span className="text-red-600 font-semibold">Rejected. You do not meet the criteria for this job.</span>
+                  )}
+                </div>
+                {/* Show matched and missing skills */}
+                <div className="mt-2">
+                  <span className="text-xs font-medium text-text-muted uppercase">Matched Skills:</span>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {matchResult.matched_skills?.map((skill, i) => (
+                      <span key={i} className="px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-medium">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <span className="text-xs font-medium text-text-muted uppercase">Missing Skills:</span>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {matchResult.missing_skills?.map((skill, i) => (
+                      <span key={i} className="px-2 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-medium">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

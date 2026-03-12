@@ -8,6 +8,8 @@ from typing import Optional
 import os
 
 from app.auth.models import User, Profile, Session
+from app.auth.job_post_model import JobPost
+from app.auth.job_post_model import JobPost
 
 
 class MongoDB:
@@ -26,7 +28,7 @@ class MongoDB:
         # Initialize Beanie with document models
         await init_beanie(
             database=cls.client[database_name],
-            document_models=[User, Profile, Session]
+            document_models=[User, Profile, Session, JobPost]
         )
         
         print(f"✅ Connected to MongoDB: {database_name}")

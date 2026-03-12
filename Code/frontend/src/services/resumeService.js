@@ -31,6 +31,21 @@ export const resumeService = {
 
     return response.data;
   },
+
+  /**
+   * Match resume skills to job post
+   */
+  matchResumeToJob: async (jobPostId, file) => {
+    const formData = new FormData();
+    formData.append('job_post_id', jobPostId);
+    formData.append('file', file);
+    const response = await api.post('/resume/match-skills', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
 };
 
 export default resumeService;

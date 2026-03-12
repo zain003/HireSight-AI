@@ -1,10 +1,11 @@
 /**
  * Resume Upload Component
  */
+
 import { useState, useRef } from 'react';
 import resumeService from '@/services/resumeService';
 
-export default function ResumeUpload({ onUploadSuccess }) {
+export default function ResumeUpload({ selectedJob, onUploadSuccess, onMatchResult }) {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -55,13 +56,18 @@ export default function ResumeUpload({ onUploadSuccess }) {
       setError('Please select a file');
       return;
     }
+    if (!selectedJob) {
+      setError('Please select a job post');
+      return;
+    }
     setUploading(true);
     setError('');
-
     try {
-      const data = await resumeService.uploadResume(file);
-      setResult(data);
-      if (onUploadSuccess) onUploadSuccess(data);
+      // Use matchResumeToJob to get skill match and profile update
+      const matchResult = await resumeService.matchResumeToJob(selectedJob.id, file);
+      setResult(matchResult);
+      if (onUploadSuccess) onUploadSuccess();
+      if (onMatchResult) onMatchResult(matchResult);
     } catch (err) {
       setError(err.response?.data?.detail || 'Upload failed');
     } finally {
@@ -128,7 +134,7 @@ export default function ResumeUpload({ onUploadSuccess }) {
       {/* Upload button */}
       <button
         onClick={handleUpload}
-        disabled={!file || uploading}
+        disabled={!file || uploading || !selectedJob}
         className="w-full neon-btn py-3.5 rounded-xl font-semibold text-base tracking-wide mt-5 disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {uploading ? (
@@ -137,10 +143,10 @@ export default function ResumeUpload({ onUploadSuccess }) {
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
-            Parsing resume...
+            Matching skills...
           </span>
         ) : (
-          'Upload & Parse Resume'
+          'Upload & Match Resume'
         )}
       </button>
 

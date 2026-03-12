@@ -2,7 +2,7 @@
 API routes for resume module.
 Follows Clean Architecture - API Layer.
 """
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 import os
 import shutil
 from pathlib import Path
@@ -17,9 +17,12 @@ from app.resume.schemas import (
 )
 from app.resume.service import ResumeService
 from app.auth.dependencies import get_current_active_user
-from app.auth.models import User
+from app.auth.models import User, Profile
 from app.core.config import settings
 from app.core.exceptions import FileProcessingError
+from app.auth.job_post_model import JobPost
+from beanie import PydanticObjectId
+from app.auth.skill_matcher import SkillMatcher
 
 
 router = APIRouter()
@@ -173,3 +176,58 @@ async def extract_skills(
         "skills": skills,
         "count": len(skills)
     }
+
+
+@router.post("/match-skills")
+async def match_resume_to_job(
+    job_post_id: str = Form(...),
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Upload a resume and match its skills to a job post's required skills.
+    Returns the match percentage and both skill lists.
+    """
+    # Validate file extension
+    file_ext = Path(file.filename).suffix.lower()
+    if file_ext not in settings.ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File type not allowed. Allowed types: {', '.join(settings.ALLOWED_EXTENSIONS)}"
+        )
+
+    # Save file temporarily
+    user_dir = os.path.join(settings.UPLOAD_DIR, f"user_{current_user.id}")
+    os.makedirs(user_dir, exist_ok=True)
+    file_path = os.path.join(user_dir, f"resume_{current_user.id}{file_ext}")
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Extract skills from resume
+        resume_service = ResumeService()
+        extracted_data = await resume_service.save_resume_to_profile(str(current_user.id), file_path)
+        resume_skills = set(extracted_data["skills"])
+
+        # Fetch job post and required skills
+        job_post = await JobPost.get(PydanticObjectId(job_post_id))
+        if not job_post:
+            raise HTTPException(status_code=404, detail="Job post not found")
+        job_skills = set(job_post.required_skills)
+
+        match_result = SkillMatcher.match_skills(list(job_skills), list(resume_skills))
+        matched_count = len(match_result.get("matched_skills", []))
+        job_count = len(job_skills)
+        match_percent = int(100 * matched_count / job_count) if job_count else 0
+
+        return {
+            "match_percent": match_percent,
+            "matched_skills": match_result.get("matched_skills", []),
+            "missing_skills": match_result.get("missing_skills", []),
+            "extra_skills": match_result.get("extra_skills", []),
+            "resume_skills": list(resume_skills),
+            "job_skills": list(job_skills),
+        }
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)

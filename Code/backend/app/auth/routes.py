@@ -168,7 +168,10 @@ async def create_or_update_profile(
     """
     auth_service = AuthService()
     profile = await auth_service.create_or_update_profile(str(current_user.id), profile_data)
-    return profile
+    # Convert ObjectId to string for id field
+    profile_dict = profile.dict()
+    profile_dict["id"] = str(profile.id)
+    return profile_dict
 
 
 @router.get("/profile", response_model=ProfileResponse)
@@ -179,14 +182,15 @@ async def get_profile(current_user: User = Depends(get_current_active_user)):
     """
     auth_service = AuthService()
     profile = await auth_service.get_profile(str(current_user.id))
-    
     if not profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Profile not found"
         )
-    
-    return profile
+    # Convert ObjectId to string for id field
+    profile_dict = profile.dict()
+    profile_dict["id"] = str(profile.id)
+    return profile_dict
 
 
 @router.post("/start-session", response_model=SessionResponse)
