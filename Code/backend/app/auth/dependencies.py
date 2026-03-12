@@ -34,22 +34,29 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    # Decode token
+    # Debug logging
+    print("[DEBUG] Received token:", token)
     payload = decode_access_token(token)
+    print("[DEBUG] Decoded payload:", payload)
     if payload is None:
+        print("[DEBUG] Token decode failed.")
         raise credentials_exception
-    
+
     user_id: str = payload.get("user_id")
+    print("[DEBUG] Extracted user_id:", user_id)
     if user_id is None:
+        print("[DEBUG] user_id missing in payload.")
         raise credentials_exception
-    
+
     # Get user from database
     auth_service = AuthService()
     user = await auth_service.get_user_by_id(user_id)
-    
+    print("[DEBUG] User lookup result:", user)
+
     if user is None:
+        print("[DEBUG] User not found in database.")
         raise credentials_exception
-    
+
     return user
 
 

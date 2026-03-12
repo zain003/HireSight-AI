@@ -40,27 +40,28 @@ class ResumeService:
         "mobile developer", "game developer", "security engineer",
     }
 
-    # Non-computing keywords that indicate wrong field
+    # Vast non-computing keywords and domains
     NON_COMPUTING_KEYWORDS = {
-        # Medical
-        "doctor", "physician", "surgeon", "nurse", "medical", "hospital",
-        "patient", "clinical", "pharmacy", "pharmacist", "mbbs", "md",
-        "healthcare", "diagnosis", "treatment", "medicine",
-        
-        # Civil/Mechanical
-        "civil engineer", "mechanical engineer", "construction", "building",
-        "structural", "architecture", "autocad", "revit", "surveying",
-        "concrete", "steel", "hvac", "plumbing", "electrical wiring",
-        
-        # Sales/Business (non-tech)
-        "sales representative", "sales executive", "salesman", "salesperson",
-        "retail", "customer service representative", "cashier", "store manager",
-        "insurance agent", "real estate agent", "broker",
-        
+        # Medical/Healthcare
+        "doctor", "physician", "surgeon", "nurse", "medical", "hospital", "patient", "clinical", "pharmacy", "pharmacist", "mbbs", "md", "healthcare", "diagnosis", "treatment", "medicine", "dentist", "veterinarian", "optometrist", "radiologist", "therapist", "nutritionist", "paramedic", "midwife", "anesthetist",
+        # Civil/Mechanical/Engineering
+        "civil engineer", "mechanical engineer", "construction", "building", "structural", "architecture", "autocad", "revit", "surveying", "concrete", "steel", "hvac", "plumbing", "electrical wiring", "site engineer", "road engineer", "bridge engineer", "manufacturing", "production engineer", "industrial engineer", "mining engineer", "chemical engineer", "materials engineer",
+        # Sales/Business/Finance
+        "sales representative", "sales executive", "salesman", "salesperson", "retail", "customer service representative", "cashier", "store manager", "insurance agent", "real estate agent", "broker", "accountant", "finance", "financial analyst", "investment banker", "auditor", "tax consultant", "bookkeeper", "loan officer", "bank teller", "credit analyst", "mortgage advisor",
+        # Law/Government
+        "lawyer", "attorney", "judge", "paralegal", "legal assistant", "court clerk", "government officer", "public administrator", "policy analyst", "diplomat", "civil servant", "politician", "legislator", "regulator",
+        # Education/Academia
+        "teacher", "professor", "lecturer", "educator", "school principal", "school administrator", "tutor", "instructor", "education consultant", "curriculum designer", "academic advisor", "researcher", "scholar",
+        # Hospitality/Tourism
+        "chef", "cook", "waiter", "waitress", "bartender", "hotel manager", "concierge", "housekeeper", "event planner", "tour guide", "travel agent", "restaurant manager", "host", "hostess",
+        # Logistics/Transport
+        "driver", "truck driver", "pilot", "flight attendant", "shipping clerk", "warehouse manager", "logistics coordinator", "supply chain manager", "delivery person", "courier", "dispatcher",
+        # Skilled Trades/Manual Labor
+        "mechanic", "plumber", "electrician", "carpenter", "welder", "roofer", "mason", "painter", "gardener", "farmer", "agriculture", "fisherman", "textile worker", "factory worker", "machine operator", "construction laborer",
+        # Arts/Media/Sports
+        "artist", "musician", "actor", "actress", "dancer", "singer", "photographer", "videographer", "graphic designer", "fashion designer", "journalist", "reporter", "editor", "writer", "author", "coach", "athlete", "sports trainer", "referee", "umpire", "sports manager",
         # Other non-computing
-        "teacher", "professor", "lecturer", "accountant", "lawyer", "attorney",
-        "chef", "cook", "driver", "mechanic", "plumber", "electrician",
-        "farmer", "agriculture", "textile", "fashion designer",
+        "beautician", "hair stylist", "makeup artist", "personal trainer", "fitness instructor", "real estate developer", "property manager", "event manager", "event coordinator", "interior designer", "landscaper", "pet groomer", "childcare worker", "babysitter", "nanny", "housekeeper", "janitor", "security guard", "bouncer", "doorman", "parking attendant", "laundry worker", "cleaner", "maintenance worker", "receptionist", "secretary", "admin assistant", "office manager", "office clerk", "data entry operator", "call center agent", "telemarketer", "customer support", "help desk", "community manager", "social worker", "counselor", "psychologist", "therapist", "nutritionist", "dietitian", "speech therapist", "occupational therapist", "physical therapist", "massage therapist", "chiropractor", "acupuncturist", "home health aide", "elder care worker", "funeral director", "mortician", "embalmer", "cemetery manager", "religious leader", "priest", "imam", "rabbi", "pastor", "monk", "nun", "missionary", "volunteer coordinator", "ngo worker", "charity worker", "fundraiser", "grant writer", "donor relations", "philanthropist"
     }
 
     def __init__(self):
@@ -78,17 +79,34 @@ class ResumeService:
         text_lower = text.lower()
         
         # ═══════════════════════════════════════════════════════════════════
-        # LAYER 1: Check for non-computing keywords (REJECT immediately)
+        # LAYER 1: Check for non-computing keywords and section-based evidence (REJECT immediately)
         # ═══════════════════════════════════════════════════════════════════
         non_computing_matches = []
         for keyword in self.NON_COMPUTING_KEYWORDS:
             if keyword in text_lower:
                 non_computing_matches.append(keyword)
-        
-        if len(non_computing_matches) >= 3:
+
+        # Section-based checks
+        section_fields = [
+            extracted_data.get("education", []),
+            extracted_data.get("job_titles", []),
+            extracted_data.get("skills", []),
+            extracted_data.get("projects", []),
+            extracted_data.get("certifications", []),
+        ]
+        section_matches = []
+        for section in section_fields:
+            for entry in section:
+                entry_str = str(entry).lower()
+                for keyword in self.NON_COMPUTING_KEYWORDS:
+                    if keyword in entry_str:
+                        section_matches.append(keyword)
+
+        # If 3+ non-computing keywords OR 2+ section matches, reject
+        if len(non_computing_matches) >= 3 or len(section_matches) >= 2:
             return False, (
                 f"❌ This resume appears to be from a non-computing field. "
-                f"Detected: {', '.join(non_computing_matches[:3])}. "
+                f"Detected: {', '.join((non_computing_matches + section_matches)[:5])}. "
                 f"This system only accepts resumes for Software Engineering, Data Science, "
                 f"DevOps, Cloud Engineering, and other computing/IT fields."
             )

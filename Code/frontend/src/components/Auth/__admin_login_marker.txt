@@ -1,0 +1,2 @@
+// This file ensures AdminLoginForm.jsx is present in the Docker build context.
+// If you see this file, the admin login feature is ready for build.

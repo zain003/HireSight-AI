@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.db.mongodb import connect_to_mongo, close_mongo_connection
+from app.db.mongodb import MongoDB
 from app.auth.routes import router as auth_router
 from app.resume.routes import router as resume_router
 
@@ -16,11 +16,11 @@ from app.resume.routes import router as resume_router
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup: Connect to MongoDB
-    await connect_to_mongo()
+    await MongoDB.connect_db()
     print("✓ MongoDB connected and initialized")
     yield
     # Shutdown: Close MongoDB connection
-    await close_mongo_connection()
+    await MongoDB.close_db()
     print("✓ Application shutdown")
 
 
@@ -35,7 +35,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately in production
+    allow_origins=["http://localhost:3000"],  # Only allow frontend origin
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

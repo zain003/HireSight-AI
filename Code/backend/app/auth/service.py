@@ -89,8 +89,8 @@ class AuthService:
         Returns:
             Created/updated profile object
         """
-        # Check if profile exists
-        profile = await Profile.find_one({"user_id": user_id})
+        # Ensure user_id is always a string
+        profile = await Profile.find_one({"user_id": str(user_id)})
         
         if profile:
             # Update existing profile
@@ -102,7 +102,7 @@ class AuthService:
         else:
             # Create new profile
             profile = Profile(
-                user_id=user_id,
+                user_id=str(user_id),
                 job_role=profile_data.job_role,
                 difficulty_level=profile_data.difficulty_level,
                 experience_years=profile_data.experience_years,
@@ -115,7 +115,7 @@ class AuthService:
     
     async def get_profile(self, user_id: str) -> Optional[Profile]:
         """Get user profile"""
-        return await Profile.find_one({"user_id": user_id})
+        return await Profile.find_one({"user_id": str(user_id)})
     
     async def update_profile_resume(
         self, user_id: str, resume_path: str,

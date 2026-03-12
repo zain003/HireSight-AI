@@ -68,6 +68,12 @@ export default function Home() {
             >
               Sign In
             </a>
+            <a
+              href="/admin-login"
+              className="px-8 py-3.5 rounded-xl font-semibold text-base tracking-wide text-white border border-neon-glow bg-neon-glow/10 hover:bg-neon-glow/20 hover:border-neon-glow"
+            >
+              Admin Login
+            </a>
           </div>
         </div>
       </section>
