@@ -204,9 +204,19 @@ async def match_resume_to_job(
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Extract skills from resume
+        # Extract skills from resume and update profile
         resume_service = ResumeService()
-        extracted_data = await resume_service.save_resume_to_profile(str(current_user.id), file_path)
+        try:
+            extracted_data = await resume_service.save_resume_to_profile(
+                str(current_user.id), file_path
+            )
+        except FileProcessingError as e:
+            # Surface validation/parsing errors (e.g. empty CV, non‑computing domain)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            )
+
         resume_skills = set(extracted_data["skills"])
 
         # Fetch job post and required skills
