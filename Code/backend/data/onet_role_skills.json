@@ -1,0 +1,98 @@
+{
+  "Software Engineer": [
+    "Python",
+    "Java",
+    "JavaScript",
+    "Data Structures",
+    "Algorithms",
+    "System Design",
+    "Databases",
+    "API Development",
+    "Testing",
+    "Git"
+  ],
+  "Backend Engineer": [
+    "Python",
+    "Java",
+    "Node.js",
+    "REST API",
+    "Databases",
+    "Microservices",
+    "Docker",
+    "Kubernetes",
+    "System Design",
+    "Caching"
+  ],
+  "Frontend Engineer": [
+    "JavaScript",
+    "TypeScript",
+    "React",
+    "HTML",
+    "CSS",
+    "State Management",
+    "Performance Optimization",
+    "Testing",
+    "Accessibility",
+    "Next.js"
+  ],
+  "DevOps Engineer": [
+    "Linux",
+    "Networking",
+    "Docker",
+    "Kubernetes",
+    "CI/CD",
+    "Terraform",
+    "Cloud",
+    "Monitoring",
+    "Scripting",
+    "Security"
+  ],
+  "Data Engineer": [
+    "Python",
+    "SQL",
+    "ETL",
+    "Data Modeling",
+    "Spark",
+    "Airflow",
+    "Data Warehousing",
+    "Cloud",
+    "Distributed Systems",
+    "Kafka"
+  ],
+  "Machine Learning Engineer": [
+    "Python",
+    "Machine Learning",
+    "Deep Learning",
+    "PyTorch",
+    "TensorFlow",
+    "Feature Engineering",
+    "Model Deployment",
+    "Data Processing",
+    "Statistics",
+    "MLOps"
+  ],
+  "QA Engineer": [
+    "Test Automation",
+    "Selenium",
+    "API Testing",
+    "Python",
+    "Java",
+    "Regression Testing",
+    "CI/CD",
+    "Performance Testing",
+    "Debugging",
+    "Test Planning"
+  ],
+  "Network Engineer": [
+    "Networking",
+    "TCP/IP",
+    "Routing",
+    "Switching",
+    "Firewalls",
+    "Network Security",
+    "Troubleshooting",
+    "Linux",
+    "Cloud Networking",
+    "Automation"
+  ]
+}

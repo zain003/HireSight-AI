@@ -5,11 +5,11 @@ Follows Clean Architecture - Database Layer.
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
 from typing import Optional
-import os
 
 from app.auth.models import User, Profile, Session
 from app.auth.job_post_model import JobPost
-from app.auth.job_post_model import JobPost
+from app.interview.models import InterviewSession
+from app.core.config import settings
 
 
 class MongoDB:
@@ -20,15 +20,15 @@ class MongoDB:
     @classmethod
     async def connect_db(cls):
         """Connect to MongoDB"""
-        mongodb_url = os.getenv("MONGODB_URL", "mongodb://mongodb:27017")
-        database_name = os.getenv("MONGODB_DATABASE", "hiresight_db")
+        mongodb_url = settings.MONGODB_URL
+        database_name = settings.MONGODB_DATABASE
         
         cls.client = AsyncIOMotorClient(mongodb_url)
         
         # Initialize Beanie with document models
         await init_beanie(
             database=cls.client[database_name],
-            document_models=[User, Profile, Session, JobPost]
+            document_models=[User, Profile, Session, JobPost, InterviewSession]
         )
         
         print(f"✅ Connected to MongoDB: {database_name}")

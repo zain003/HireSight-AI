@@ -68,7 +68,7 @@ export default function Home() {
             <div className="bg-surface-subtle border border-white/10 md:border-deep-night/20 p-6 md:p-8">
               <div className="mb-4 overflow-hidden border border-deep-night/20 bg-white">
                 <img
-                  src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/uploads/img1.png`}
+                  src={`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/uploads/img1.png`}
                   alt="AI robot interviewing a candidate"
                   className="w-full h-48 object-cover"
                 />

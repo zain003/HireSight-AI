@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.db.mongodb import MongoDB
 from app.auth.routes import router as auth_router
 from app.resume.routes import router as resume_router
+from app.interview.routes import router as interview_router
 
 
 @asynccontextmanager
@@ -35,9 +36,16 @@ app = FastAPI(
 )
 
 # CORS middleware
+cors_origins = [origin.strip() for origin in settings.CORS_ORIGINS.split(",") if origin.strip()]
+cors_origin_regex = settings.CORS_ORIGIN_REGEX
+
+print(f"🔧 CORS Origins configured: {cors_origins}")
+print(f"🔧 CORS Origin Regex: {cors_origin_regex}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Only allow frontend origin
+    allow_origins=cors_origins,
+    allow_origin_regex=cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,6 +54,7 @@ app.add_middleware(
 # Register module routers
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(resume_router, prefix="/resume", tags=["Resume"])
+app.include_router(interview_router, prefix="/interview", tags=["Interview"])
 
 # Serve uploaded/static files (e.g., landing page illustration) from UPLOAD_DIR
 upload_dir = os.path.abspath(settings.UPLOAD_DIR)

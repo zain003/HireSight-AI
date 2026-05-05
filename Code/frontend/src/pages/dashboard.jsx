@@ -68,9 +68,16 @@ export default function Dashboard() {
   // Handle match result from ResumeUpload
   const handleMatchResult = (result) => {
     setMatchResult(result);
-    if (result && typeof result.match_percent === 'number') {
-      if (result.match_percent >= 70) {
-        setNotification('You are eligible for the interview test based on your skill match.');
+    const matchPercent = Number(result?.match_percent);
+    if (Number.isFinite(matchPercent)) {
+      if (matchPercent >= 70) {
+        setNotification('You are eligible for the interview test. Redirecting to interview...');
+        const jobPostId = selectedJob?.id;
+        if (jobPostId) {
+          router.push(`/interview?jobPostId=${encodeURIComponent(jobPostId)}`);
+        } else {
+          router.push('/interview');
+        }
       } else {
         setNotification('You do not meet the criteria for this job. Better luck next time!');
       }
