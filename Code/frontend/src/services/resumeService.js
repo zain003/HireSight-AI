@@ -7,9 +7,12 @@ export const resumeService = {
   /**
    * Upload and parse resume
    */
-  uploadResume: async (file) => {
+  uploadResume: async (file, jobRole = null) => {
     const formData = new FormData();
     formData.append('file', file);
+    if (jobRole) {
+      formData.append('job_role', jobRole);
+    }
 
     const response = await api.post('/resume/parse', formData, {
       headers: {
@@ -35,10 +38,13 @@ export const resumeService = {
   /**
    * Match resume skills to job post
    */
-  matchResumeToJob: async (jobPostId, file) => {
+  matchResumeToJob: async (jobPostId, file, jobRole = null) => {
     const formData = new FormData();
     formData.append('job_post_id', jobPostId);
     formData.append('file', file);
+    if (jobRole) {
+      formData.append('job_role', jobRole);
+    }
     const response = await api.post('/resume/match-skills', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',

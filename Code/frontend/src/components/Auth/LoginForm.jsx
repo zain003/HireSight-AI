@@ -8,7 +8,7 @@ import authService from '@/services/authService';
 export default function LoginForm() {
   const router = useRouter();
   const [formData, setFormData] = useState({
-    username: '',
+    email: '',
     password: '',
   });
   const [error, setError] = useState('');
@@ -37,39 +37,39 @@ export default function LoginForm() {
   };
 
   return (
-    <div className="p-8 bg-white rounded-2xl shadow-card border border-deep-night/[0.06] transition-shadow duration-300 hover:shadow-card-hover">
-      <h2 className="text-2xl font-bold mb-1 text-center text-deep-night">Welcome Back</h2>
-      <p className="text-text-muted text-sm text-center mb-8">Sign in to your account</p>
+    <div className="rounded-2xl border border-slate-200 bg-white p-7 shadow-sm">
+      <h2 className="mb-1 text-2xl font-bold text-slate-900">Sign In</h2>
+      <p className="mb-8 text-sm text-slate-500">Access your candidate dashboard</p>
 
       {error && (
-        <div className="mb-5 p-3.5 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
+        <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-3.5 text-sm text-red-700">
           {error}
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <label className="block text-deep-night text-sm font-medium mb-1.5">Username</label>
+          <label className="mb-1.5 block text-sm font-medium text-slate-800">Email</label>
           <input
-            type="text"
-            name="username"
-            value={formData.username}
+            type="email"
+            name="email"
+            value={formData.email}
             onChange={handleChange}
-            placeholder="Enter your username"
-            className="w-full px-4 py-3 bg-surface-subtle border border-deep-night/[0.08] rounded-xl text-deep-night placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-neon-violet/30 focus:border-neon-violet/40"
+            placeholder="you@example.com"
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
             required
           />
         </div>
 
         <div>
-          <label className="block text-deep-night text-sm font-medium mb-1.5">Password</label>
+          <label className="mb-1.5 block text-sm font-medium text-slate-800">Password</label>
           <input
             type="password"
             name="password"
             value={formData.password}
             onChange={handleChange}
             placeholder="Enter your password"
-            className="w-full px-4 py-3 bg-surface-subtle border border-deep-night/[0.08] rounded-xl text-deep-night placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-neon-violet/30 focus:border-neon-violet/40"
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
             required
           />
         </div>
@@ -77,7 +77,7 @@ export default function LoginForm() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full neon-btn py-3.5 rounded-xl font-semibold text-base tracking-wide disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full rounded-xl bg-indigo-600 py-3.5 text-base font-semibold tracking-wide text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? (
             <span className="flex items-center justify-center gap-2">
@@ -93,9 +93,9 @@ export default function LoginForm() {
         </button>
       </form>
 
-      <p className="mt-6 text-center text-text-muted text-sm">
+      <p className="mt-6 text-center text-sm text-slate-500">
         Don&apos;t have an account?{' '}
-        <a href="/register" className="text-neon-violet font-medium hover:text-neon-glow hover:underline">
+        <a href="/register" className="font-medium text-indigo-600 hover:text-indigo-700 hover:underline">
           Create one
         </a>
       </p>

@@ -24,6 +24,9 @@ from app.interview.services import (
 
 
 class InterviewService:
+    MAX_FOLLOWUPS_PER_STAGE = 3
+    MAX_FOLLOWUPS_PER_INTERVIEW = 9
+
     def __init__(self):
         self.stt_service = STTService()
         self.face_service = FaceService()
@@ -37,20 +40,34 @@ class InterviewService:
         job_description: str,
         candidate_skills: List[str],
         total_questions: int,
+        required_job_skills: Optional[List[str]] = None,
+        candidate_projects: Optional[List[Dict]] = None,
+        candidate_job_titles: Optional[List[str]] = None,
+        candidate_certifications: Optional[List[str]] = None,
+        candidate_companies: Optional[List[str]] = None,
+        experience_years: Optional[int] = None,
         job_post_id: Optional[str] = None,
     ) -> InterviewSession:
         plan = await generate_question_plan(
             job_role=job_role,
             job_description=job_description,
             candidate_skills=candidate_skills,
+            required_job_skills=required_job_skills or [],
             total_questions=total_questions,
+            candidate_projects=candidate_projects or [],
+            candidate_job_titles=candidate_job_titles or [],
+            candidate_certifications=candidate_certifications or [],
+            candidate_companies=candidate_companies or [],
+            experience_years=experience_years,
         )
 
         questions = []
         for idx, q in enumerate(plan):
             q_text = (q.get("question_text") or "").strip()
             q_type = (q.get("question_type") or "technical").strip().lower()
-            if q_type == "icebreaker":
+            if q_type == "introduction":
+                question_type = QuestionType.INTRODUCTION
+            elif q_type == "icebreaker":
                 question_type = QuestionType.ICEBREAKER
             elif q_type == "behavioral":
                 question_type = QuestionType.BEHAVIORAL
@@ -60,17 +77,24 @@ class InterviewService:
                 question_type = QuestionType.CLOSING
             elif q_type == "situational":
                 question_type = QuestionType.SITUATIONAL
+            elif q_type == "cv_based":
+                question_type = QuestionType.CV_BASED
+            elif q_type == "coding":
+                question_type = QuestionType.CODING
             else:
                 question_type = QuestionType.TECHNICAL
 
-            questions.append(
-                {
-                    "question_id": f"q_{idx + 1}",
-                    "question_index": idx,
-                    "question_text": q_text,
-                    "question_type": question_type.value,
-                }
-            )
+            entry = {
+                "question_id": f"q_{idx + 1}",
+                "question_index": idx,
+                "question_text": q_text,
+                "question_type": question_type.value,
+                "stage": (q.get("stage") or "").strip().lower() or question_type.value,
+                "difficulty": (q.get("difficulty") or "").strip().lower() or None,
+            }
+            if q.get("coding_challenge"):
+                entry["coding_challenge"] = q["coding_challenge"]
+            questions.append(entry)
 
         session_id = f"int_{uuid.uuid4().hex[:12]}"
         session = InterviewSession(
@@ -81,6 +105,7 @@ class InterviewService:
             job_post_id=job_post_id,
             job_role=job_role,
             job_description=job_description,
+            required_job_skills=required_job_skills or [],
             candidate_skills=candidate_skills,
             questions=questions,
             evaluations=[],
@@ -135,11 +160,33 @@ class InterviewService:
         session.updated_at = datetime.utcnow()
 
         follow_up_question = None
-        if evaluation.follow_up_triggered:
+        current_q_type = (question.get("question_type") or "").strip().lower()
+        is_current_follow_up = current_q_type == QuestionType.FOLLOW_UP.value
+        is_coding = current_q_type == QuestionType.CODING.value
+        existing_followups = [
+            q for q in session.questions if (q.get("question_type") or "").strip().lower() == QuestionType.FOLLOW_UP.value
+        ]
+        current_stage = (question.get("stage") or question_type or "").strip().lower()
+        stage_followups = [
+            q
+            for q in existing_followups
+            if (q.get("stage") or "").strip().lower() == current_stage
+        ]
+        can_add_followup = (
+            evaluation.follow_up_triggered
+            and not is_current_follow_up  # never ask follow-up on a follow-up
+            and not is_coding  # coding rounds use the judge later, not verbal follow-ups
+            and len(existing_followups) < self.MAX_FOLLOWUPS_PER_INTERVIEW
+            and len(stage_followups) < self.MAX_FOLLOWUPS_PER_STAGE
+        )
+
+        if can_add_followup:
             follow_up = await generate_followup_question(
                 job_role=session.job_role,
                 original_question=question_text,
                 candidate_answer=transcript,
+                asked_questions=[q.get("question_text", "") for q in session.questions],
+                stage=question.get("stage") or question_type,
                 conversation_history=[
                     {"role": "user", "content": question_text},
                     {"role": "assistant", "content": transcript},
@@ -151,6 +198,8 @@ class InterviewService:
                     "question_index": question_index + 1,
                     "question_text": follow_up.get("question_text", ""),
                     "question_type": QuestionType.FOLLOW_UP.value,
+                    "stage": follow_up.get("stage") or question.get("stage") or question_type,
+                    "difficulty": follow_up.get("difficulty") or None,
                 }
                 session.questions.insert(question_index + 1, follow_up_question)
                 for idx, q in enumerate(session.questions):

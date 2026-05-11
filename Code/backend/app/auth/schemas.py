@@ -3,7 +3,7 @@ Pydantic schemas for authentication module.
 Follows Clean Architecture - Schema Layer.
 """
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
@@ -22,7 +22,7 @@ class UserCreate(UserBase):
 
 class UserLogin(BaseModel):
     """Schema for user login"""
-    username: str
+    email: EmailStr
     password: str
 
 
@@ -58,6 +58,8 @@ class ProfileResponse(BaseModel):
     projects: Optional[List[dict]] = None
     certifications: Optional[List[str]] = None
     companies: Optional[List[str]] = None
+    resume_structured: Optional[Dict[str, Any]] = None
+    resume_extraction_json_path: Optional[str] = None
     created_at: datetime
 
 

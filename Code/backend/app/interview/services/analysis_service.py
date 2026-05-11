@@ -49,7 +49,12 @@ class AnalysisService:
                 return 0.0
             return round(sum(getattr(item, key) for item in items) / len(items) * 10, 1)
 
-        tech_evals = [e for e in evaluations if e.question_type == QuestionType.TECHNICAL]
+        tech_evals = [
+            e
+            for e in evaluations
+            if e.question_type
+            in (QuestionType.TECHNICAL, QuestionType.CV_BASED, QuestionType.CODING)
+        ]
         beh_evals = [
             e
             for e in evaluations

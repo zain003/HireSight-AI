@@ -297,7 +297,7 @@ SKILL_DATABASE = [
     "Google Data Studio", "Looker Studio",
 
     # ── Messaging & Streaming ──
-    "RabbitMQ", "Apache Kafka", "Redis Pub/Sub",
+    "RabbitMQ", "Celery", "Apache Kafka", "Redis Pub/Sub",
     "NATS", "ZeroMQ", "ActiveMQ", "Apache Pulsar",
     "Amazon SQS", "Amazon SNS", "Amazon Kinesis",
     "Google Pub/Sub", "Azure Service Bus",
@@ -455,6 +455,11 @@ SKILL_DATABASE = [
     "Network Automation", "NetDevOps",
 
     # ── Operating Systems & Platforms ──
+    "Operating System", "Operating Systems",
+    "Kernel", "Linux Kernel",
+    "System Programming", "Kernel Programming",
+    "Virtual Memory", "Memory Management",
+    "Networking and Security",
     "Linux", "Ubuntu", "CentOS", "Red Hat",
     "RHEL", "Debian", "Fedora", "Arch Linux",
     "Alpine Linux", "Amazon Linux",
@@ -684,6 +689,13 @@ SKILL_ALIASES = {
     "a11y": "Accessibility",
     "wcag": "WCAG",
     "jamstack": "JAMstack", "jam stack": "JAMstack",
+    # OS/domain typo aliases
+    "kernal": "Kernel",
+    "secuirity": "Security",
+    "operating systems": "Operating System",
+    "os internals": "Operating System",
+    "kernel development": "Kernel Programming",
+    "network security": "Networking and Security",
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1072,6 +1084,17 @@ class ExtractionService:
     that aren't in the keyword database.
     """
 
+    # Strong phrases → canonical SKILL_DATABASE entries (when headers were omitted).
+    _RESUME_PHRASE_HINTS = (
+        (re.compile(r"\blinux\s+kernel\b", re.I), "Linux Kernel"),
+        (re.compile(r"\bvirtual\s+memory\b", re.I), "Virtual Memory"),
+        (re.compile(r"\bmemory\s+management\b", re.I), "Memory Management"),
+        (re.compile(r"\bnetwork\s+security\b", re.I), "Networking and Security"),
+        (re.compile(r"\bkernel\s+(?:development|programming)\b", re.I), "Kernel Programming"),
+        (re.compile(r"\bsystem\s+program(?:ming|mer)\b", re.I), "System Programming"),
+        (re.compile(r"\boperating\s+systems?\s+internals?\b", re.I), "Operating System"),
+    )
+
     def __init__(self):
         self.ner_service = get_ner_service()
         self._skill_lookup = {s.lower(): s for s in SKILL_DATABASE}
@@ -1087,6 +1110,57 @@ class ExtractionService:
             print(f"NER extraction failed: {e}")
             return {}
 
+    def _contains_skill(self, text_lower: str, skill_text: str) -> bool:
+        """
+        Safer skill containment check to avoid false positives like:
+        'react' matching inside 'interaction'.
+        """
+        st = (skill_text or "").strip().lower()
+        if not st:
+            return False
+
+        # Pure alphanumeric tokens: enforce word boundaries
+        if re.fullmatch(r"[a-z0-9]+", st):
+            return bool(re.search(rf"\b{re.escape(st)}\b", text_lower))
+
+        # Multi-word alphabetic skills: enforce flexible word boundaries
+        if re.fullmatch(r"[a-z0-9]+(?:\s+[a-z0-9]+)+", st):
+            words = [re.escape(w) for w in st.split()]
+            pattern = r"\b" + r"\s+".join(words) + r"\b"
+            return bool(re.search(pattern, text_lower))
+
+        # Skills containing punctuation (C++, Node.js, .NET): fall back to substring
+        return st in text_lower
+
+    def _harvest_skills_from_delimited_lines(self, text: str, skills: set) -> None:
+        """Pick up comma/pipe-separated skill tokens on lines without a section header."""
+        for raw_line in text.split("\n"):
+            line = raw_line.strip()
+            if len(line) < 8:
+                continue
+            delim_hits = sum(line.count(ch) for ch in ",;|•·")
+            if delim_hits < 2 and line.count(",") < 2 and "|" not in line:
+                continue
+            parts = re.split(r"[,;|•·▪►]+", line)
+            if len(parts) < 2:
+                continue
+            for p in parts:
+                p = re.sub(r"^[\s\-–—•]+|[\s\-–—•]+$", "", p).strip()
+                if not (2 <= len(p) <= 55):
+                    continue
+                pl = p.lower()
+                if pl in self._skill_lookup:
+                    skills.add(self._skill_lookup[pl])
+                elif pl in self._alias_lookup:
+                    skills.add(self._alias_lookup[pl])
+
+    def _boost_skills_from_resume_phrases(self, text: str, skills: set) -> None:
+        for rx, canonical in self._RESUME_PHRASE_HINTS:
+            if canonical not in SKILL_DATABASE:
+                continue
+            if rx.search(text):
+                skills.add(canonical)
+
     # ── Skills ────────────────────────────────────────────────────────────────
 
     def extract_skills(self, text: str, use_embeddings: bool = True, _entities: Optional[Dict] = None) -> List[str]:
@@ -1101,21 +1175,13 @@ class ExtractionService:
         # ── Method 1: Keyword matching ──
         for skill in SKILL_DATABASE:
             sl = skill.lower()
-            if len(skill) <= 3:
-                if re.search(r'\b' + re.escape(sl) + r'\b', text_lower):
-                    skills.add(skill)
-            else:
-                if sl in text_lower:
-                    skills.add(skill)
+            if self._contains_skill(text_lower, sl):
+                skills.add(skill)
 
         # ── Method 2: Alias matching ──
         for alias, canonical in self._alias_lookup.items():
-            if len(alias) <= 3:
-                if re.search(r'\b' + re.escape(alias) + r'\b', text_lower):
-                    skills.add(canonical)
-            else:
-                if alias in text_lower:
-                    skills.add(canonical)
+            if self._contains_skill(text_lower, alias):
+                skills.add(canonical)
 
         # ── Method 3: Skill-section parsing ──
         # Catch many common resume section headers for skills
@@ -1138,6 +1204,10 @@ class ExtractionService:
                         elif cl in self._alias_lookup:
                             skills.add(self._alias_lookup[cl])
 
+        # ── Method 3b: Inline delimiter-heavy lines (no explicit "Skills" header) ──
+        self._harvest_skills_from_delimited_lines(text, skills)
+        self._boost_skills_from_resume_phrases(text, skills)
+
         # ── Method 4: BERT-NER boost (novel skills only) ──
         entities = _entities or self._get_ner_entities(text)
         ner_skills = entities.get("skills", [])
@@ -1146,11 +1216,16 @@ class ExtractionService:
             # Only add if:
             # 1. Not already found by keyword matching
             # 2. Looks like a real skill (reasonable length, no junk)
-            if (ns_clean and
-                len(ns_clean) >= 2 and
-                len(ns_clean) <= 40 and
-                not any(s.lower() == ns_clean.lower() for s in skills)):
-                skills.add(ns_clean)
+            # 3. Actually appears in resume text (NER often hallucinates e.g. Celery)
+            if not (
+                ns_clean
+                and 2 <= len(ns_clean) <= 40
+                and not any(s.lower() == ns_clean.lower() for s in skills)
+            ):
+                continue
+            if not self._contains_skill(text_lower, ns_clean.lower()):
+                continue
+            skills.add(ns_clean)
 
         return sorted(list(skills))
 
@@ -1584,7 +1659,7 @@ class ExtractionService:
         
         return combined_text.lower()
 
-    def classify_skills(self, text: str, skills: List[str], projects: List[str]) -> Dict[str, List[str]]:
+    def classify_skills(self, text: str, skills: List[str], projects: List[Dict[str, str]]) -> Dict[str, List[str]]:
         """
         Classify skills into two categories:
         1. Experienced Skills: Skills mentioned in experience/project sections
@@ -1601,9 +1676,17 @@ class ExtractionService:
         # Extract experience and project sections
         experience_project_text = self._extract_experience_and_project_sections(text)
         
-        # Also include project descriptions
-        for project in projects:
-            experience_project_text += " " + project.lower()
+        # Also include project names/descriptions
+        for project in projects or []:
+            if isinstance(project, dict):
+                project_name = str(project.get("name", "")).strip()
+                project_desc = str(project.get("description", "")).strip()
+                if project_name:
+                    experience_project_text += " " + project_name.lower()
+                if project_desc:
+                    experience_project_text += " " + project_desc.lower()
+            elif isinstance(project, str):
+                experience_project_text += " " + project.lower()
         
         experienced_skills = []
         known_skills = []
@@ -1634,7 +1717,7 @@ class ExtractionService:
 
     # ── Extract All (optimized: single NER call) ──────────────────────────────
 
-    def extract_all(self, text: str) -> Dict[str, any]:
+    def extract_all(self, text: str, include_debug: bool = False) -> Dict[str, any]:
         """Extract all structured information from resume text.
 
         Runs NER once, passes cached entities to all sub-methods.
@@ -1652,7 +1735,7 @@ class ExtractionService:
         # ✅ NEW: Classify skills into experienced vs known
         skill_classification = self.classify_skills(text, skills, projects)
 
-        return {
+        result = {
             "skills": skills,  # Keep all skills for backward compatibility
             "experienced_skills": skill_classification["experienced_skills"],
             "known_skills": skill_classification["known_skills"],
@@ -1664,6 +1747,12 @@ class ExtractionService:
             "domain": domain,
             "raw_text_length": len(text),
         }
+        if include_debug:
+            result["debug"] = {
+                "ner_entities": entities,
+                "text_preview": text[:2000],
+            }
+        return result
 
 
 # Singleton

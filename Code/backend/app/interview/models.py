@@ -23,6 +23,7 @@ class InterviewSession(Document):
     job_post_id: Optional[str] = None
     job_role: Optional[str] = None
     job_description: Optional[str] = None
+    required_job_skills: List[str] = Field(default_factory=list)
     candidate_skills: List[str] = Field(default_factory=list)
     status: str = InterviewStatus.IN_PROGRESS.value
 

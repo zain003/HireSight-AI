@@ -17,8 +17,14 @@ from app.auth.models import User, Profile
 from app.core.security import create_access_token
 from app.core.exceptions import ValidationError, AuthenticationError
 from app.auth.job_post_service import JobPostService
-from app.auth.job_post_schemas import JobPostCreate, JobPostResponse
+from app.auth.job_post_schemas import JobPostCreate, JobPostResponse, JobPostUpdate
 from app.auth.skill_matcher import SkillMatcher
+from app.auth.admin_dashboard_service import (
+    get_dashboard_stats,
+    list_users_for_admin,
+    count_interview_candidates_for_job,
+    job_post_to_response_dict,
+)
 
 router = APIRouter()
 
@@ -29,11 +35,11 @@ router = APIRouter()
 async def admin_login(login_data: UserLogin):
     """
     Authenticate admin and return JWT token.
-    - **username**: Admin username
+    - **email**: Admin email
     - **password**: Admin password
     Returns JWT access token for admin.
     """
-    admin_user = await AdminAuthService.authenticate_admin(login_data.username, login_data.password)
+    admin_user = await AdminAuthService.authenticate_admin(login_data.email, login_data.password)
     if not admin_user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -59,7 +65,12 @@ async def skill_match(job_post_id: str = Body(...), candidate_profile_id: str = 
     candidate_profile = await Profile.get(candidate_profile_id)
     if not candidate_profile:
         raise HTTPException(status_code=404, detail="Candidate profile not found")
-    result = SkillMatcher.match_skills(job_post.required_skills, candidate_profile.skills or [])
+    candidate_skills = SkillMatcher.flatten_candidate_skill_lists(
+        candidate_profile.skills,
+        getattr(candidate_profile, "experienced_skills", None),
+        getattr(candidate_profile, "known_skills", None),
+    )
+    result = SkillMatcher.match_skills(job_post.required_skills, candidate_skills)
     return result
 
 
@@ -70,9 +81,19 @@ async def create_job_post(job_post_data: JobPostCreate):
     Requires admin authentication (handled externally).
     """
     job_post = await JobPostService.create_job_post(job_post_data)
-    job_post_dict = job_post.dict()
-    job_post_dict["id"] = str(job_post.id)
-    return job_post_dict
+    return job_post_to_response_dict(job_post, 0)
+
+
+@router.get("/admin/dashboard-stats")
+async def admin_dashboard_stats():
+    """Real metrics for the admin dashboard (users, jobs, interviews, skills)."""
+    return await get_dashboard_stats()
+
+
+@router.get("/admin/users")
+async def admin_list_users():
+    """Registered candidates with optional profile / resume flags."""
+    return await list_users_for_admin()
 
 
 @router.get("/admin/job-posts", response_model=list[JobPostResponse])
@@ -81,9 +102,39 @@ async def get_all_job_posts():
     Get all job posts (admin only).
     """
     job_posts = await JobPostService.get_all_job_posts()
-    return [
-        {**jp.dict(), "id": str(jp.id)} for jp in job_posts
-    ]
+    out = []
+    for jp in job_posts:
+        ac = await count_interview_candidates_for_job(str(jp.id))
+        out.append(job_post_to_response_dict(jp, ac))
+    return out
+
+
+@router.get("/admin/job-posts/{job_post_id}", response_model=JobPostResponse)
+async def get_job_post(job_post_id: str):
+    """Get a single job post by id (admin)."""
+    jp = await JobPostService.get_job_post_by_id(job_post_id)
+    if not jp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job post not found")
+    ac = await count_interview_candidates_for_job(str(jp.id))
+    return job_post_to_response_dict(jp, ac)
+
+
+@router.put("/admin/job-posts/{job_post_id}", response_model=JobPostResponse)
+async def update_job_post(job_post_id: str, job_post_data: JobPostUpdate):
+    """Update a job post (admin)."""
+    jp = await JobPostService.update_job_post(job_post_id, job_post_data)
+    if not jp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job post not found")
+    ac = await count_interview_candidates_for_job(str(jp.id))
+    return job_post_to_response_dict(jp, ac)
+
+
+@router.delete("/admin/job-posts/{job_post_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_job_post(job_post_id: str):
+    """Delete a job post (admin)."""
+    deleted = await JobPostService.delete_job_post(job_post_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job post not found")
 
 
 # ── User Auth Routes ────────────────────────────────────────────────────────
@@ -113,18 +164,18 @@ async def login(login_data: UserLogin):
     """
     Authenticate user and return JWT token.
     
-    - **username**: Username
+    - **email**: Email address
     - **password**: Password
     
     Returns JWT access token for subsequent requests.
     """
     auth_service = AuthService()
-    user = await auth_service.authenticate_user(login_data.username, login_data.password)
+    user = await auth_service.authenticate_user(login_data.email, login_data.password)
     
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     

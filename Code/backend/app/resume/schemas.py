@@ -42,7 +42,17 @@ class ResumeParseResponse(BaseModel):
     certifications: List[str] = []
     domain: str
     raw_text_length: int
+    extraction_json_path: str = ""
     message: str = "Resume parsed successfully"
+
+
+class ResumeParseDebugResponse(ResumeParseResponse):
+    """Response for debug resume parsing with traceability fields."""
+    experienced_skills: List[str] = []
+    known_skills: List[str] = []
+    ner_entities: Dict[str, List[str]] = {}
+    raw_text: str = ""
+    debug_file_path: str = ""
 
 
 class SkillExtractionRequest(BaseModel):

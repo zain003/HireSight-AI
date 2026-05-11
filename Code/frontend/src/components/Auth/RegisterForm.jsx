@@ -47,22 +47,22 @@ export default function RegisterForm() {
   };
 
   const inputClass =
-    'w-full px-4 py-3 bg-surface-subtle border border-deep-night/[0.08] rounded-xl text-deep-night placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-neon-violet/30 focus:border-neon-violet/40';
+    'w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200';
 
   return (
-    <div className="p-8 bg-white rounded-2xl shadow-card border border-deep-night/[0.06] transition-shadow duration-300 hover:shadow-card-hover">
-      <h2 className="text-2xl font-bold mb-1 text-center text-deep-night">Create Account</h2>
-      <p className="text-text-muted text-sm text-center mb-8">Join HireSIGHT AI today</p>
+    <div className="rounded-2xl border border-slate-200 bg-white p-7 shadow-sm">
+      <h2 className="mb-1 text-2xl font-bold text-slate-900">Create Account</h2>
+      <p className="mb-8 text-sm text-slate-500">Get started with your interview profile</p>
 
       {error && (
-        <div className="mb-5 p-3.5 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
+        <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-3.5 text-sm text-red-700">
           {error}
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-deep-night text-sm font-medium mb-1.5">Email</label>
+          <label className="mb-1.5 block text-sm font-medium text-slate-800">Email</label>
           <input
             type="email"
             name="email"
@@ -75,7 +75,7 @@ export default function RegisterForm() {
         </div>
 
         <div>
-          <label className="block text-deep-night text-sm font-medium mb-1.5">Username</label>
+          <label className="mb-1.5 block text-sm font-medium text-slate-800">Username</label>
           <input
             type="text"
             name="username"
@@ -88,7 +88,7 @@ export default function RegisterForm() {
         </div>
 
         <div>
-          <label className="block text-deep-night text-sm font-medium mb-1.5">Full Name</label>
+          <label className="mb-1.5 block text-sm font-medium text-slate-800">Full Name</label>
           <input
             type="text"
             name="full_name"
@@ -100,7 +100,7 @@ export default function RegisterForm() {
         </div>
 
         <div>
-          <label className="block text-deep-night text-sm font-medium mb-1.5">Password</label>
+          <label className="mb-1.5 block text-sm font-medium text-slate-800">Password</label>
           <input
             type="password"
             name="password"
@@ -114,7 +114,7 @@ export default function RegisterForm() {
         </div>
 
         <div>
-          <label className="block text-deep-night text-sm font-medium mb-1.5">Confirm Password</label>
+          <label className="mb-1.5 block text-sm font-medium text-slate-800">Confirm Password</label>
           <input
             type="password"
             name="confirmPassword"
@@ -129,7 +129,7 @@ export default function RegisterForm() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full neon-btn py-3.5 rounded-xl font-semibold text-base tracking-wide disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+          className="mt-2 w-full rounded-xl bg-indigo-600 py-3.5 text-base font-semibold tracking-wide text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? (
             <span className="flex items-center justify-center gap-2">
@@ -145,9 +145,9 @@ export default function RegisterForm() {
         </button>
       </form>
 
-      <p className="mt-6 text-center text-text-muted text-sm">
+      <p className="mt-6 text-center text-sm text-slate-500">
         Already have an account?{' '}
-        <a href="/login" className="text-neon-violet font-medium hover:text-neon-glow hover:underline">
+        <a href="/login" className="font-medium text-indigo-600 hover:text-indigo-700 hover:underline">
           Sign in
         </a>
       </p>

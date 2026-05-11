@@ -54,12 +54,14 @@ async def start_live_interview(
     )
 
     job_post_id = request.job_post_id
+    required_job_skills = []
     if job_post_id:
         job_post = await JobPost.get(job_post_id)
         if job_post:
             job_role = job_post.title or job_role
             job_description = job_post.description or job_description
             if job_post.required_skills:
+                required_job_skills = list(job_post.required_skills)
                 candidate_skills = list(dict.fromkeys([*candidate_skills, *job_post.required_skills]))
 
     candidate_name = request.candidate_name or current_user.full_name or current_user.username
@@ -70,7 +72,13 @@ async def start_live_interview(
         job_role=job_role,
         job_description=job_description,
         candidate_skills=candidate_skills,
+        required_job_skills=required_job_skills,
         total_questions=request.num_questions,
+        candidate_projects=profile.projects or [],
+        candidate_job_titles=profile.job_titles or [],
+        candidate_certifications=profile.certifications or [],
+        candidate_companies=profile.companies or [],
+        experience_years=profile.experience_years,
         job_post_id=str(job_post_id) if job_post_id else None,
     )
 

@@ -20,6 +20,10 @@ class LiveInterviewQuestion(BaseModel):
     question_index: int
     question_text: str
     question_type: str
+    stage: Optional[str] = None
+    difficulty: Optional[str] = None
+    # Passed through for coding evaluation (starter code, public tests); omitted for verbal-only questions.
+    coding_challenge: Optional[Dict[str, Any]] = None
 
 
 class LiveInterviewStartResponse(BaseModel):

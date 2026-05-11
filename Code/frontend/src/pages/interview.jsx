@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import authService from '@/services/authService';
 import interviewService from '@/services/interviewService';
+
+/** Sent to the API so the session advances; backend uses transcript_text when non-empty. */
+const SKIP_QUESTION_TRANSCRIPT =
+  '[Skipped] Candidate chose to skip this question. No verbal answer was provided.';
 
 export default function InterviewPage() {
   const router = useRouter();
@@ -18,6 +22,10 @@ export default function InterviewPage() {
   const [isSpeakingQuestion, setIsSpeakingQuestion] = useState(false);
   const [conversationState, setConversationState] = useState('idle'); // idle, asking, listening, processing
   const [faceRegistered, setFaceRegistered] = useState(false);
+  const [jobRoleLabel, setJobRoleLabel] = useState('Interview');
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const [micMuted, setMicMuted] = useState(false);
+  const [cameraOff, setCameraOff] = useState(false);
 
   const videoRef = useRef(null);
   const mediaStreamRef = useRef(null);
@@ -27,17 +35,136 @@ export default function InterviewPage() {
   const autoStartedRef = useRef(false);
   const silenceTimerRef = useRef(null);
   const recordingStartTimeRef = useRef(null);
+  const conversationStateRef = useRef(conversationState);
+  const loadingRef = useRef(loading);
+  const micMutedRef = useRef(micMuted);
 
   const currentQuestion = useMemo(
     () => questions[currentIdx] || null,
     [questions, currentIdx]
   );
 
+  /** Phase order: introduction → technical → behavioral → CV-based → coding */
+  const stageOrder = useMemo(
+    () => ['introduction', 'technical', 'behavioral', 'cv_based', 'coding'],
+    []
+  );
+
+  const resolveStageFromQuestion = useCallback(
+    (question, idx) => {
+      const explicit = (question?.stage || '').toLowerCase();
+      if (stageOrder.includes(explicit)) return explicit;
+
+      const type = (question?.question_type || '').toLowerCase();
+      if (stageOrder.includes(type)) return type;
+
+      if (type === 'follow_up' && idx > 0) {
+        for (let i = idx - 1; i >= 0; i -= 1) {
+          const prev = questions[i];
+          const prevStage = (prev?.stage || prev?.question_type || '').toLowerCase();
+          if (stageOrder.includes(prevStage)) return prevStage;
+        }
+      }
+      return 'introduction';
+    },
+    [questions, stageOrder]
+  );
+
+  const stageLimits = useMemo(() => {
+    const counts = {
+      introduction: 0,
+      technical: 0,
+      behavioral: 0,
+      cv_based: 0,
+      coding: 0,
+    };
+    questions.forEach((q, i) => {
+      if ((q?.question_type || '').toLowerCase() === 'follow_up') return;
+      const s = resolveStageFromQuestion(q, i);
+      if (counts[s] !== undefined) counts[s] += 1;
+    });
+    return counts;
+  }, [questions, resolveStageFromQuestion]);
+
+  const currentStageKey = useMemo(() => {
+    return resolveStageFromQuestion(currentQuestion, currentIdx);
+  }, [currentQuestion, currentIdx, resolveStageFromQuestion]);
+
+  const currentStageLabel = useMemo(() => {
+    const stage = currentStageKey;
+    if (stage === 'introduction') return 'Introduction';
+    if (stage === 'technical') return 'Technical';
+    if (stage === 'behavioral') return 'Behavioral';
+    if (stage === 'cv_based') return 'CV-Based';
+    if (stage === 'coding') return 'Coding evaluation';
+    return 'Interview';
+  }, [currentStageKey]);
+
+  const currentStageIndex = useMemo(
+    () => Math.max(1, stageOrder.indexOf(currentStageKey) + 1),
+    [currentStageKey, stageOrder]
+  );
+
+  const stageQuestionTotal = stageLimits[currentStageKey] || 1;
+
+  const stageQuestionNumber = useMemo(() => {
+    const n = questions.slice(0, currentIdx + 1).filter((q, i) => {
+      const qType = (q?.question_type || '').toLowerCase();
+      if (qType === 'follow_up') return false;
+      return resolveStageFromQuestion(q, i) === currentStageKey;
+    }).length;
+    return Math.max(1, n);
+  }, [questions, currentIdx, currentStageKey, resolveStageFromQuestion]);
+
+  const overallBaseTotal = useMemo(
+    () =>
+      questions.filter(
+        (q) => (q?.question_type || '').toLowerCase() !== 'follow_up'
+      ).length,
+    [questions]
+  );
+
+  const overallBaseNumber = useMemo(() => {
+    const n = questions
+      .slice(0, currentIdx + 1)
+      .filter((q) => (q?.question_type || '').toLowerCase() !== 'follow_up').length;
+    return Math.max(1, n);
+  }, [questions, currentIdx]);
+
   useEffect(() => {
     if (!authService.isAuthenticated()) {
       router.push('/login');
     }
   }, [router]);
+
+  useEffect(() => {
+    if (!authService.isAuthenticated()) return;
+    authService
+      .getProfile()
+      .then((p) => {
+        if (p?.job_role) setJobRoleLabel(p.job_role);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!sessionId || !currentQuestion) return;
+    setElapsedSec(0);
+    const id = setInterval(() => setElapsedSec((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [sessionId, currentIdx, currentQuestion?.question_id]);
+
+  useEffect(() => {
+    conversationStateRef.current = conversationState;
+  }, [conversationState]);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    micMutedRef.current = micMuted;
+  }, [micMuted]);
 
   useEffect(() => {
     return () => {
@@ -75,13 +202,15 @@ export default function InterviewPage() {
     ttsAudioRef.current = audio;
     audio.onended = () => {
       setIsSpeakingQuestion(false);
+      if (conversationStateRef.current === 'processing') return;
       setConversationState('listening');
-      startListening();
+      if (!micMutedRef.current) startListening();
     };
     audio.onerror = () => {
       setIsSpeakingQuestion(false);
+      if (conversationStateRef.current === 'processing') return;
       setConversationState('listening');
-      startListening();
+      if (!micMutedRef.current) startListening();
     };
     audio.play();
   };
@@ -109,19 +238,23 @@ export default function InterviewPage() {
       utterance.lang = 'en-US';
       utterance.onend = () => {
         setIsSpeakingQuestion(false);
+        if (conversationStateRef.current === 'processing') return;
         setConversationState('listening');
-        startListening();
+        if (!micMutedRef.current) startListening();
       };
       utterance.onerror = () => {
         setIsSpeakingQuestion(false);
+        if (conversationStateRef.current === 'processing') return;
         setConversationState('listening');
-        startListening();
+        if (!micMutedRef.current) startListening();
       };
       window.speechSynthesis.speak(utterance);
     } else {
       setIsSpeakingQuestion(false);
-      setConversationState('listening');
-      startListening();
+      if (conversationStateRef.current !== 'processing') {
+        setConversationState('listening');
+        if (!micMutedRef.current) startListening();
+      }
     }
   };
 
@@ -183,6 +316,10 @@ export default function InterviewPage() {
   };
 
   const startListening = () => {
+    if (micMutedRef.current) {
+      setIsListening(false);
+      return;
+    }
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       setError('Speech recognition not supported in this browser. Please use Chrome.');
       return;
@@ -234,8 +371,15 @@ export default function InterviewPage() {
     };
 
     recognition.onend = () => {
-      // Only auto-restart if still in listening state and not loading
-      if (conversationState === 'listening' && !loading && recognitionRef.current) {
+      if (micMutedRef.current) {
+        setIsListening(false);
+        return;
+      }
+      if (
+        conversationStateRef.current === 'listening' &&
+        !loadingRef.current &&
+        recognitionRef.current
+      ) {
         try {
           recognition.start();
         } catch (err) {
@@ -381,6 +525,7 @@ export default function InterviewPage() {
     if (!sessionId || !currentQuestion || !transcript) return;
 
     stopListening();
+    conversationStateRef.current = 'processing';
     setConversationState('processing');
     setLoading(true);
     setError('');
@@ -470,114 +615,538 @@ export default function InterviewPage() {
     }
   };
 
+  const handleSkipQuestion = async () => {
+    if (loading || !sessionId || !currentQuestion) return;
+    if (
+      !window.confirm(
+        'Skip this question? A short placeholder will be sent and you will move to the next question.'
+      )
+    ) {
+      return;
+    }
+    setError('');
+    stopQuestionSpeech();
+    stopListening();
+    conversationStateRef.current = 'processing';
+    setConversationState('processing');
+    setLiveTranscript('');
+    setFinalTranscript('');
+    await submitAnswer(SKIP_QUESTION_TRANSCRIPT);
+  };
+
   const displayTranscript = finalTranscript + (liveTranscript ? ' ' + liveTranscript : '');
 
-  return (
-    <div className="min-h-screen bg-white">
-      <main className="container mx-auto px-6 py-10 space-y-6">
-        <div className="border border-deep-night/10 p-5 bg-white">
-          <h1 className="text-xl font-semibold text-deep-night">Live Interview Session</h1>
-          <p className="text-xs text-text-muted mt-1">
-            Real-time AI interview with continuous conversation flow
-          </p>
-        </div>
+  const formatMmSs = (total) => {
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
 
+  const scoreToPercent = (v) => {
+    if (v == null || Number.isNaN(Number(v))) return null;
+    const n = Number(v);
+    if (n <= 10) return Math.round(n * 10);
+    return Math.round(Math.min(100, n));
+  };
+
+  const paceFromScore = (overall) => {
+    if (overall == null) return '—';
+    const n = Number(overall);
+    if (n >= 7.5) return 'Good';
+    if (n >= 5) return 'Steady';
+    return 'Build depth';
+  };
+
+  const liveMetrics = useMemo(() => {
+    if (!lastScore?.evaluation) {
+      return { pace: '—', clarity: '—', confidence: '—' };
+    }
+    const ev = lastScore.evaluation;
+    const clarity = scoreToPercent(ev.communication_score);
+    const confidence = scoreToPercent(ev.depth_score);
+    return {
+      pace: paceFromScore(lastScore.per_answer_score),
+      clarity: clarity != null ? `${clarity}%` : '—',
+      confidence: confidence != null ? `${confidence}%` : '—',
+    };
+  }, [lastScore]);
+
+  const difficultyBadge = useMemo(() => {
+    const d = (currentQuestion?.difficulty || 'medium').toLowerCase();
+    if (d === 'easy') return 'Easy';
+    if (d === 'hard') return 'Hard';
+    return 'Medium';
+  }, [currentQuestion]);
+
+  const toggleMic = useCallback(() => {
+    const stream = mediaStreamRef.current;
+    if (!stream) return;
+    const nextMuted = !micMuted;
+    stream.getAudioTracks().forEach((t) => {
+      t.enabled = !nextMuted;
+    });
+    setMicMuted(nextMuted);
+    micMutedRef.current = nextMuted;
+    if (nextMuted) {
+      stopListening();
+    } else if (conversationStateRef.current === 'listening' && !loadingRef.current) {
+      setTimeout(() => {
+        if (!micMutedRef.current && conversationStateRef.current === 'listening') {
+          startListening();
+        }
+      }, 0);
+    }
+  }, [micMuted]);
+
+  const toggleCamera = useCallback(() => {
+    const stream = mediaStreamRef.current;
+    if (!stream) return;
+    const nextOff = !cameraOff;
+    stream.getVideoTracks().forEach((t) => {
+      t.enabled = !nextOff;
+    });
+    setCameraOff(nextOff);
+  }, [cameraOff]);
+
+  const clearTranscript = () => {
+    setLiveTranscript('');
+    setFinalTranscript('');
+  };
+
+  const copyTranscript = async () => {
+    const t = displayTranscript.trim();
+    if (!t) return;
+    try {
+      await navigator.clipboard.writeText(t);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handleEndInterview = async () => {
+    if (!window.confirm('End this interview session?')) return;
+    stopListening();
+    stopQuestionSpeech();
+    cleanupMedia();
+    try {
+      if (sessionId) await interviewService.endSession(sessionId);
+    } catch {
+      /* ignore */
+    }
+    router.push('/dashboard');
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0B1120] text-slate-100">
+      {/* Top bar */}
+      <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0B1120]/95 backdrop-blur-md">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+            <span className="text-sm font-semibold tracking-tight text-white">HireSight</span>
+            <span className="text-slate-500">/</span>
+            <span className="text-sm text-slate-300">Live Interview</span>
+            {sessionId && (
+              <>
+                <span className="hidden h-4 w-px bg-white/15 sm:block" aria-hidden />
+                <span className="inline-flex max-w-[200px] truncate rounded-full border border-indigo-400/40 bg-indigo-500/15 px-3 py-1 text-xs font-medium text-indigo-200 sm:max-w-xs">
+                  {jobRoleLabel}
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+                  Live Session
+                </span>
+              </>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/5 hover:text-white"
+              aria-label="Settings"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.075-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/5 hover:text-white"
+              aria-label="Help"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+              </svg>
+            </button>
+            {sessionId && !report && (
+              <button
+                type="button"
+                onClick={handleEndInterview}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-red-400 transition hover:bg-red-500/10 hover:text-red-300"
+                aria-label="End session"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 sm:px-6">
         {!sessionId && (
-          <button
-            onClick={() => startInterview(router.query.jobPostId)}
-            disabled={loading}
-            className="neon-btn px-5 py-2 text-sm font-semibold"
-          >
-            {loading ? 'Starting...' : 'Start Interview'}
-          </button>
+          <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-8 text-center">
+            <p className="text-sm text-slate-400">Preparing your session…</p>
+            <button
+              onClick={() => startInterview(router.query.jobPostId)}
+              disabled={loading}
+              className="mt-4 rounded-xl bg-indigo-500 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-50"
+            >
+              {loading ? 'Starting…' : 'Start Interview'}
+            </button>
+          </div>
         )}
 
         {error && (
-          <div className="border border-red-300 bg-red-50 text-red-700 text-sm p-3">
+          <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             {error}
           </div>
         )}
 
         {sessionId && currentQuestion && !report && (
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Left: Video and Status */}
-            <div className="space-y-4">
-              <div className="border border-deep-night/10 p-4 bg-white">
-                <p className="text-xs font-medium text-deep-night mb-2">Live Camera</p>
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  className="w-full h-64 bg-black/80 object-cover border border-deep-night/20"
-                />
-                
-                {/* Status Indicator */}
-                <div className="mt-3 flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${
-                      conversationState === 'asking' ? 'bg-blue-500 animate-pulse' :
-                      conversationState === 'listening' ? 'bg-green-500 animate-pulse' :
-                      conversationState === 'processing' ? 'bg-yellow-500 animate-pulse' :
-                      'bg-gray-300'
-                    }`} />
-                    <span className="text-xs font-medium text-deep-night">
-                      {conversationState === 'asking' && 'AI is asking...'}
-                      {conversationState === 'listening' && 'Listening to your answer...'}
-                      {conversationState === 'processing' && 'Processing your response...'}
-                      {conversationState === 'idle' && 'Ready'}
-                    </span>
+          <div className="grid gap-6 lg:grid-cols-[1fr_400px] xl:grid-cols-[1fr_440px]">
+            {/* Left: video + question */}
+            <div className="space-y-5">
+              <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-slate-950/80 shadow-xl">
+                <div className="aspect-video w-full min-h-[280px] sm:min-h-[320px]">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className={`h-full w-full object-cover ${cameraOff ? 'opacity-0' : 'opacity-100'}`}
+                  />
+                  {cameraOff && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 text-slate-500">
+                      <svg className="mb-3 h-14 w-14 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+                      </svg>
+                      <p className="text-sm">Camera off</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="absolute left-4 top-4 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-black/50 px-2.5 py-1 text-xs font-medium text-slate-200 backdrop-blur-sm">
+                    <svg className="h-3.5 w-3.5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" />
+                    </svg>
+                    {cameraOff ? 'Camera off' : 'Camera active'}
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium backdrop-blur-sm ${
+                      micMuted
+                        ? 'border-amber-400/40 bg-amber-500/15 text-amber-200'
+                        : 'border-white/10 bg-black/50 text-slate-200'
+                    }`}
+                  >
+                    <svg className={`h-3.5 w-3.5 ${micMuted ? 'text-amber-400' : 'text-sky-400'}`} fill="currentColor" viewBox="0 0 20 20">
+                      <path
+                        fillRule="evenodd"
+                        d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    {micMuted ? 'Mic off' : 'Mic on'}
+                  </span>
+                  <span className="rounded-lg border border-white/10 bg-black/50 px-2.5 py-1 text-xs font-medium text-slate-200 backdrop-blur-sm">
+                    Q{overallBaseNumber}/{overallBaseTotal || 1}
+                  </span>
+                </div>
+
+                <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
+                  <p className="pointer-events-none text-[10px] font-medium text-slate-400">
+                    {micMuted ? 'Mic muted — live captions paused' : 'Mic on — tap to mute'}
+                  </p>
+                  <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={toggleMic}
+                    title={micMuted ? 'Turn microphone on' : 'Turn microphone off'}
+                    className={`flex h-12 w-12 items-center justify-center rounded-full border shadow-lg transition ${
+                      micMuted
+                        ? 'border-amber-400/50 bg-amber-500/20 text-amber-100'
+                        : 'border-white/20 bg-slate-900/90 text-white hover:bg-slate-800'
+                    }`}
+                    aria-label={micMuted ? 'Turn microphone on' : 'Turn microphone off'}
+                  >
+                    {micMuted ? (
+                      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l16 16" />
+                      </svg>
+                    ) : (
+                      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleCamera}
+                    className={`flex h-12 w-12 items-center justify-center rounded-full border shadow-lg transition ${
+                      cameraOff
+                        ? 'border-amber-400/50 bg-amber-500/20 text-amber-200'
+                        : 'border-white/20 bg-slate-900/90 text-white hover:bg-slate-800'
+                    }`}
+                    aria-label={cameraOff ? 'Turn camera on' : 'Turn camera off'}
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72m0 0l-3.08 3.087m0 0l-3-3m3 3l3-3m-6 3h-7.5a2.25 2.25 0 01-2.25-2.25v-9a2.25 2.25 0 012.25-2.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleEndInterview}
+                    className="flex h-12 w-12 items-center justify-center rounded-full border border-red-400/40 bg-red-500/20 text-red-200 shadow-lg transition hover:bg-red-500/30"
+                    aria-label="End interview"
+                  >
+                    <span className="h-3 w-3 rounded-sm bg-red-400" />
+                  </button>
                   </div>
                 </div>
               </div>
 
-              {/* Current Question */}
-              <div className="border border-deep-night/10 p-4 bg-white">
-                <p className="text-[11px] uppercase tracking-wider text-text-muted mb-2">
-                  Question {currentIdx + 1} of {questions.length} · {currentQuestion.question_type}
+              {/* AI question card */}
+              <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-5 sm:p-6">
+                <div className="mb-4 flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <span
+                      className={`flex gap-0.5 ${conversationState === 'asking' || isSpeakingQuestion ? 'opacity-100' : 'opacity-40'}`}
+                      aria-hidden
+                    >
+                      {[0, 1, 2, 3, 4].map((i) => (
+                        <span
+                          key={i}
+                          className="w-0.5 rounded-full bg-indigo-400"
+                          style={{
+                            height: `${10 + (i % 3) * 6}px`,
+                            animation:
+                              conversationState === 'asking' || isSpeakingQuestion
+                                ? 'pulse 1s ease-in-out infinite'
+                                : 'none',
+                            animationDelay: `${i * 0.08}s`,
+                          }}
+                        />
+                      ))}
+                    </span>
+                    <span className="text-sm font-medium">
+                      {conversationState === 'asking' || isSpeakingQuestion
+                        ? 'AI interviewer is asking…'
+                        : conversationState === 'listening'
+                          ? 'Listening for your answer…'
+                          : conversationState === 'processing'
+                            ? 'Processing your response…'
+                            : 'Ready'}
+                    </span>
+                    <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs text-slate-400">
+                      {formatMmSs(elapsedSec)}
+                    </span>
+                  </div>
+                </div>
+                <p className="mb-4 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                  Phase {currentStageIndex}/{stageOrder.length} — {currentStageLabel.toUpperCase()}
                 </p>
-                <p className="text-base text-deep-night font-medium">
+                <div className="mb-4 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-medium text-indigo-200">
+                    {currentStageLabel}
+                  </span>
+                  <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-200">
+                    {difficultyBadge}
+                  </span>
+                </div>
+                <p className="text-lg font-medium leading-relaxed text-white sm:text-xl">
                   {currentQuestion.question_text}
                 </p>
+
+                {currentQuestion.coding_challenge && (
+                  <div className="mt-6 space-y-4 rounded-xl border border-emerald-500/25 bg-emerald-950/20 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
+                      Coding problem — online runner coming soon
+                    </p>
+                    <h3 className="text-base font-semibold text-white">
+                      {currentQuestion.coding_challenge.title}
+                    </h3>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-300">
+                      {currentQuestion.coding_challenge.problem_statement}
+                    </p>
+                    {currentQuestion.coding_challenge.constraints ? (
+                      <p className="text-xs text-slate-400">
+                        <span className="font-medium text-slate-300">Constraints: </span>
+                        {currentQuestion.coding_challenge.constraints}
+                      </p>
+                    ) : null}
+                    {currentQuestion.coding_challenge.starter_code ? (
+                      <div>
+                        <p className="mb-1 text-[11px] font-medium uppercase text-slate-500">
+                          Starter code (
+                          {(currentQuestion.coding_challenge.recommended_languages || ['python']).join(', ')})
+                        </p>
+                        <pre className="max-h-64 overflow-auto rounded-lg border border-white/10 bg-[#0B1120] p-3 text-left text-xs text-slate-200">
+                          <code>{currentQuestion.coding_challenge.starter_code}</code>
+                        </pre>
+                      </div>
+                    ) : null}
+                    {Array.isArray(currentQuestion.coding_challenge.public_test_cases) &&
+                    currentQuestion.coding_challenge.public_test_cases.length > 0 ? (
+                      <div>
+                        <p className="mb-2 text-[11px] font-medium uppercase text-slate-500">
+                          Public test cases (same contract as future judge)
+                        </p>
+                        <ul className="space-y-2">
+                          {currentQuestion.coding_challenge.public_test_cases.map((tc, i) => (
+                            <li
+                              key={i}
+                              className="rounded-lg border border-white/10 bg-slate-950/50 p-3 text-xs text-slate-300"
+                            >
+                              <p className="mb-1 font-medium text-slate-200">
+                                {tc.description || `Case ${i + 1}`}
+                              </p>
+                              <p className="font-mono text-[11px] text-slate-400">
+                                <span className="text-slate-500">stdin:</span>{' '}
+                                <span className="whitespace-pre-wrap text-slate-300">{tc.stdin}</span>
+                              </p>
+                              <p className="mt-1 font-mono text-[11px] text-slate-400">
+                                <span className="text-slate-500">expected stdout:</span>{' '}
+                                <span className="whitespace-pre-wrap text-emerald-200/90">
+                                  {tc.expected_stdout}
+                                </span>
+                              </p>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Right: Live Transcript */}
-            <div className="space-y-4">
-              <div className="border border-deep-night/10 p-4 bg-white h-full">
-                <p className="text-xs font-medium text-deep-night mb-3">
-                  Your Answer (Live Transcript)
-                </p>
-                <div className="min-h-[300px] max-h-[400px] overflow-y-auto p-3 bg-surface-subtle border border-deep-night/10">
+            {/* Right: transcript + metrics */}
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-1 flex-col rounded-2xl border border-white/10 bg-slate-900/50 p-5">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                    <svg className="h-4 w-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m12 0V9a3 3 0 00-3-3h-.75a3 3 0 00-3 3v.75m12 0h.008v.008H18V9z" />
+                    </svg>
+                    Your answer (live transcript)
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={clearTranscript}
+                      className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/5"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={copyTranscript}
+                      disabled={!displayTranscript.trim()}
+                      className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/5 disabled:opacity-40"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+                <div className="min-h-[280px] flex-1 overflow-y-auto rounded-xl border border-white/10 bg-[#0B1120]/80 p-4">
                   {displayTranscript ? (
-                    <p className="text-sm text-deep-night whitespace-pre-wrap">
+                    <p className="text-sm leading-relaxed text-slate-200 whitespace-pre-wrap">
                       {displayTranscript}
                       {liveTranscript && (
-                        <span className="text-text-muted italic"> (speaking...)</span>
+                        <span className="text-slate-500 italic"> (speaking…)</span>
                       )}
                     </p>
                   ) : (
-                    <p className="text-sm text-text-muted italic">
-                      {conversationState === 'listening' 
-                        ? 'Start speaking your answer...' 
-                        : 'Waiting for question...'}
-                    </p>
+                    <div className="flex h-full min-h-[200px] flex-col items-center justify-center text-center text-slate-500">
+                      <svg className="mb-3 h-10 w-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m12 0V9a3 3 0 00-3-3h-.75a3 3 0 00-3 3v.75m12 0h.008v.008H18V9z" />
+                      </svg>
+                      <p className="text-sm">Start speaking — your answer will appear here in real time</p>
+                    </div>
                   )}
                 </div>
-                
-                {conversationState === 'listening' && displayTranscript && (
+
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  <div className="rounded-xl border border-white/10 bg-[#0B1120]/60 px-3 py-3 text-center">
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Pace</p>
+                    <p
+                      className={`mt-1 text-sm font-semibold ${
+                        liveMetrics.pace === '—' ? 'text-slate-500' : 'text-indigo-300'
+                      }`}
+                    >
+                      {liveMetrics.pace}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-[#0B1120]/60 px-3 py-3 text-center">
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Clarity</p>
+                    <p
+                      className={`mt-1 text-sm font-semibold ${
+                        liveMetrics.clarity === '—' ? 'text-slate-500' : 'text-emerald-300'
+                      }`}
+                    >
+                      {liveMetrics.clarity}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-[#0B1120]/60 px-3 py-3 text-center">
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Confidence</p>
+                    <p
+                      className={`mt-1 text-sm font-semibold ${
+                        liveMetrics.confidence === '—' ? 'text-slate-500' : 'text-amber-200'
+                      }`}
+                    >
+                      {liveMetrics.confidence}
+                    </p>
+                  </div>
+                </div>
+
+                <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-500">
+                  <svg className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                  </svg>
+                  AI analyzes tone &amp; content live
+                </p>
+
+                <div className="mt-4 flex gap-3">
                   <button
-                    onClick={handleSubmitAnswer}
-                    disabled={loading || !displayTranscript.trim()}
-                    className="neon-btn px-4 py-2 text-sm font-semibold mt-3 w-full"
+                    type="button"
+                    onClick={handleSkipQuestion}
+                    disabled={loading || conversationState === 'processing'}
+                    className="flex-1 rounded-xl border border-white/15 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {loading ? 'Submitting...' : 'Submit Answer'}
+                    Skip question
                   </button>
-                )}
-                
+                  <button
+                    type="button"
+                    onClick={handleSubmitAnswer}
+                    disabled={
+                      loading ||
+                      conversationState !== 'listening' ||
+                      !displayTranscript.trim()
+                    }
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Next question
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                    </svg>
+                  </button>
+                </div>
                 {conversationState === 'listening' && (
-                  <p className="text-xs text-text-muted mt-2">
-                    💡 Tip: Speak your answer, then click Submit when ready
+                  <p className="mt-2 text-center text-[11px] text-slate-500">
+                    Speak your answer, then tap <span className="text-slate-400">Next question</span>
                   </p>
                 )}
               </div>
@@ -585,64 +1154,56 @@ export default function InterviewPage() {
           </div>
         )}
 
-        {lastScore && !report && (
-          <div className="border border-deep-night/10 p-4 bg-surface-subtle text-sm space-y-2">
-            <h3 className="font-semibold text-deep-night">Previous Answer Evaluation</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div>
-                <p className="text-xs text-text-muted">Overall Score</p>
-                <p className="text-lg font-bold text-neon-violet">{lastScore.per_answer_score}</p>
+        {lastScore && !report && sessionId && currentQuestion && (
+          <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-5 text-sm">
+            <h3 className="mb-3 font-semibold text-white">Previous answer evaluation</h3>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className="rounded-xl border border-white/10 bg-[#0B1120]/60 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Overall</p>
+                <p className="text-lg font-bold text-indigo-300">{lastScore.per_answer_score}</p>
               </div>
-              <div>
-                <p className="text-xs text-text-muted">Relevance</p>
-                <p className="text-lg font-bold">{lastScore.evaluation?.relevance_score}</p>
+              <div className="rounded-xl border border-white/10 bg-[#0B1120]/60 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Relevance</p>
+                <p className="text-lg font-bold text-white">{lastScore.evaluation?.relevance_score}</p>
               </div>
-              <div>
-                <p className="text-xs text-text-muted">Depth</p>
-                <p className="text-lg font-bold">{lastScore.evaluation?.depth_score}</p>
+              <div className="rounded-xl border border-white/10 bg-[#0B1120]/60 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Depth</p>
+                <p className="text-lg font-bold text-white">{lastScore.evaluation?.depth_score}</p>
               </div>
-              <div>
-                <p className="text-xs text-text-muted">Communication</p>
-                <p className="text-lg font-bold">{lastScore.evaluation?.communication_score}</p>
+              <div className="rounded-xl border border-white/10 bg-[#0B1120]/60 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Communication</p>
+                <p className="text-lg font-bold text-white">{lastScore.evaluation?.communication_score}</p>
               </div>
             </div>
           </div>
         )}
 
         {report && (
-          <div className="border border-deep-night/10 p-5 bg-white space-y-4">
-            <h2 className="text-xl font-semibold text-deep-night">Interview Complete! 🎉</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div className="p-3 bg-surface-subtle border border-deep-night/10">
-                <p className="text-xs text-text-muted">Overall Score</p>
-                <p className="text-2xl font-bold text-neon-violet">{report.aggregate_scores?.overall_score}</p>
-              </div>
-              <div className="p-3 bg-surface-subtle border border-deep-night/10">
-                <p className="text-xs text-text-muted">Technical</p>
-                <p className="text-2xl font-bold">{report.aggregate_scores?.technical_score}</p>
-              </div>
-              <div className="p-3 bg-surface-subtle border border-deep-night/10">
-                <p className="text-xs text-text-muted">Behavioral</p>
-                <p className="text-2xl font-bold">{report.aggregate_scores?.behavioral_score}</p>
-              </div>
-              <div className="p-3 bg-surface-subtle border border-deep-night/10">
-                <p className="text-xs text-text-muted">Communication</p>
-                <p className="text-2xl font-bold">{report.aggregate_scores?.communication_score}</p>
-              </div>
-              <div className="p-3 bg-surface-subtle border border-deep-night/10">
-                <p className="text-xs text-text-muted">Video Integrity</p>
-                <p className="text-2xl font-bold">{report.aggregate_scores?.video_integrity_score}</p>
-              </div>
+          <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-6 space-y-6">
+            <h2 className="text-xl font-semibold text-white">Interview complete</h2>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+              {[
+                ['Overall', report.aggregate_scores?.overall_score],
+                ['Technical', report.aggregate_scores?.technical_score],
+                ['Behavioral', report.aggregate_scores?.behavioral_score],
+                ['Communication', report.aggregate_scores?.communication_score],
+                ['Video integrity', report.aggregate_scores?.video_integrity_score],
+              ].map(([label, val]) => (
+                <div key={label} className="rounded-xl border border-white/10 bg-[#0B1120]/60 p-4">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500">{label}</p>
+                  <p className="text-2xl font-bold text-indigo-300">{val ?? '—'}</p>
+                </div>
+              ))}
             </div>
-            <div className="p-4 bg-neon-violet/5 border border-neon-violet/20">
-              <p className="text-xs text-text-muted mb-1">Recommendation</p>
-              <p className="text-base font-semibold text-deep-night">{report.report?.recommendation}</p>
+            <div className="rounded-xl border border-indigo-400/20 bg-indigo-500/10 p-4">
+              <p className="text-xs text-slate-400 mb-1">Recommendation</p>
+              <p className="text-base font-medium text-white">{report.report?.recommendation}</p>
             </div>
             <button
               onClick={() => router.push('/dashboard')}
-              className="neon-btn px-5 py-2 text-sm font-semibold"
+              className="rounded-xl bg-indigo-500 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-600"
             >
-              Back to Dashboard
+              Back to dashboard
             </button>
           </div>
         )}

@@ -5,7 +5,7 @@ Uses Beanie ODM (Object Document Mapper) for MongoDB.
 """
 from beanie import Document, Indexed, Link
 from pydantic import Field, EmailStr
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
@@ -59,6 +59,11 @@ class Profile(Document):
     projects: Optional[List[dict]] = Field(default_factory=list)
     certifications: Optional[List[str]] = Field(default_factory=list)
     companies: Optional[List[str]] = Field(default_factory=list)
+
+    # Full structured extraction snapshot (skills, projects, experience dict, etc.)
+    resume_structured: Optional[Dict[str, Any]] = None
+    # Path to last written cv_extraction_*.json artifact for this user
+    resume_extraction_json_path: Optional[str] = None
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

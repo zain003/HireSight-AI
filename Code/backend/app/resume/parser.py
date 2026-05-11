@@ -7,6 +7,7 @@ import pdfplumber
 from docx import Document
 from typing import Optional
 import os
+import re
 
 from app.core.exceptions import FileProcessingError
 
@@ -65,14 +66,23 @@ class ResumeParser:
         """
         text = ""
 
-        # Step 1: Try native text extraction with pdfplumber
+        # Step 1: Native text — prefer longer of default vs layout mode (helps columns)
         with pdfplumber.open(file_path) as pdf:
             for page in pdf.pages:
-                page_text = page.extract_text()
+                a = page.extract_text() or ""
+                try:
+                    b = page.extract_text(layout=True) or ""
+                except Exception:
+                    b = ""
+                page_text = b if len(b) > len(a) else a
                 if page_text:
                     text += page_text + "\n"
 
         text = self._clean_text(text)
+
+        # Step 1b: If still thin text, rebuild from word boxes (some templates hide text)
+        if len(text) < self.MIN_TEXT_LENGTH:
+            text = self._pdf_words_fallback(file_path) or text
 
         # Step 2: If insufficient text, try OCR fallback (scanned PDF)
         if len(text) < self.MIN_TEXT_LENGTH:
@@ -115,15 +125,74 @@ class ResumeParser:
             print(f"OCR PDF fallback failed: {e}")
             return ""
 
+    def _pdf_words_fallback(self, file_path: str) -> str:
+        """Reconstruct text from word bounding boxes when extract_text under-performs."""
+        try:
+            lines_out = []
+            with pdfplumber.open(file_path) as pdf:
+                for page in pdf.pages:
+                    words = page.extract_words(use_text_flow=True)
+                    if not words:
+                        continue
+                    words.sort(key=lambda w: (round(float(w.get("top", 0)) / 3) * 3, float(w.get("x0", 0))))
+                    line_parts = []
+                    last_top = None
+                    for w in words:
+                        t = round(float(w.get("top", 0)) / 4) * 4
+                        txt = (w.get("text") or "").strip()
+                        if not txt:
+                            continue
+                        if last_top is not None and abs(t - last_top) > 6:
+                            if line_parts:
+                                lines_out.append(" ".join(line_parts))
+                            line_parts = []
+                        line_parts.append(txt)
+                        last_top = t
+                    if line_parts:
+                        lines_out.append(" ".join(line_parts))
+            return self._clean_text("\n".join(lines_out))
+        except Exception as e:
+            print(f"PDF words fallback failed: {e}")
+            return ""
+
     def _parse_docx(self, file_path: str) -> str:
         """Extract text from DOCX file."""
         doc = Document(file_path)
-        text = ""
+        lines = []
 
+        # Paragraph text
         for paragraph in doc.paragraphs:
-            text += paragraph.text + "\n"
+            para = (paragraph.text or "").strip()
+            if para:
+                lines.append(para)
 
-        return self._clean_text(text)
+        # Table text (many resumes place skills/experience in tables)
+        for table in doc.tables:
+            for row in table.rows:
+                row_cells = []
+                for cell in row.cells:
+                    cell_text = " ".join(
+                        (p.text or "").strip() for p in cell.paragraphs if (p.text or "").strip()
+                    ).strip()
+                    if cell_text:
+                        row_cells.append(cell_text)
+                if row_cells:
+                    lines.append(" | ".join(row_cells))
+
+        # Headers & footers (some templates put contact/skills here)
+        for sec in doc.sections:
+            try:
+                for part in (sec.header, sec.footer):
+                    if part is None:
+                        continue
+                    for p in part.paragraphs:
+                        t = (p.text or "").strip()
+                        if t:
+                            lines.append(t)
+            except Exception:
+                pass
+
+        return self._clean_text("\n".join(lines))
 
     def _parse_image(self, file_path: str) -> str:
         """
@@ -153,10 +222,19 @@ class ResumeParser:
         """
         Clean extracted text.
 
-        Removes excessive whitespace and OCR artifacts.
+        Keep section structure while removing OCR artifacts.
         """
-        # Remove excessive whitespace
-        text = " ".join(text.split())
+        # Normalize line endings
+        text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+
+        # Keep newlines (important for section extraction), but normalize spacing.
+        cleaned_lines = []
+        for line in text.split("\n"):
+            line = re.sub(r"[ \t]+", " ", line).strip()
+            if line:
+                cleaned_lines.append(line)
+
+        text = "\n".join(cleaned_lines)
 
         return text.strip()
 

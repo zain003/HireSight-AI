@@ -4,7 +4,9 @@ Follows Clean Architecture - Service Layer.
 MongoDB version - no JSON serialization needed!
 """
 import os
-from typing import Dict, List, Tuple
+import json
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 
 from app.resume.parser import get_parser
 from app.ai.extraction import get_extraction_service
@@ -38,14 +40,20 @@ class ResumeService:
         "devops engineer", "cloud engineer", "qa engineer", "sdet",
         "frontend developer", "backend developer", "full stack developer",
         "mobile developer", "game developer", "security engineer",
+        # Common on CS resumes (avoid false negatives in validation)
+        "software architecture", "system design", "microservices", "kubernetes",
+        "full stack", "computer engineering", "information systems",
     }
 
     # Vast non-computing keywords and domains
+    # NOTE: Avoid single ambiguous tokens like "architecture", "building", "construction",
+    # "author" — they match software resumes ("Clean Architecture", "building APIs",
+    # "pipeline construction", "co-author"). Prefer multi-word civil/trades phrases.
     NON_COMPUTING_KEYWORDS = {
         # Medical/Healthcare
         "doctor", "physician", "surgeon", "nurse", "medical", "hospital", "patient", "clinical", "pharmacy", "pharmacist", "mbbs", "md", "healthcare", "diagnosis", "treatment", "medicine", "dentist", "veterinarian", "optometrist", "radiologist", "therapist", "nutritionist", "paramedic", "midwife", "anesthetist",
-        # Civil/Mechanical/Engineering
-        "civil engineer", "mechanical engineer", "construction", "building", "structural", "architecture", "autocad", "revit", "surveying", "concrete", "steel", "hvac", "plumbing", "electrical wiring", "site engineer", "road engineer", "bridge engineer", "manufacturing", "production engineer", "industrial engineer", "mining engineer", "chemical engineer", "materials engineer",
+        # Civil/Mechanical/Engineering (phrases only — not bare "architecture")
+        "civil engineer", "mechanical engineer", "structural engineer", "site engineer", "road engineer", "bridge engineer", "construction laborer", "construction manager", "construction site", "building codes", "hvac", "plumbing", "electrical wiring", "autocad", "revit", "surveying", "concrete pour", "steel fabrication", "manufacturing", "production engineer", "industrial engineer", "mining engineer", "chemical engineer", "materials engineer",
         # Sales/Business/Finance
         "sales representative", "sales executive", "salesman", "salesperson", "retail", "customer service representative", "cashier", "store manager", "insurance agent", "real estate agent", "broker", "accountant", "finance", "financial analyst", "investment banker", "auditor", "tax consultant", "bookkeeper", "loan officer", "bank teller", "credit analyst", "mortgage advisor",
         # Law/Government
@@ -58,8 +66,8 @@ class ResumeService:
         "driver", "truck driver", "pilot", "flight attendant", "shipping clerk", "warehouse manager", "logistics coordinator", "supply chain manager", "delivery person", "courier", "dispatcher",
         # Skilled Trades/Manual Labor
         "mechanic", "plumber", "electrician", "carpenter", "welder", "roofer", "mason", "painter", "gardener", "farmer", "agriculture", "fisherman", "textile worker", "factory worker", "machine operator", "construction laborer",
-        # Arts/Media/Sports
-        "artist", "musician", "actor", "actress", "dancer", "singer", "photographer", "videographer", "graphic designer", "fashion designer", "journalist", "reporter", "editor", "writer", "author", "coach", "athlete", "sports trainer", "referee", "umpire", "sports manager",
+        # Arts/Media/Sports (omit bare "author" — matches "co-author" on tech papers)
+        "artist", "musician", "actor", "actress", "dancer", "singer", "photographer", "videographer", "graphic designer", "fashion designer", "journalist", "reporter", "editor", "writer", "novelist", "coach", "athlete", "sports trainer", "referee", "umpire", "sports manager",
         # Other non-computing
         "beautician", "hair stylist", "makeup artist", "personal trainer", "fitness instructor", "real estate developer", "property manager", "event manager", "event coordinator", "interior designer", "landscaper", "pet groomer", "childcare worker", "babysitter", "nanny", "housekeeper", "janitor", "security guard", "bouncer", "doorman", "parking attendant", "laundry worker", "cleaner", "maintenance worker", "receptionist", "secretary", "admin assistant", "office manager", "office clerk", "data entry operator", "call center agent", "telemarketer", "customer support", "help desk", "community manager", "social worker", "counselor", "psychologist", "therapist", "nutritionist", "dietitian", "speech therapist", "occupational therapist", "physical therapist", "massage therapist", "chiropractor", "acupuncturist", "home health aide", "elder care worker", "funeral director", "mortician", "embalmer", "cemetery manager", "religious leader", "priest", "imam", "rabbi", "pastor", "monk", "nun", "missionary", "volunteer coordinator", "ngo worker", "charity worker", "fundraiser", "grant writer", "donor relations", "philanthropist"
     }
@@ -102,8 +110,17 @@ class ResumeService:
                     if keyword in entry_str:
                         section_matches.append(keyword)
 
-        # If 3+ non-computing keywords OR 2+ section matches, reject
-        if len(non_computing_matches) >= 3 or len(section_matches) >= 2:
+        # Strong tech signal: don't reject on substring noise (e.g. rare ambiguous overlaps).
+        skills_early = extracted_data.get("skills", []) or []
+        computing_hits_early = sum(
+            1 for kw in self.COMPUTING_KEYWORDS if kw in text_lower
+        )
+        strong_computing_signal = computing_hits_early >= 4 and len(skills_early) >= 3
+
+        # If 3+ non-computing keywords OR 2+ section matches, reject (unless clearly tech CV)
+        if not strong_computing_signal and (
+            len(non_computing_matches) >= 3 or len(section_matches) >= 2
+        ):
             return False, (
                 f"❌ This resume appears to be from a non-computing field. "
                 f"Detected: {', '.join((non_computing_matches + section_matches)[:5])}. "
@@ -196,6 +213,39 @@ class ResumeService:
             f"and computing-related job roles."
         )
 
+    def _build_resume_structured_snapshot(
+        self, user_id: str, resume_file_path: str, extracted_data: Dict
+    ) -> Dict:
+        """Serializable snapshot for JSON file + MongoDB `resume_structured`."""
+        exp = extracted_data.get("experience") or {}
+        if not isinstance(exp, dict):
+            exp = {}
+        return {
+            "user_id": user_id,
+            "extracted_at": datetime.utcnow().isoformat() + "Z",
+            "source_resume_file": os.path.basename(resume_file_path),
+            "skills": list(extracted_data.get("skills") or []),
+            "experienced_skills": list(extracted_data.get("experienced_skills") or []),
+            "known_skills": list(extracted_data.get("known_skills") or []),
+            "job_titles": list(extracted_data.get("job_titles") or []),
+            "domain": extracted_data.get("domain"),
+            "experience": dict(exp),
+            "education": list(extracted_data.get("education") or []),
+            "projects": list(extracted_data.get("projects") or []),
+            "certifications": list(extracted_data.get("certifications") or []),
+            "experience_years": exp.get("years"),
+            "companies": list(exp.get("companies") or []),
+        }
+
+    def _write_resume_extraction_json(self, resume_dir: str, user_id: str, snapshot: Dict) -> str:
+        """Write structured extraction to disk; returns absolute path."""
+        os.makedirs(resume_dir, exist_ok=True)
+        fname = f"cv_extraction_{user_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+        out_path = os.path.join(resume_dir, fname)
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(snapshot, f, ensure_ascii=False, indent=2, default=str)
+        return out_path
+
     def parse_resume(self, file_path: str) -> Dict:
         """
         Parse resume file and extract information.
@@ -221,6 +271,7 @@ class ResumeService:
 
         # Extract structured information using AI
         extracted_data = self.extraction_service.extract_all(text)
+        extracted_data["raw_text"] = text
 
         # ✅ VALIDATE: Ensure resume is computing-related
         is_valid, error_message = self._validate_computing_resume(text, extracted_data)
@@ -230,7 +281,63 @@ class ResumeService:
 
         return extracted_data
 
-    async def save_resume_to_profile(self, user_id: str, file_path: str) -> Dict:
+    def parse_resume_with_debug(self, file_path: str) -> Dict:
+        """
+        Parse resume and return enriched debug data so extraction quality
+        can be inspected from API/UI.
+        """
+        text = self.parser.parse_file(file_path)
+        if not text or len(text) < 50:
+            raise FileProcessingError(
+                "❌ Could not extract sufficient text from resume. "
+                "Please ensure your resume is a valid PDF, DOCX, or image file with readable text."
+            )
+
+        extracted_data = self.extraction_service.extract_all(text, include_debug=True)
+
+        is_valid, error_message = self._validate_computing_resume(text, extracted_data)
+        if not is_valid:
+            raise FileProcessingError(error_message)
+
+        debug_payload = {
+            "file_path": file_path,
+            "parsed_at": datetime.utcnow().isoformat() + "Z",
+            "raw_text_length": len(text),
+            "raw_text": text,
+            "structured": {
+                "skills": extracted_data.get("skills", []),
+                "experienced_skills": extracted_data.get("experienced_skills", []),
+                "known_skills": extracted_data.get("known_skills", []),
+                "job_titles": extracted_data.get("job_titles", []),
+                "experience": extracted_data.get("experience", {}),
+                "education": extracted_data.get("education", []),
+                "projects": extracted_data.get("projects", []),
+                "certifications": extracted_data.get("certifications", []),
+                "domain": extracted_data.get("domain", "general"),
+            },
+            "debug": extracted_data.get("debug", {}),
+        }
+
+        # Save debug JSON beside uploaded resume for easy inspection.
+        debug_file_path = os.path.join(
+            os.path.dirname(file_path),
+            f"parsed_resume_debug_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json",
+        )
+        with open(debug_file_path, "w", encoding="utf-8") as f:
+            json.dump(debug_payload, f, ensure_ascii=False, indent=2)
+
+        extracted_data["debug_file_path"] = debug_file_path
+        extracted_data["raw_text"] = text
+        extracted_data["ner_entities"] = extracted_data.get("debug", {}).get("ner_entities", {})
+        return extracted_data
+
+    async def save_resume_to_profile(
+        self,
+        user_id: str,
+        file_path: str,
+        include_debug: bool = False,
+        preferred_job_role: Optional[str] = None,
+    ) -> Dict:
         """
         Parse resume and save extracted information to user profile.
         
@@ -244,7 +351,11 @@ class ResumeService:
             Extracted information
         """
         # Parse resume
-        extracted_data = self.parse_resume(file_path)
+        extracted_data = (
+            self.parse_resume_with_debug(file_path)
+            if include_debug
+            else self.parse_resume(file_path)
+        )
 
         # MongoDB stores lists natively - no JSON serialization needed! 🎉
         skills = extracted_data["skills"]
@@ -258,8 +369,20 @@ class ResumeService:
         domain = extracted_data["domain"]
         experience_years = extracted_data["experience"].get("years")
 
-        # Determine job_role from extracted job titles
-        job_role = extracted_data["job_titles"][0] if extracted_data["job_titles"] else None
+        # CV-derived title (may be wrong vs what the user is applying for)
+        job_role_inferred = (
+            extracted_data["job_titles"][0] if extracted_data["job_titles"] else None
+        )
+
+        resume_dir = os.path.dirname(file_path)
+        structured_snapshot = self._build_resume_structured_snapshot(
+            user_id, file_path, extracted_data
+        )
+        extraction_json_path = self._write_resume_extraction_json(
+            resume_dir, user_id, structured_snapshot
+        )
+        extracted_data["extraction_json_path"] = extraction_json_path
+        extracted_data["resume_structured"] = structured_snapshot
 
         await self.auth_service.update_profile_resume(
             user_id=user_id,
@@ -274,7 +397,10 @@ class ResumeService:
             certifications=certifications,
             companies=companies,
             experience_years=experience_years,
-            job_role=job_role,
+            job_role_inferred=job_role_inferred,
+            job_role_preferred=preferred_job_role,
+            resume_structured=structured_snapshot,
+            resume_extraction_json_path=extraction_json_path,
         )
 
         return extracted_data

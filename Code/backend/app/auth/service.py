@@ -53,18 +53,18 @@ class AuthService:
         
         return db_user
     
-    async def authenticate_user(self, username: str, password: str) -> Optional[User]:
+    async def authenticate_user(self, email: str, password: str) -> Optional[User]:
         """
         Authenticate user credentials.
         
         Args:
-            username: Username
+            email: User email
             password: Plain password
             
         Returns:
             User object if authenticated, None otherwise
         """
-        user = await User.find_one({"username": username})
+        user = await User.find_one({"email": email})
         
         if not user:
             return None
@@ -123,17 +123,28 @@ class AuthService:
         domain: str = None, job_titles: list = None, education: list = None,
         projects: list = None, certifications: list = None,
         companies: list = None, experience_years: int = None,
-        job_role: str = None,
+        job_role_inferred: str = None,
+        job_role_preferred: str = None,
+        resume_structured: dict = None,
+        resume_extraction_json_path: str = None,
     ) -> Profile:
         """
         Update profile with resume information.
         Creates profile if it doesn't exist.
-        
+
+        `job_role_preferred`: role the user chose (e.g. Django Developer). Always wins.
+        `job_role_inferred`: first job title parsed from the CV. Applied only when the
+        profile has no `job_role` yet so uploads do not overwrite the user's target role.
+
         NOTE: MongoDB stores lists natively - no JSON serialization needed!
         """
+        preferred = job_role_preferred.strip() if job_role_preferred else ""
+        inferred = job_role_inferred.strip() if job_role_inferred else ""
+
         profile = await Profile.find_one({"user_id": user_id})
         
         if not profile:
+            initial_role = preferred or inferred or None
             profile = Profile(
                 user_id=user_id,
                 resume_path=resume_path,
@@ -147,7 +158,9 @@ class AuthService:
                 certifications=certifications or [],
                 companies=companies or [],
                 experience_years=experience_years,
-                job_role=job_role,
+                job_role=initial_role,
+                resume_structured=resume_structured,
+                resume_extraction_json_path=resume_extraction_json_path,
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow()
             )
@@ -174,8 +187,16 @@ class AuthService:
                 profile.companies = companies
             if experience_years is not None:
                 profile.experience_years = experience_years
-            if job_role:
-                profile.job_role = job_role
+            if preferred:
+                profile.job_role = preferred
+            elif inferred:
+                existing = (profile.job_role or "").strip()
+                if not existing:
+                    profile.job_role = inferred
+            if resume_structured is not None:
+                profile.resume_structured = resume_structured
+            if resume_extraction_json_path is not None:
+                profile.resume_extraction_json_path = resume_extraction_json_path
             profile.updated_at = datetime.utcnow()
             await profile.save()
         

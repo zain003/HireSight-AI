@@ -5,21 +5,47 @@ import LoginForm from '@/components/Auth/LoginForm';
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center relative overflow-hidden">
-      {/* Background subtle decoration */}
-      <div className="absolute top-0 right-0 w-96 h-96 bg-neon-violet/[0.03] rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-      <div className="absolute bottom-0 left-0 w-80 h-80 bg-neon-glow/[0.02] rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
-
-      <div className="relative z-10 w-full max-w-md px-6 animate-fade-in">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <a href="/" className="inline-block">
-            <h1 className="text-3xl font-extrabold text-deep-night tracking-tight">
-              Hire<span className="text-neon-glow">SIGHT</span>
-            </h1>
-          </a>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-100 px-4 py-10">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(37,99,235,0.15),_transparent_40%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,_rgba(79,70,229,0.12),_transparent_45%)]" />
+      <div className="relative z-10 w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+        <div className="grid md:grid-cols-2">
+          <div className="hidden h-full flex-col justify-between bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-900 p-10 text-white md:flex">
+            <div>
+              <a href="/" className="inline-block text-2xl font-extrabold">
+                Hire<span className="text-indigo-300">SIGHT</span>
+              </a>
+              <h1 className="mt-8 text-3xl font-bold leading-tight">
+                Welcome back to your interview workspace
+              </h1>
+              <p className="mt-4 text-sm leading-relaxed text-slate-300">
+                Continue candidate screening, role matching, and interview sessions from one platform.
+              </p>
+            </div>
+            <div className="space-y-3">
+              <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.15em] text-slate-400">Live role match</p>
+                <p className="mt-1 text-sm font-semibold text-emerald-300">82% profile fit for AI Engineer</p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.15em] text-slate-400">Interview status</p>
+                <p className="mt-1 text-sm font-semibold text-amber-300">Question set ready</p>
+              </div>
+              <p className="pt-2 text-xs text-slate-400">Built for consistent, skill-based candidate evaluation.</p>
+            </div>
+          </div>
+          <div className="p-6 md:p-10">
+            <div className="mb-7 flex items-center justify-between text-center md:text-left">
+              <a href="/" className="inline-block text-2xl font-extrabold text-slate-900 md:hidden">
+                Hire<span className="text-indigo-600">SIGHT</span>
+              </a>
+              <a href="/" className="text-sm font-medium text-slate-600 hover:text-slate-900">
+                Back to Home
+              </a>
+            </div>
+            <LoginForm />
+          </div>
         </div>
-        <LoginForm />
       </div>
     </div>
   );

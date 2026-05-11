@@ -12,6 +12,8 @@ class JobPost(Document):
     description: Optional[str] = None
     required_skills: List[str] = Field(default_factory=list)
     domain: Optional[str] = None
+    # Lifecycle: active (visible), draft (incomplete/hidden), closed (no longer hiring).
+    status: str = Field(default="active")
     created_by: str = Field(default="admin")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

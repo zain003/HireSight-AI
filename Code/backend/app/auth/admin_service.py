@@ -12,8 +12,8 @@ ADMIN_PASSWORD = "admin123"
 class AdminAuthService:
     """Service for admin authentication"""
     @staticmethod
-    async def authenticate_admin(username: str, password: str):
-        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+    async def authenticate_admin(email: str, password: str):
+        if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
             # Return a mock admin user object
             return {
                 "id": "admin",

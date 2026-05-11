@@ -10,9 +10,12 @@ from pydantic import BaseModel, Field
 
 
 class QuestionType(str, Enum):
+    INTRODUCTION = "introduction"
     ICEBREAKER = "icebreaker"
     BEHAVIORAL = "behavioral"
     TECHNICAL = "technical"
+    CV_BASED = "cv_based"
+    CODING = "coding"
     FOLLOW_UP = "follow_up"
     CLOSING = "closing"
     SITUATIONAL = "situational"

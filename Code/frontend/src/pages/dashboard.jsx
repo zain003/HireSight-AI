@@ -4,10 +4,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import authService from '@/services/authService';
-import ResumeUpload from '@/components/Resume/ResumeUpload';
 import jobService from '@/services/jobService';
-import resumeService from '@/services/resumeService';
-import { useRef } from 'react';
+import CandidateHeader from '@/components/Candidate/CandidateHeader';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -15,12 +13,6 @@ export default function Dashboard() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [jobPosts, setJobPosts] = useState([]);
-  const [selectedJob, setSelectedJob] = useState(null);
-  const [matchResult, setMatchResult] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [notification, setNotification] = useState('');
-  const fileInputRef = useRef();
-  const [showAllSkills, setShowAllSkills] = useState(false);
 
   useEffect(() => {
     if (!authService.isAuthenticated()) {
@@ -58,372 +50,210 @@ export default function Dashboard() {
     }
   };
 
-  const handleJobSelect = (e) => {
-    const job = jobPosts.find(j => j.id === e.target.value);
-    setSelectedJob(job);
-    setMatchResult(null);
-    setNotification('');
-  };
-
-  // Handle match result from ResumeUpload
-  const handleMatchResult = (result) => {
-    setMatchResult(result);
-    const matchPercent = Number(result?.match_percent);
-    if (Number.isFinite(matchPercent)) {
-      if (matchPercent >= 70) {
-        setNotification('You are eligible for the interview test. Redirecting to interview...');
-        const jobPostId = selectedJob?.id;
-        if (jobPostId) {
-          router.push(`/interview?jobPostId=${encodeURIComponent(jobPostId)}`);
-        } else {
-          router.push('/interview');
-        }
-      } else {
-        setNotification('You do not meet the criteria for this job. Better luck next time!');
-      }
-    }
-  };
-
   const handleLogout = () => authService.logout();
 
-  // Safe JSON parse helper
-  const parseJSON = (str) => {
-    if (!str) return [];
-    // Backend now stores/returns arrays natively (MongoDB + Pydantic)
-    if (Array.isArray(str)) return str;
-    if (typeof str === 'object') return str;
-    try { return JSON.parse(str); } catch { return []; }
+  /** Backend returns native arrays; tolerate legacy JSON strings. */
+  const normalizeStringList = (val) => {
+    if (val == null) return [];
+    if (Array.isArray(val)) {
+      return val.map((s) => String(s).trim()).filter(Boolean);
+    }
+    if (typeof val === 'string') {
+      try {
+        const p = JSON.parse(val);
+        return Array.isArray(p) ? p.map((s) => String(s).trim()).filter(Boolean) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
   };
 
-  // Handle resume upload success: reload profile
-  const handleUploadSuccess = async () => {
-    try {
-      const profileData = await authService.getProfile();
-      setProfile(profileData);
-      setNotification('Resume parsed and profile updated!');
-    } catch (err) {
-      setNotification('Resume parsed, but failed to reload profile.');
+  const profileStatusFromApi = (p) => {
+    if (!p) return 'No profile yet — complete setup after sign-in';
+    const hasResume = !!(p.resume_path && String(p.resume_path).trim());
+    const skills = normalizeStringList(p.skills);
+    const experienced = normalizeStringList(p.experienced_skills);
+    const known = normalizeStringList(p.known_skills);
+    const skillSet = new Set([...skills, ...experienced, ...known]);
+    const n = skillSet.size;
+    const hasRole = !!(p.job_role && String(p.job_role).trim());
+    const titles = normalizeStringList(p.job_titles);
+
+    if (!hasResume) {
+      if (n > 0) {
+        return `${n} skill${n === 1 ? '' : 's'} on profile · upload a resume to link your CV`;
+      }
+      if (hasRole) {
+        return `Target role set (${p.job_role.trim()}) · upload resume to continue`;
+      }
+      return 'Awaiting resume upload';
     }
+    if (n > 0) {
+      return `Resume on file · ${n} skill${n === 1 ? '' : 's'} extracted`;
+    }
+    if (titles.length > 0) {
+      return 'Resume on file · titles extracted (skills pending)';
+    }
+    if (hasRole) {
+      return 'Resume on file · role set (skills pending)';
+    }
+    return 'Resume on file · processing or empty extraction';
+  };
+
+  const topRoleFromApi = (p) => {
+    if (!p) return 'Not set yet';
+    const role = (p.job_role || '').trim();
+    if (role) return role;
+    const titles = normalizeStringList(p.job_titles);
+    if (titles.length > 0) return titles[0];
+    return 'Not detected yet — set role in profile or upload resume';
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-slate-950">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 rounded-full border-2 border-neon-violet/30 border-t-neon-violet animate-spin" />
-          <p className="text-text-muted text-sm">Loading your dashboard...</p>
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-indigo-300/30 border-t-indigo-300" />
+          <p className="text-sm text-slate-300">Loading your dashboard...</p>
         </div>
       </div>
     );
   }
 
-  const skills = parseJSON(profile?.skills);
-  const jobTitles = parseJSON(profile?.job_titles);
-  const education = parseJSON(profile?.education);
-  const projects = parseJSON(profile?.projects);
-  const certifications = parseJSON(profile?.certifications);
-  const companies = parseJSON(profile?.companies);
-
-  const topSkills = skills.slice(0, 12);
-  const hasMoreSkills = skills.length > topSkills.length;
-  const displaySkills = showAllSkills ? skills : topSkills;
+  const skills = normalizeStringList(profile?.skills);
+  const topSkills = skills.slice(0, 8);
+  const profileStatusText = profileStatusFromApi(profile);
+  const topRoleText = topRoleFromApi(profile);
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* ── Header ── */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-deep-night/[0.06]">
-        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-          <a href="/" className="flex items-center gap-2">
-            <h1 className="text-xl font-extrabold text-deep-night tracking-tight">
-              Hire<span className="text-neon-glow">SIGHT</span>
-            </h1>
-          </a>
-          <div className="flex items-center gap-5">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-neon-violet to-neon-glow flex items-center justify-center">
-                <span className="text-white text-xs font-bold">
-                  {user?.username?.charAt(0)?.toUpperCase() || 'U'}
-                </span>
-              </div>
-              <span className="text-deep-night text-sm font-medium hidden sm:inline">{user?.username}</span>
-            </div>
-            <button onClick={handleLogout} className="px-4 py-2 text-sm font-medium text-text-muted border border-deep-night/[0.08] rounded-xl hover:text-deep-night hover:border-deep-night/20 hover:bg-surface-subtle">
-              Logout
-            </button>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950">
+      <CandidateHeader activePath="/dashboard" user={user} onLogout={handleLogout} />
 
-      {/* ── Main Content ── */}
-      <main className="container mx-auto px-6 py-10 animate-fade-in">
-        {/* Welcome */}
-        <div className="mb-10">
-          <h2 className="text-2xl font-bold text-deep-night">
-            Welcome back, <span className="text-neon-glow">{user?.username}</span>
+      <main className="container mx-auto space-y-8 px-6 py-8">
+        <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-6 text-white shadow-xl backdrop-blur-sm">
+          <h2 className="text-2xl font-bold">
+            Welcome back, <span className="text-indigo-300">{user?.username}</span>
           </h2>
-          <p className="text-text-muted mt-1">Here&apos;s your interview preparation overview</p>
-        </div>
-
-
-
-        {/* ── Main grid: Profile + Workflow ── */}
-        <div className="grid lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)] gap-8">
-          {/* Profile summary */}
-          <div className="border border-deep-night/[0.08] bg-white p-6 flex flex-col gap-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-surface-subtle border border-deep-night/20 flex items-center justify-center">
-                  <span className="text-sm font-semibold">
-                    {user?.username?.charAt(0)?.toUpperCase() || 'U'}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-deep-night">
-                    {user?.username}
-                  </p>
-                  <p className="text-[11px] text-text-muted">
-                    {jobTitles[0] || 'No role detected yet'}
-                  </p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-[11px] tracking-[0.16em] uppercase text-text-muted">
-                  Profile status
-                </p>
-                <p className="mt-1 inline-block px-2 py-1 text-[11px] border border-deep-night/20 bg-surface-subtle">
-                  {skills.length ? 'Resume parsed' : 'Awaiting resume'}
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 text-xs">
-              <div>
-                <p className="text-[11px] font-medium text-text-muted uppercase tracking-[0.16em] mb-1">
-                  Domain
-                </p>
-                <p className="text-deep-night">
-                  {profile?.domain
-                    ?.replace(/_/g, ' ')
-                    ?.replace(/\b\w/g, c => c.toUpperCase()) || 'Not set'}
-                </p>
-              </div>
-              <div>
-                <p className="text-[11px] font-medium text-text-muted uppercase tracking-[0.16em] mb-1">
-                  Experience
-                </p>
-                <p className="text-deep-night">
-                  {profile?.experience_years ? `${profile.experience_years} years` : 'Not set'}
-                </p>
-              </div>
-            </div>
-
-            {topSkills.length > 0 ? (
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-medium text-text-muted uppercase tracking-[0.16em]">
-                    Top skills
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <p className="text-[11px] text-text-muted">
-                      {skills.length} skills extracted
-                    </p>
-                    {hasMoreSkills && (
-                      <button
-                        type="button"
-                        onClick={() => setShowAllSkills(!showAllSkills)}
-                        className="text-[11px] text-neon-violet underline underline-offset-2"
-                      >
-                        {showAllSkills ? 'Show less' : 'Show all'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {displaySkills.map((skill, i) => (
-                    <span
-                      key={i}
-                      className="px-2 py-1 text-[11px] border border-deep-night/15 bg-surface-subtle"
-                    >
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <p className="text-text-muted text-xs mt-2">
-                Upload your resume to build your structured skill profile.
+          <p className="mt-1 text-sm text-slate-300">
+            Manage your profile, upload resume, and check interview readiness from one place.
+          </p>
+          <div className="mt-5 grid gap-4 sm:grid-cols-3">
+            <div className="rounded-xl border border-white/15 bg-slate-900/50 p-4">
+              <p className="text-xs uppercase tracking-[0.12em] text-slate-300">Profile status</p>
+              <p className="mt-1 text-sm font-semibold leading-snug text-white">
+                {profileStatusText}
               </p>
-            )}
-          </div>
-
-          {/* Right column: workflow */}
-          <div className="flex flex-col gap-6">
-            {/* Step 1: job selection */}
-            <div className="border border-deep-night/[0.08] bg-white p-5">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-[11px] tracking-[0.18em] uppercase text-text-muted">
-                  Step 01 · Select job
-                </p>
-              </div>
-              <label className="block text-xs font-medium text-deep-night mb-1">
-                Job post
-              </label>
-              <select
-                className="w-full px-3 py-2 border border-deep-night/15 text-sm focus:outline-none focus:ring-1 focus:ring-neon-violet bg-white"
-                value={selectedJob?.id || ''}
-                onChange={handleJobSelect}
-              >
-                <option value="" disabled>Select a job…</option>
-                {jobPosts.map((job) => (
-                  <option key={job.id} value={job.id}>{job.title}</option>
-                ))}
-              </select>
             </div>
+            <div className="rounded-xl border border-white/15 bg-slate-900/50 p-4">
+              <p className="text-xs uppercase tracking-[0.12em] text-slate-300">Available jobs</p>
+              <p className="mt-1 text-sm font-semibold text-white">{jobPosts.length}</p>
+            </div>
+            <div className="rounded-xl border border-white/15 bg-slate-900/50 p-4">
+              <p className="text-xs uppercase tracking-[0.12em] text-slate-300">Top role</p>
+              <p className="mt-1 text-sm font-semibold text-white">{topRoleText}</p>
+            </div>
+          </div>
+        </section>
 
-            {/* Step 2: job details + upload */}
-            {selectedJob && (
-              <div className="border border-deep-night/[0.08] bg-surface-subtle p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[11px] tracking-[0.18em] uppercase text-text-muted mb-1">
-                      Step 02 · Review role
-                    </p>
-                    <h3 className="text-sm font-semibold text-deep-night">
-                      {selectedJob.title}
-                    </h3>
-                  </div>
-                </div>
-                <p className="text-xs text-text-muted line-clamp-3">
-                  {selectedJob.description}
-                </p>
-                <div>
-                  <p className="text-[11px] font-medium text-text-muted uppercase tracking-[0.16em] mb-2">
-                    Required skills
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedJob.required_skills?.map((skill, i) => (
-                      <span
-                        key={i}
-                        className="px-2 py-1 text-[11px] border border-deep-night/15 bg-white"
-                      >
-                        {skill}
+        <section className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-white">Interview preparation guide</h3>
+            <p className="mt-1 text-sm text-slate-300">
+              Follow these steps to maximize your interview success rate.
+            </p>
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              {[
+                {
+                  title: 'Camera & setup',
+                  tag: 'Essential',
+                  description: 'A clean, well-lit setup signals professionalism before you say a word.',
+                  points: [
+                    'Position camera at eye level',
+                    'Face a window or use a ring light',
+                    'Keep background clean and neutral',
+                    'Test audio - use headphones to avoid echo',
+                  ],
+                  cta: 'Start setup check',
+                  time: '5 min',
+                  iconBg: 'bg-blue-500/20',
+                  iconText: 'text-blue-300',
+                },
+                {
+                  title: 'Answer framework (STAR)',
+                  tag: 'Advanced',
+                  description: 'Structure your answers to be clear, concise, and compelling.',
+                  points: [
+                    'Situation - Set the context briefly',
+                    'Task - Describe your responsibility',
+                    'Action - Explain exactly what you did',
+                    'Result - Share measurable outcomes',
+                  ],
+                  cta: 'Practice with AI',
+                  time: '15 min',
+                  iconBg: 'bg-violet-500/20',
+                  iconText: 'text-violet-300',
+                },
+                {
+                  title: 'Pre-interview checklist',
+                  tag: 'Tip',
+                  description: 'Run this checklist 30 minutes before your interview starts.',
+                  points: [
+                    'Research company mission and recent news',
+                    'Review the job description and your skills',
+                    'Prepare 3 questions for the interviewer',
+                    'Test join link, water on desk, phone silent',
+                  ],
+                  cta: 'Open checklist',
+                  time: '10 min',
+                  iconBg: 'bg-emerald-500/20',
+                  iconText: 'text-emerald-300',
+                },
+                {
+                  title: 'Common mistakes to avoid',
+                  tag: 'Watch out',
+                  description: 'Top reasons candidates get rejected - avoid these pitfalls.',
+                  points: [
+                    'Talking too long - keep answers under 2 min',
+                    "Saying 'I don't know' without attempting to answer",
+                    'Badmouthing previous employers',
+                    'Not asking any question at the end',
+                  ],
+                  cta: 'See all tips',
+                  time: '8 min',
+                  iconBg: 'bg-amber-500/20',
+                  iconText: 'text-amber-300',
+                },
+              ].map((card, idx) => (
+                <div key={card.title} className="rounded-xl border border-white/10 bg-slate-950/40 p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className={`flex h-6 w-6 items-center justify-center rounded-md ${card.iconBg}`}>
+                      <span className={`text-xs font-bold ${card.iconText}`}>{idx + 1}</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">{card.title}</p>
+                      <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-medium text-slate-300">
+                        {card.tag}
                       </span>
+                    </div>
+                  </div>
+
+                  <p className="mb-3 text-xs text-slate-300">{card.description}</p>
+
+                  <div className="space-y-1.5">
+                    {card.points.map((point, pointIdx) => (
+                      <div key={point} className="flex items-start gap-2">
+                        <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-indigo-400/50 text-[10px] text-indigo-200">
+                          {pointIdx + 1}
+                        </span>
+                        <p className="text-[11px] leading-relaxed text-slate-200">{point}</p>
+                      </div>
                     ))}
                   </div>
-                </div>
-              </div>
-            )}
 
-            {/* Step 3: upload & match */}
-            <div className="border border-deep-night/[0.08] bg-white p-5">
-              <p className="text-[11px] tracking-[0.18em] uppercase text-text-muted mb-3">
-                Step 03 · Upload resume & match
-              </p>
-              <ResumeUpload
-                selectedJob={selectedJob}
-                onUploadSuccess={handleUploadSuccess}
-                onMatchResult={handleMatchResult}
-              />
+                </div>
+              ))}
             </div>
-            {!selectedJob && (
-              <p className="text-text-muted text-xs mt-2">Please select a job post to enable resume upload.</p>
-            )}
-
-            {/* Match Result Section */}
-            {matchResult && (
-              <div className="border border-deep-night/[0.08] bg-white p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[11px] tracking-[0.18em] uppercase text-text-muted mb-1">
-                      Match summary
-                    </p>
-                    <p className="text-xs text-text-muted">
-                      Comparison between your extracted skills and role requirements.
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-deep-night text-right">
-                      {matchResult.match_percent}%
-                    </p>
-                    <p className="text-[11px] text-text-muted">
-                      Skill match
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-3 bg-surface-subtle border border-deep-night/10">
-                    <div
-                      className={`h-full ${matchResult.match_percent >= 70 ? 'bg-green-500' : matchResult.match_percent >= 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
-                      style={{ width: `${matchResult.match_percent}%` }}
-                    />
-                  </div>
-                  <span
-                    className={`px-2 py-1 text-[11px] border ${
-                      matchResult.match_percent >= 70
-                        ? 'border-green-500 text-green-700 bg-green-50'
-                        : 'border-red-500 text-red-700 bg-red-50'
-                    }`}
-                  >
-                    {matchResult.match_percent >= 70 ? 'Eligible for interview' : 'Below threshold'}
-                  </span>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <p className="text-[11px] font-medium text-text-muted uppercase tracking-[0.16em] mb-2">
-                      Matched skills
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {(matchResult.matched_skills || []).slice(0, 10).map((skill, i) => (
-                        <span key={i} className="px-2 py-1 border border-green-400/60 bg-green-50 text-green-700">
-                          {skill}
-                        </span>
-                      ))}
-                      {matchResult.matched_skills && matchResult.matched_skills.length > 10 && (
-                        <span className="px-2 py-1 border border-green-400/60 bg-green-50 text-green-700">
-                          +{matchResult.matched_skills.length - 10} more
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-medium text-text-muted uppercase tracking-[0.16em] mb-2">
-                      Missing required skills
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {(matchResult.missing_skills || []).slice(0, 8).map((skill, i) => (
-                        <span key={i} className="px-2 py-1 border border-red-400/60 bg-red-50 text-red-700">
-                          {skill}
-                        </span>
-                      ))}
-                      {matchResult.missing_skills && matchResult.missing_skills.length > 8 && (
-                        <span className="px-2 py-1 border border-red-400/60 bg-red-50 text-red-700">
-                          +{matchResult.missing_skills.length - 8} more
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── Bottom toolbar ── */}
-        <div className="mt-10 border-t border-deep-night/[0.06] pt-4 flex flex-wrap items-center justify-between gap-3 text-[11px] text-text-muted">
-          <div className="flex items-center gap-3">
-            <span className="px-2 py-1 border border-deep-night/15 bg-surface-subtle">
-              Coming soon: AI interview practice
-            </span>
-            <span>Start mock sessions and review past interviews.</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <a href="/profile" className="underline underline-offset-2">
-              Profile settings
-            </a>
-          </div>
-        </div>
+          </section>
       </main>
     </div>
   );
