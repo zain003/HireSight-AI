@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import authService from '@/services/authService';
+import { formatApiDetail } from '@/utils/formatApiDetail';
 
 export default function AdminLoginForm() {
   const router = useRouter();
@@ -29,7 +30,7 @@ export default function AdminLoginForm() {
       await authService.adminLogin(formData);
       router.push('/admin-dashboard');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Admin login failed');
+      setError(formatApiDetail(err.response?.data?.detail) || 'Admin login failed');
     } finally {
       setLoading(false);
     }

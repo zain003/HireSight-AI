@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import authService from '@/services/authService';
+import { formatApiDetail } from '@/utils/formatApiDetail';
 
 export default function LoginForm() {
   const router = useRouter();
@@ -30,7 +31,7 @@ export default function LoginForm() {
       await authService.login(formData);
       router.push('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Login failed');
+      setError(formatApiDetail(err.response?.data?.detail) || 'Login failed');
     } finally {
       setLoading(false);
     }

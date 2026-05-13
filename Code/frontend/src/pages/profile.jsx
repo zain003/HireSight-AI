@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import authService from '@/services/authService';
 import CandidateHeader from '@/components/Candidate/CandidateHeader';
+import { formatApiDetail } from '@/utils/formatApiDetail';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -70,7 +71,7 @@ export default function ProfilePage() {
       setProfile(updated);
       setMessage('Profile updated successfully.');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to update profile.');
+      setError(formatApiDetail(err.response?.data?.detail) || 'Failed to update profile.');
     } finally {
       setSaving(false);
     }

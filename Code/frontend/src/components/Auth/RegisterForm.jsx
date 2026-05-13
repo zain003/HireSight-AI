@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import authService from '@/services/authService';
+import { formatApiDetail } from '@/utils/formatApiDetail';
 
 export default function RegisterForm() {
   const router = useRouter();
@@ -40,7 +41,7 @@ export default function RegisterForm() {
       await authService.register(registerData);
       router.push('/login?registered=true');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Registration failed');
+      setError(formatApiDetail(err.response?.data?.detail) || 'Registration failed');
     } finally {
       setLoading(false);
     }

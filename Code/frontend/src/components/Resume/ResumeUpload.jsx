@@ -4,6 +4,7 @@
 
 import { useState, useRef } from 'react';
 import resumeService from '@/services/resumeService';
+import { formatApiDetail } from '@/utils/formatApiDetail';
 
 export default function ResumeUpload({ selectedJob, onUploadSuccess, onMatchResult }) {
   const [file, setFile] = useState(null);
@@ -73,7 +74,7 @@ export default function ResumeUpload({ selectedJob, onUploadSuccess, onMatchResu
       if (onUploadSuccess) onUploadSuccess();
       if (onMatchResult) onMatchResult(matchResult);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Upload failed');
+      setError(formatApiDetail(err.response?.data?.detail) || 'Upload failed');
     } finally {
       setUploading(false);
     }

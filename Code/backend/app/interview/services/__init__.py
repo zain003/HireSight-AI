@@ -4,6 +4,7 @@ from .analysis_service import AnalysisService
 from .face_service import FaceService, analyze_emotions, verify_face_frame
 from .llm_service import (
     LLMService,
+    LIVE_INTERVIEW_TOTAL_QUESTIONS,
     evaluate_answer,
     evaluate_answer_interview,
     generate_followup_question,
@@ -18,6 +19,7 @@ __all__ = [
     "AnalysisService",
     "FaceService",
     "LLMService",
+    "LIVE_INTERVIEW_TOTAL_QUESTIONS",
     "STTService",
     "TTSService",
     "analyze_emotions",

@@ -13,6 +13,7 @@ from app.interview.domain.interview_models import (
 )
 from app.interview.models import InterviewSession
 from app.interview.services import (
+    LIVE_INTERVIEW_TOTAL_QUESTIONS,
     AnalysisService,
     FaceService,
     STTService,
@@ -53,7 +54,7 @@ class InterviewService:
             job_description=job_description,
             candidate_skills=candidate_skills,
             required_job_skills=required_job_skills or [],
-            total_questions=total_questions,
+            total_questions=LIVE_INTERVIEW_TOTAL_QUESTIONS,
             candidate_projects=candidate_projects or [],
             candidate_job_titles=candidate_job_titles or [],
             candidate_certifications=candidate_certifications or [],

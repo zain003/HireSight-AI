@@ -1,6 +1,6 @@
 """Schemas for the live interview module APIs."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 
 from app.interview.domain.interview_models import AnswerEvaluation, FrameAnalysisResult, InterviewReport
@@ -12,7 +12,8 @@ class LiveInterviewStartRequest(BaseModel):
     job_description: Optional[str] = None
     candidate_skills: List[str] = Field(default_factory=list)
     candidate_name: Optional[str] = None
-    num_questions: int = Field(default=8, ge=4, le=12)
+    # Fixed product: 2 intro + 7 technical + 4 behavioral + 4 CV + 3 coding = 20.
+    num_questions: int = Field(default=20, ge=20, le=20)
 
 
 class LiveInterviewQuestion(BaseModel):
@@ -80,3 +81,62 @@ class TTSRequest(BaseModel):
 class TTSResponse(BaseModel):
     audio_base64: str
     format: str = "mp3"
+
+
+# --- Local code execution (stdin / stdout public tests) ---
+
+SUPPORTED_CODE_LANGS = frozenset({"python", "javascript", "c", "cpp", "java"})
+
+_CODE_LANG_ALIASES = {
+    "js": "javascript",
+    "node": "javascript",
+    "nodejs": "javascript",
+    "c++": "cpp",
+    "cplusplus": "cpp",
+}
+
+
+class CodingRunTestCaseIn(BaseModel):
+    stdin: str = ""
+    expected_stdout: str = ""
+    description: Optional[str] = None
+
+
+class RunCodeRequest(BaseModel):
+    """Run candidate source against public test cases (trusted caller sends cases from session)."""
+
+    language: str
+    source_code: str = Field(..., max_length=400_000)
+    test_cases: List[CodingRunTestCaseIn] = Field(..., min_length=1, max_length=24)
+    timeout_seconds: Optional[float] = Field(default=None, ge=1.0, le=60.0)
+
+    @field_validator("language")
+    @classmethod
+    def normalize_lang(cls, v: str) -> str:
+        key = (v or "").strip().lower()
+        key = _CODE_LANG_ALIASES.get(key, key)
+        if key not in SUPPORTED_CODE_LANGS:
+            raise ValueError(
+                f"Unsupported language: {v}. Use one of: {sorted(SUPPORTED_CODE_LANGS)}."
+            )
+        return key
+
+
+class CodingRunTestResult(BaseModel):
+    index: int
+    passed: bool
+    stdin: str = ""
+    expected_stdout: str = ""
+    actual_stdout: str = ""
+    stderr: str = ""
+    exit_code: int = 0
+    description: Optional[str] = None
+    error: Optional[str] = None
+
+
+class RunCodeResponse(BaseModel):
+    compile_success: bool
+    compile_output: str = ""
+    missing_tools: List[str] = Field(default_factory=list)
+    results: List[CodingRunTestResult]
+    all_passed: bool

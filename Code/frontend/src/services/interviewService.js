@@ -60,6 +60,14 @@ export const interviewService = {
     });
     return response.data;
   },
+
+  /**
+   * Run candidate code locally against public stdin/stdout tests (backend subprocess).
+   */
+  runCode: async (payload) => {
+    const response = await api.post('/interview/coding/run', payload);
+    return response.data;
+  },
 };
 
 export default interviewService;

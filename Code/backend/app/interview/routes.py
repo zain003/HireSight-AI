@@ -1,5 +1,6 @@
 """Live interview module routes."""
 
+import asyncio
 import base64
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -17,12 +18,19 @@ from app.interview.schemas import (
     LiveInterviewStartRequest,
     LiveInterviewStartResponse,
     LiveInterviewQuestion,
+    RunCodeRequest,
+    RunCodeResponse,
     SubmitAnswerRequest,
     SubmitAnswerResponse,
     TTSRequest,
     TTSResponse,
 )
 from app.interview.services import FaceService, TTSService
+from app.interview.services.code_execution import (
+    DEFAULT_COMPILE_TIMEOUT_SEC,
+    DEFAULT_RUN_TIMEOUT_SEC,
+    execute_code,
+)
 
 
 router = APIRouter()
@@ -225,3 +233,26 @@ async def generate_tts(request: TTSRequest):
     )
     audio_b64 = base64.b64encode(audio_bytes).decode("ascii") if audio_bytes else ""
     return TTSResponse(audio_base64=audio_b64, format="mp3")
+
+
+@router.post("/coding/run", response_model=RunCodeResponse)
+async def run_code_sample_tests(
+    request: RunCodeRequest,
+    _user: User = Depends(get_current_active_user),
+):
+    """
+    Execute candidate code locally against stdin/stdout public tests (subprocess).
+    Requires Python / Node / JDK / gcc / g++ on the server PATH as configured.
+    """
+
+    def _sync_run() -> RunCodeResponse:
+        run_sec = request.timeout_seconds or DEFAULT_RUN_TIMEOUT_SEC
+        return execute_code(
+            language=request.language,
+            source_code=request.source_code,
+            test_cases=list(request.test_cases),
+            run_timeout_sec=run_sec,
+            compile_timeout_sec=min(max(DEFAULT_COMPILE_TIMEOUT_SEC, run_sec), 60.0),
+        )
+
+    return await asyncio.to_thread(_sync_run)

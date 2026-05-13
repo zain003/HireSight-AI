@@ -9,9 +9,6 @@ with NER providing supplementary skill/title discovery for novel terms.
 import re
 from typing import List, Dict, Optional
 
-from app.ai.ner_model import get_ner_service
-
-
 # ──────────────────────────────────────────────────────────────────────────────
 # SKILL DATABASE — Massive keyword list (800+ skills) for highest accuracy
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1096,6 +1093,10 @@ class ExtractionService:
     )
 
     def __init__(self):
+        # Lazy import: `transformers.pipeline` pulls torch/sklearn/scipy; defer until first use
+        # so `uvicorn`/FastAPI can start even if optional ML wheels are mis-installed.
+        from app.ai.ner_model import get_ner_service
+
         self.ner_service = get_ner_service()
         self._skill_lookup = {s.lower(): s for s in SKILL_DATABASE}
         self._alias_lookup = {a.lower(): c for a, c in SKILL_ALIASES.items()}

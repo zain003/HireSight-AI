@@ -1,3 +1,6 @@
+# Create venv with Python 3.10 only: py -3.10 -m venv .venv
+# (cp310 wheels; avoids mixing 3.10 / 3.12 binaries in site-packages)
+
 # FastAPI and Server
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
@@ -20,7 +23,7 @@ email-validator==2.1.0
 
 # AI/ML - BERT-NER
 transformers==4.37.2
-torch==2.1.2
+torch==2.2.2
 numpy==1.26.3
 
 # Resume Parsing

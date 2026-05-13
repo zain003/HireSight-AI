@@ -7,6 +7,7 @@ import { useRouter } from 'next/router';
 import authService from '@/services/authService';
 import api from '@/services/api';
 import adminDashboardService from '@/services/adminDashboardService';
+import { formatApiDetail } from '@/utils/formatApiDetail';
 import {
   LayoutDashboard,
   Users,
@@ -181,7 +182,7 @@ export default function AdminDashboard() {
         /* ignore */
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to update job post');
+      setError(formatApiDetail(err.response?.data?.detail) || 'Failed to update job post');
     } finally {
       setSavingEdit(false);
     }
@@ -210,7 +211,7 @@ export default function AdminDashboard() {
         /* ignore */
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to delete job post');
+      setError(formatApiDetail(err.response?.data?.detail) || 'Failed to delete job post');
     } finally {
       setDeletingId(null);
     }
@@ -250,7 +251,7 @@ export default function AdminDashboard() {
         /* ignore */
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to create job post');
+      setError(formatApiDetail(err.response?.data?.detail) || 'Failed to create job post');
     } finally {
       setCreating(false);
     }

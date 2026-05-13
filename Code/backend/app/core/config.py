@@ -37,9 +37,15 @@ class Settings(BaseSettings):
     NER_MODEL: str = "yashpwr/resume-ner-bert-v2"
     NER_CONFIDENCE_THRESHOLD: float = 0.5
 
-    # Groq LLM settings
+    # Groq LLM settings (fallback when Grok is unavailable)
     GROQ_API_KEY: Optional[str] = None
     LLM_MODEL: str = "llama-3.3-70b-versatile"
+
+    # xAI Grok — preferred for live interview generation when set (see backend/.env)
+    GROK_API_KEY: Optional[str] = None
+    XAI_API_KEY: Optional[str] = None  # alias for GROK_API_KEY
+    GROK_MODEL: str = "grok-2-latest"
+    GROK_API_BASE: str = "https://api.x.ai/v1"
     
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000"
@@ -47,6 +53,14 @@ class Settings(BaseSettings):
     
     # OCR
     TESSERACT_PATH: Optional[str] = None
-    
+
+    # Local code runner (optional full paths when PATH / Windows Store shims break discovery)
+    CODE_RUN_PYTHON: Optional[str] = None
+    CODE_RUN_NODE: Optional[str] = None
+    CODE_RUN_GCC: Optional[str] = None
+    CODE_RUN_GPP: Optional[str] = None
+    CODE_RUN_JAVAC: Optional[str] = None
+    CODE_RUN_JAVA: Optional[str] = None
+
 settings = Settings()
 
