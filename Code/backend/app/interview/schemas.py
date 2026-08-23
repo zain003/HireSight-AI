@@ -46,6 +46,9 @@ class SubmitAnswerResponse(BaseModel):
     evaluation: AnswerEvaluation
     per_answer_score: float
     follow_up_question: Optional[LiveInterviewQuestion] = None
+    # Enhanced metrics
+    behavioral_metrics: Optional[Dict[str, float]] = None
+    vocal_metrics: Optional[Dict[str, float]] = None
 
 
 class InterviewReportResponse(BaseModel):
@@ -53,6 +56,8 @@ class InterviewReportResponse(BaseModel):
     status: str
     aggregate_scores: Dict[str, float]
     report: InterviewReport
+    # Enhanced recruiter report
+    recruiter_report: Optional[Dict[str, Any]] = None
 
 
 class FaceRegisterRequest(BaseModel):

@@ -14,6 +14,9 @@ from .llm_service import (
 )
 from .stt_service import STTService, transcribe_audio
 from .tts_service import TTSService, text_to_speech
+from .behavioral_analysis import BehavioralAnalysisService, BehavioralMetrics
+from .vocal_analysis import VocalAnalysisService, VocalMetrics
+from .recruiter_report import RecruiterReportGenerator, RecruiterReport
 
 __all__ = [
     "AnalysisService",
@@ -22,6 +25,12 @@ __all__ = [
     "LIVE_INTERVIEW_TOTAL_QUESTIONS",
     "STTService",
     "TTSService",
+    "BehavioralAnalysisService",
+    "BehavioralMetrics",
+    "VocalAnalysisService",
+    "VocalMetrics",
+    "RecruiterReportGenerator",
+    "RecruiterReport",
     "analyze_emotions",
     "evaluate_answer",
     "evaluate_answer_interview",

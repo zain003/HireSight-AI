@@ -22,6 +22,9 @@ from app.interview.services import (
     generate_report_summary,
     evaluate_answer_interview,
 )
+from app.interview.services.behavioral_analysis import BehavioralAnalysisService
+from app.interview.services.vocal_analysis import VocalAnalysisService
+from app.interview.services.recruiter_report import RecruiterReportGenerator
 
 
 class InterviewService:
@@ -32,6 +35,14 @@ class InterviewService:
         self.stt_service = STTService()
         self.face_service = FaceService()
         self.analysis_service = AnalysisService()
+        # Enhanced analysis services
+        self.behavioral_service = BehavioralAnalysisService()
+        self.vocal_service = VocalAnalysisService()
+        self.report_generator = RecruiterReportGenerator()
+        
+        # Track behavioral and vocal metrics per question
+        self.behavioral_metrics_per_question = []
+        self.vocal_metrics_per_question = []
 
     async def start_interview(
         self,
@@ -135,6 +146,7 @@ class InterviewService:
         question_text = question.get("question_text") or ""
         question_type = question.get("question_type") or QuestionType.TECHNICAL.value
 
+        # 1. Transcribe audio
         transcript = await self.stt_service.transcribe(
             audio_base64=audio_base64,
             transcript_text=transcript_text,
@@ -142,7 +154,29 @@ class InterviewService:
             audio_format=audio_format,
         )
 
+        # 2. Enhanced behavioral analysis (MediaPipe)
+        behavioral_metrics = self.behavioral_service.analyze_frames(frame_base64_list)
+        
+        # 3. Enhanced vocal analysis (OpenSMILE + Vosk)
+        vocal_metrics = await self.vocal_service.analyze_audio(
+            audio_base64=audio_base64,
+            transcript_text=transcript,
+            audio_format=audio_format
+        )
+        
+        # Store metrics for final report
+        if not hasattr(session, 'behavioral_metrics'):
+            session.behavioral_metrics = []
+        if not hasattr(session, 'vocal_metrics'):
+            session.vocal_metrics = []
+            
+        session.behavioral_metrics.append(behavioral_metrics)
+        session.vocal_metrics.append(vocal_metrics)
+
+        # 4. Legacy frame analysis (for compatibility)
         frame_analysis = await self.face_service.analyze(frame_base64_list)
+        
+        # 5. Answer evaluation (with enhanced metrics)
         evaluation = await evaluate_answer_interview(
             question_text=question_text,
             question_type=question_type,
@@ -209,17 +243,32 @@ class InterviewService:
         await session.save()
 
         per_answer_score = self.analysis_service.score_single_answer(evaluation)
+        
         return {
             "transcript": transcript,
             "evaluation": evaluation,
             "per_answer_score": per_answer_score,
             "follow_up_question": follow_up_question,
+            "behavioral_metrics": {
+                "eye_contact": behavioral_metrics.eye_contact_score,
+                "confidence_posture": behavioral_metrics.confidence_posture_score,
+                "attention_span": behavioral_metrics.attention_span_score,
+                "fidgeting": behavioral_metrics.fidgeting_score
+            },
+            "vocal_metrics": {
+                "vocal_confidence": vocal_metrics.vocal_confidence_score,
+                "speech_clarity": vocal_metrics.speech_clarity_score,
+                "communication_effectiveness": vocal_metrics.communication_effectiveness
+            }
         }
 
     async def end_interview(self, session: InterviewSession) -> Dict:
+        # Calculate traditional scores
         scores = self.analysis_service.calculate_scores(
             session.evaluations, session.frame_snapshots
         )
+        
+        # Generate traditional summary
         summary = await generate_report_summary(
             candidate_name=session.candidate_name,
             job_role=session.job_role,
@@ -228,7 +277,28 @@ class InterviewService:
             video_integrity_score=scores["video_integrity_score"],
         )
 
+        # Build traditional report
         report = self.analysis_service.build_report(session, summary)
+        
+        # Generate comprehensive recruiter report
+        behavioral_metrics = getattr(session, 'behavioral_metrics', [])
+        vocal_metrics = getattr(session, 'vocal_metrics', [])
+        coding_results = getattr(session, 'coding_results', [])
+        
+        recruiter_report = self.report_generator.generate_report(
+            candidate_name=session.candidate_name,
+            job_role=session.job_role or "Not specified",
+            session_start=session.started_at,
+            session_end=datetime.utcnow(),
+            evaluations=session.evaluations,
+            behavioral_metrics=behavioral_metrics,
+            vocal_metrics=vocal_metrics,
+            coding_results=coding_results,
+            aggregate_scores=scores
+        )
+        
+        # Store comprehensive report
+        session.recruiter_report = recruiter_report.__dict__
         session.report = report
         session.status = InterviewStatus.COMPLETED.value
         session.ended_at = datetime.utcnow()
@@ -236,4 +306,8 @@ class InterviewService:
         session.aggregate_scores = scores
         await session.save()
 
-        return {"scores": scores, "report": report}
+        return {
+            "scores": scores, 
+            "report": report,
+            "recruiter_report": recruiter_report.__dict__
+        }

@@ -21,7 +21,10 @@ import {
   Trash2,
   Video,
   Code2,
+  UserCheck,
 } from 'lucide-react';
+import JobCandidatesList from '@/components/Admin/JobCandidatesList';
+import RecruiterReportViewer from '@/components/Interview/RecruiterReportViewer';
 
 function normalizeRequiredSkills(raw) {
   return (raw || '')
@@ -69,6 +72,13 @@ export default function AdminDashboard() {
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+
+  // New states for candidate viewing
+  const [viewMode, setViewMode] = useState('list'); // 'list', 'candidates', 'report'
+  const [selectedJobForCandidates, setSelectedJobForCandidates] = useState(null);
+  const [selectedSessionForReport, setSelectedSessionForReport] = useState(null);
+  const [reportData, setReportData] = useState(null);
+  const [loadingReport, setLoadingReport] = useState(false);
 
   const [newPost, setNewPost] = useState({
     title: '',
@@ -262,6 +272,40 @@ export default function AdminDashboard() {
     router.push('/admin-login');
   };
 
+  const handleViewCandidates = (job) => {
+    setSelectedJobForCandidates(job);
+    setViewMode('candidates');
+    setError('');
+    setSuccess('');
+  };
+
+  const handleViewReport = async (sessionId) => {
+    try {
+      setLoadingReport(true);
+      const response = await api.get(
+        `/auth/admin/job-posts/${selectedJobForCandidates.id}/candidates/${sessionId}/report`
+      );
+      setReportData(response.data);
+      setSelectedSessionForReport(sessionId);
+      setViewMode('report');
+    } catch (err) {
+      setError(formatApiDetail(err.response?.data?.detail) || 'Failed to load interview report');
+    } finally {
+      setLoadingReport(false);
+    }
+  };
+
+  const handleBackFromCandidates = () => {
+    setViewMode('list');
+    setSelectedJobForCandidates(null);
+  };
+
+  const handleBackFromReport = () => {
+    setViewMode('candidates');
+    setReportData(null);
+    setSelectedSessionForReport(null);
+  };
+
   const statusPill = (status) => {
     const styles = {
       active: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
@@ -295,6 +339,10 @@ export default function AdminDashboard() {
       title={label}
       onClick={() => {
         setActiveSection(sectionId);
+        // Reset view mode when switching sections
+        setViewMode('list');
+        setSelectedJobForCandidates(null);
+        setReportData(null);
         if (sectionId !== 'dashboard' && sectionId !== 'jobs') {
           setShowCreateForm(false);
         }
@@ -312,16 +360,32 @@ export default function AdminDashboard() {
 
   const sectionMeta = {
     dashboard: {
-      title: 'Admin Dashboard',
-      subtitle: 'Manage job posts, candidates, and interview sessions',
+      title: viewMode === 'candidates' 
+        ? `Candidates - ${selectedJobForCandidates?.title || ''}`
+        : viewMode === 'report'
+        ? 'Interview Report'
+        : 'Admin Dashboard',
+      subtitle: viewMode === 'candidates'
+        ? 'Review candidates who completed interviews for this job'
+        : viewMode === 'report'
+        ? 'Comprehensive hiring decision report'
+        : 'Manage job posts, candidates, and interview sessions',
     },
     users: {
       title: 'Users',
       subtitle: 'Registered accounts and profile summary',
     },
     jobs: {
-      title: 'Job posts',
-      subtitle: 'Create and manage listings',
+      title: viewMode === 'candidates'
+        ? `Candidates - ${selectedJobForCandidates?.title || ''}`
+        : viewMode === 'report'
+        ? 'Interview Report'
+        : 'Job posts',
+      subtitle: viewMode === 'candidates'
+        ? 'Review candidates who completed interviews for this job'
+        : viewMode === 'report'
+        ? 'Comprehensive hiring decision report'
+        : 'Create and manage listings',
     },
     settings: {
       title: 'Settings',
@@ -445,11 +509,25 @@ export default function AdminDashboard() {
         <main className="flex-1 space-y-8 px-4 py-8 sm:px-6">
           {/* Page header */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-white sm:text-3xl">{pageTitle}</h1>
-              <p className="mt-1 text-sm text-slate-400">{pageSubtitle}</p>
+            <div className="flex items-center gap-4">
+              {(viewMode === 'candidates' || viewMode === 'report') && (
+                <button
+                  type="button"
+                  onClick={viewMode === 'report' ? handleBackFromReport : handleBackFromCandidates}
+                  className="shrink-0 rounded-xl border border-white/15 p-2 text-slate-300 transition hover:bg-white/5 hover:text-white"
+                  aria-label="Back"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                </button>
+              )}
+              <div>
+                <h1 className="text-2xl font-bold text-white sm:text-3xl">{pageTitle}</h1>
+                <p className="mt-1 text-sm text-slate-400">{pageSubtitle}</p>
+              </div>
             </div>
-            {(activeSection === 'dashboard' || activeSection === 'jobs') && !showCreateForm && (
+            {(activeSection === 'dashboard' || activeSection === 'jobs') && !showCreateForm && viewMode === 'list' && (
               <button
                 type="button"
                 onClick={() => {
@@ -721,8 +799,24 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {/* Candidates View */}
+          {(activeSection === 'dashboard' || activeSection === 'jobs') && viewMode === 'candidates' && selectedJobForCandidates && (
+            <JobCandidatesList
+              jobPostId={selectedJobForCandidates.id}
+              onViewReport={handleViewReport}
+            />
+          )}
+
+          {/* Report View */}
+          {(activeSection === 'dashboard' || activeSection === 'jobs') && viewMode === 'report' && reportData && (
+            <RecruiterReportViewer
+              report={reportData.recruiter_report}
+              sessionId={reportData.session_id}
+            />
+          )}
+
           {/* Job posts table */}
-          {(activeSection === 'dashboard' || activeSection === 'jobs') && (
+          {(activeSection === 'dashboard' || activeSection === 'jobs') && viewMode === 'list' && (
           <section className="rounded-2xl border border-white/10 bg-slate-900/40">
             <div className="flex flex-col gap-4 border-b border-white/10 p-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
@@ -808,6 +902,15 @@ export default function AdminDashboard() {
                           <td className="px-5 py-4 align-top">{statusPill(st)}</td>
                           <td className="px-5 py-4 align-top">
                             <div className="flex flex-wrap items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleViewCandidates(post)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                                title="View candidates who applied and completed interviews"
+                              >
+                                <UserCheck className="h-3.5 w-3.5" strokeWidth={2} />
+                                Candidates ({post.applicant_count || 0})
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => {

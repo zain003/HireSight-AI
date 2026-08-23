@@ -137,6 +137,123 @@ async def delete_job_post(job_post_id: str):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job post not found")
 
 
+@router.get("/admin/job-posts/{job_post_id}/candidates")
+async def get_job_candidates(job_post_id: str):
+    """
+    Get all candidates who applied and completed interviews for a specific job.
+    Returns list of candidates with their interview status and reports (admin only).
+    """
+    from app.auth.job_post_model import JobPost
+    from app.interview.models import InterviewSession
+    
+    # Verify job post exists
+    job_post = await JobPost.get(job_post_id)
+    if not job_post:
+        raise HTTPException(status_code=404, detail="Job post not found")
+    
+    # Get all interview sessions for this job
+    sessions = await InterviewSession.find(
+        {"job_post_id": job_post_id}
+    ).to_list()
+    
+    candidates = []
+    for session in sessions:
+        # Get candidate profile
+        profile = await Profile.find_one({"user_id": session.user_id})
+        user = await User.get(session.user_id)
+        
+        candidate_data = {
+            "session_id": session.session_id,
+            "candidate_id": session.candidate_id,
+            "candidate_name": session.candidate_name,
+            "user_email": user.email if user else None,
+            "status": session.status,
+            "started_at": session.started_at.isoformat() if session.started_at else None,
+            "ended_at": session.ended_at.isoformat() if session.ended_at else None,
+            "overall_score": session.aggregate_scores.get("overall_score") if session.aggregate_scores else None,
+            "has_report": bool(session.recruiter_report),
+            "hiring_recommendation": session.recruiter_report.get("hiring_recommendation") if session.recruiter_report else None,
+            "confidence_level": session.recruiter_report.get("confidence_level") if session.recruiter_report else None,
+            # Profile info
+            "experience_years": profile.experience_years if profile else None,
+            "skills": profile.skills if profile else [],
+            "resume_score": getattr(profile, "resume_score", None) if profile else None,
+        }
+        candidates.append(candidate_data)
+    
+    # Sort by overall score (highest first), then by date
+    candidates.sort(key=lambda x: (
+        -(x["overall_score"] or 0),
+        x["ended_at"] or x["started_at"] or ""
+    ), reverse=False)
+    
+    return {
+        "job_post_id": job_post_id,
+        "job_title": job_post.title,
+        "job_role": getattr(job_post, "role", None),
+        "total_candidates": len(candidates),
+        "completed_interviews": sum(1 for c in candidates if c["status"] == "completed"),
+        "candidates": candidates
+    }
+
+
+@router.get("/admin/job-posts/{job_post_id}/candidates/{session_id}/report")
+async def get_candidate_report(job_post_id: str, session_id: str):
+    """
+    Get comprehensive interview report for a specific candidate (admin only).
+    This endpoint is private - only admin who posted the job can access.
+    """
+    from app.auth.job_post_model import JobPost
+    from app.interview.models import InterviewSession
+    
+    # Verify job post exists
+    job_post = await JobPost.get(job_post_id)
+    if not job_post:
+        raise HTTPException(status_code=404, detail="Job post not found")
+    
+    # Get interview session
+    session = await InterviewSession.find_one({
+        "session_id": session_id,
+        "job_post_id": job_post_id
+    })
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found for this job")
+    
+    if not session.recruiter_report:
+        raise HTTPException(
+            status_code=404,
+            detail="Interview report not generated yet. Interview may still be in progress."
+        )
+    
+    # Get candidate info
+    user = await User.get(session.user_id)
+    profile = await Profile.find_one({"user_id": session.user_id})
+    
+    return {
+        "session_id": session.session_id,
+        "job_post_id": job_post_id,
+        "job_title": job_post.title,
+        "candidate_info": {
+            "name": session.candidate_name,
+            "email": user.email if user else None,
+            "experience_years": profile.experience_years if profile else None,
+            "skills": profile.skills if profile else [],
+            "resume_score": getattr(profile, "resume_score", None) if profile else None,
+        },
+        "interview_info": {
+            "started_at": session.started_at.isoformat() if session.started_at else None,
+            "ended_at": session.ended_at.isoformat() if session.ended_at else None,
+            "duration_minutes": session.recruiter_report.get("session_duration_minutes") if session.recruiter_report else None,
+            "status": session.status,
+        },
+        "recruiter_report": session.recruiter_report,
+        "aggregate_scores": session.aggregate_scores or {},
+        "questions_count": len(session.questions),
+        "evaluations_count": len(session.evaluations),
+    }
+
+
 # ── User Auth Routes ────────────────────────────────────────────────────────
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)

@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth.dependencies import get_current_active_user
@@ -130,6 +131,8 @@ async def submit_live_answer(
         evaluation=result["evaluation"],
         per_answer_score=result["per_answer_score"],
         follow_up_question=follow_up_question,
+        behavioral_metrics=result.get("behavioral_metrics"),
+        vocal_metrics=result.get("vocal_metrics"),
     )
 
 
@@ -171,7 +174,37 @@ async def get_live_report(
         status=session.status,
         aggregate_scores=session.aggregate_scores or {},
         report=session.report,
+        recruiter_report=session.recruiter_report
     )
+
+
+@router.get("/admin/session/{session_id}/recruiter-report")
+async def get_recruiter_report_admin(
+    session_id: str,
+    _admin: User = Depends(get_current_active_user),  # Add admin check in production
+):
+    """
+    Get comprehensive recruiter report for hiring decision.
+    This endpoint is for HR/recruiters to make hiring decisions.
+    """
+    session = await InterviewSession.find_one({"session_id": session_id})
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+    
+    if not session.recruiter_report:
+        raise HTTPException(
+            status_code=404, 
+            detail="Recruiter report not generated yet. Complete the interview first."
+        )
+    
+    return {
+        "session_id": session.session_id,
+        "candidate_name": session.candidate_name,
+        "job_role": session.job_role,
+        "status": session.status,
+        "recruiter_report": session.recruiter_report,
+        "generated_at": session.ended_at.isoformat() if session.ended_at else None
+    }
 
 
 @router.post("/live/{session_id}/register-face")
@@ -256,3 +289,36 @@ async def run_code_sample_tests(
         )
 
     return await asyncio.to_thread(_sync_run)
+
+
+@router.post("/live/{session_id}/submit-coding-result")
+async def submit_coding_result(
+    session_id: str,
+    request: RunCodeResponse,
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Submit coding challenge results for tracking in final report.
+    Called after candidate runs code tests.
+    """
+    session = await InterviewSession.find_one(
+        {"session_id": session_id, "user_id": str(current_user.id)}
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+    
+    # Store coding result
+    if not hasattr(session, 'coding_results') or session.coding_results is None:
+        session.coding_results = []
+    
+    session.coding_results.append({
+        "compile_success": request.compile_success,
+        "all_passed": request.all_passed,
+        "passed_count": sum(1 for r in request.results if r.passed),
+        "total_count": len(request.results),
+        "timestamp": datetime.utcnow().isoformat()
+    })
+    
+    await session.save()
+    
+    return {"status": "success", "message": "Coding result recorded"}

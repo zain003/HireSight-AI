@@ -33,6 +33,12 @@ class InterviewSession(Document):
     evaluations: List[AnswerEvaluation] = Field(default_factory=list)
     frame_snapshots: List[FrameAnalysisResult] = Field(default_factory=list)
     report: Optional[InterviewReport] = None
+    
+    # Enhanced evaluation metrics
+    behavioral_metrics: List[Dict[str, Any]] = Field(default_factory=list)
+    vocal_metrics: List[Dict[str, Any]] = Field(default_factory=list)
+    coding_results: List[Dict[str, Any]] = Field(default_factory=list)
+    recruiter_report: Optional[Dict[str, Any]] = None
 
     aggregate_scores: Dict[str, float] = Field(default_factory=dict)
 

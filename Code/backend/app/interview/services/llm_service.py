@@ -1661,7 +1661,7 @@ async def evaluate_answer_interview(
         )
 
     try:
-    data = _parse_json(raw)
+        data = _parse_json(raw)
     except Exception:
         return _fallback_answer_evaluation(
             question_text=question_text,
@@ -1749,7 +1749,7 @@ async def generate_report_summary(
             ),
         }
     try:
-    return _parse_json(raw)
+        return _parse_json(raw)
     except Exception:
         return {
             "behavioral_summary": "Report JSON could not be parsed.",
