@@ -373,9 +373,11 @@ class LLMService:
     """Legacy MCQ/assessment service (kept for backward compatibility)."""
 
     def __init__(self):
-        self.api_key = os.getenv("GROQ_API_KEY")
+        from app.core.config import settings
+
+        self.api_key = getattr(settings, "GROQ_API_KEY", None) or os.getenv("GROQ_API_KEY")
         self.api_url = "https://api.groq.com/openai/v1/chat/completions"
-        self.model = os.getenv("LLM_MODEL", "llama-3.1-70b-versatile")
+        self.model = getattr(settings, "LLM_MODEL", None) or os.getenv("LLM_MODEL", "llama-3.1-70b-versatile")
 
         if not self.api_key:
             raise ValueError("GROQ_API_KEY environment variable is required")

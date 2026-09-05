@@ -15,8 +15,9 @@ def _get_stt_client():
     global _groq_stt
     if _groq_stt is None:
         from groq import Groq
+        from app.core.config import settings
 
-        api_key = os.getenv("GROQ_API_KEY")
+        api_key = getattr(settings, "GROQ_API_KEY", None) or os.getenv("GROQ_API_KEY")
         if not api_key:
             raise ValueError(
                 "GROQ_API_KEY not set. Add it to backend/.env: GROQ_API_KEY=gsk_xxxx"
@@ -119,7 +120,9 @@ async def transcribe_audio(
     if not audio_base64:
         return ""
 
-    if os.getenv("GROQ_API_KEY"):
+    from app.core.config import settings
+    api_key = getattr(settings, "GROQ_API_KEY", None) or os.getenv("GROQ_API_KEY")
+    if api_key:
         result = await transcribe_groq_whisper(audio_base64, language, audio_format)
         if result:
             return result

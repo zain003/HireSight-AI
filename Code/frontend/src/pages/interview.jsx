@@ -59,6 +59,7 @@ export default function InterviewPage() {
   const finalTranscriptRef = useRef(finalTranscript);
   const liveTranscriptionIntervalRef = useRef(null);
   const isTranscribingChunkRef = useRef(false);
+  const webSpeechDisabledRef = useRef(false);
   const recognitionRef = useRef(null);
   const restartListeningTimeoutRef = useRef(null);
   const ttsAudioRef = useRef(null);
@@ -630,6 +631,7 @@ export default function InterviewPage() {
 
     // 3. Start Browser Web Speech Recognition (for instant local text preview)
     if (typeof window === 'undefined') return;
+    if (webSpeechDisabledRef.current) return;
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       setSpeechNotice(
@@ -685,6 +687,13 @@ export default function InterviewPage() {
         if (event.error === 'no-speech' || event.error === 'aborted') {
           return;
         }
+        if (event.error === 'network') {
+          webSpeechDisabledRef.current = true;
+          setSpeechNotice(
+            'Live speech captured and transcribed via Groq Whisper AI.'
+          );
+          return;
+        }
         console.warn('Speech recognition notice:', event.error);
       };
 
@@ -694,6 +703,9 @@ export default function InterviewPage() {
         }
         if (recognitionRef.current === recognition) {
           recognitionRef.current = null;
+        }
+        if (webSpeechDisabledRef.current) {
+          return;
         }
         if (
           conversationStateRef.current === 'listening' &&
@@ -705,7 +717,12 @@ export default function InterviewPage() {
             clearTimeout(restartListeningTimeoutRef.current);
           }
           restartListeningTimeoutRef.current = setTimeout(() => {
-            if (conversationStateRef.current === 'listening' && !micMutedRef.current && inputModeRef.current === 'voice') {
+            if (
+              conversationStateRef.current === 'listening' &&
+              !micMutedRef.current &&
+              inputModeRef.current === 'voice' &&
+              !webSpeechDisabledRef.current
+            ) {
               try {
                 recognition.start();
                 recognitionRef.current = recognition;
@@ -713,7 +730,7 @@ export default function InterviewPage() {
                 // Whisper polling operates in parallel
               }
             }
-          }, 100);
+          }, 200);
         }
       };
 
