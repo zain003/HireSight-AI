@@ -13,8 +13,8 @@
 | `FEAT-003-VERIFY-session-sync.md` | Verify | P0 | Session Sync Verification | `FEAT-003-BE`, `FEAT-003-FE` | Multi-step recovery verification pass | ☑ Passed |
 | `FEAT-004-BE-cv-facial-movement-engine.md` | Backend | P0 | Observable Computer Vision Engine | `000-shared-contracts` | Normalized gaze & 3D head pose estimation | ☑ Done |
 | `FEAT-004-VERIFY-cv-engine.md` | Verify | P0 | CV Engine Verification | `FEAT-004-BE` | Landmark normalization & resolution tests | ☑ Passed |
-| `FEAT-005-BE-vocal-acoustic-speech-engine.md` | Backend | P0 | Vocal Acoustic Analysis Engine | `000-shared-contracts` | Conversational WPM, pause ratio, & pitch | ☐ Ready |
-| `FEAT-005-VERIFY-vocal-engine.md` | Verify | P0 | Vocal Engine Verification | `FEAT-005-BE` | Audio conversion & acoustic feature tests | ☐ Ready |
+| `FEAT-005-BE-vocal-acoustic-speech-engine.md` | Backend | P0 | Vocal Acoustic Analysis Engine | `000-shared-contracts` | Conversational WPM, pause ratio, & pitch | ☑ Done |
+| `FEAT-005-VERIFY-vocal-engine.md` | Verify | P0 | Vocal Engine Verification | `FEAT-005-BE` | Audio conversion & acoustic feature tests | ☑ Passed |
 | `FEAT-006-BE-coding-sandbox-hidden-tests.md` | Backend | P0 | Sandboxed Hidden Test Runner | `000-shared-contracts` | Server-side execution & private test cases | ☐ Ready |
 | `FEAT-006-FE-coding-assessment-ui.md` | Frontend | P1 | Coding Challenge Workspace UI | `FEAT-006-BE` | Code editor with public test runner | ☐ Ready |
 | `FEAT-006-VERIFY-coding-sandbox.md` | Verify | P0 | Coding Sandbox Verification | `FEAT-006-BE`, `FEAT-006-FE` | Sandbox isolation & hidden test tests | ☐ Ready |

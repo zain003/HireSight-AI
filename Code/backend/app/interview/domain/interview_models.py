@@ -90,6 +90,16 @@ class ObservableCVMetrics(BaseModel):
     observable_flags: List[str] = Field(default_factory=list)  # Observable physical anomalies only
 
 
+class ObservableVocalMetrics(BaseModel):
+    """Normalized observable acoustic and vocal pattern metrics from audio streams."""
+    speaking_rate_wpm: float = 0.0         # Words per minute (conversational norm: 120-160)
+    pause_duration_ratio: float = 0.0      # Total pause duration / total answer duration (0.0 to 1.0)
+    pitch_semitone_variance: float = 0.0   # F0 dynamic range in semitones
+    vocal_energy_rms: float = 0.0          # Root Mean Square energy stability
+    speech_clarity_score: float = 0.0      # 0-100 (spectral & harmonic stability)
+    acoustic_flags: List[str] = Field(default_factory=list)  # Measurable acoustic anomalies only
+
+
 class FrameAnalysisResult(BaseModel):
     blink_count: int = 0
     gaze_direction: str = "center"
