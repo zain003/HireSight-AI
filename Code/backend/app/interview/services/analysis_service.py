@@ -15,16 +15,24 @@ from app.interview.domain.interview_models import (
 )
 
 
+from app.interview.domain.scoring_models import (
+    CandidateFitStatus,
+    FiveDimensionScores,
+    ScoringWeights,
+)
+
+
 class AnalysisService:
     """
     Aggregates per-answer evaluations into overall interview scores
-    and generates the final hiring report.
+    and generates the final hiring report with 5-dimensional explainability.
     """
 
-    WEIGHT_TECHNICAL = 0.35
-    WEIGHT_COMMUNICATION = 0.25
-    WEIGHT_BEHAVIORAL = 0.25
-    WEIGHT_VIDEO = 0.15
+    WEIGHT_TECHNICAL = ScoringWeights.TECHNICAL_KNOWLEDGE
+    WEIGHT_CODING = ScoringWeights.CODING_ABILITY
+    WEIGHT_ROLE_FIT = ScoringWeights.ROLE_FIT
+    WEIGHT_COMMUNICATION = ScoringWeights.COMMUNICATION
+    WEIGHT_BEHAVIORAL = ScoringWeights.BEHAVIORAL_INDICATORS
 
     THRESHOLD_STRONG = 85.0
     THRESHOLD_RECOMMEND = 70.0
@@ -34,10 +42,14 @@ class AnalysisService:
         self,
         evaluations: List[AnswerEvaluation],
         frame_snapshots: List[FrameAnalysisResult],
+        coding_results: Optional[List[Dict]] = None,
+        role_fit_data: Optional[Dict] = None,
     ) -> Dict[str, float]:
         if not evaluations:
             return {
                 "technical_score": 0.0,
+                "coding_score": 0.0,
+                "role_fit_score": 0.0,
                 "communication_score": 0.0,
                 "behavioral_score": 0.0,
                 "video_integrity_score": 100.0,
@@ -47,46 +59,73 @@ class AnalysisService:
         def avg(items: List[AnswerEvaluation], key: str) -> float:
             if not items:
                 return 0.0
-            return round(sum(getattr(item, key) for item in items) / len(items) * 10, 1)
+            return round(sum(getattr(item, key, 0.0) or 0.0 for item in items) / len(items) * 10, 1)
 
         tech_evals = [
             e
             for e in evaluations
             if e.question_type
-            in (QuestionType.TECHNICAL, QuestionType.CV_BASED, QuestionType.CODING)
+            in (
+                QuestionType.TECHNICAL,
+                QuestionType.CV_BASED,
+                getattr(QuestionType, "CORE_TECHNICAL", None),
+                getattr(QuestionType, "DEEP_DIVE", None),
+            )
         ]
-        beh_evals = [
-            e
-            for e in evaluations
-            if e.question_type in (QuestionType.BEHAVIORAL, QuestionType.FOLLOW_UP)
-        ]
+        target_tech = tech_evals if tech_evals else evaluations
 
-        technical_score = avg(tech_evals, "depth_score") if tech_evals else avg(evaluations, "depth_score")
-        communication_score = avg(evaluations, "communication_score")
-        behavioral_score = avg(beh_evals, "relevance_score") if beh_evals else avg(evaluations, "relevance_score")
+        # Technical rubric-weighted calculation
+        q_tech_scores = []
+        for e in target_tech:
+            rel = min(100.0, max(0.0, float(e.relevance_score or 0.0) * 10.0 if float(e.relevance_score or 0.0) <= 10.0 else float(e.relevance_score or 0.0)))
+            dep = min(100.0, max(0.0, float(e.depth_score or 0.0) * 10.0 if float(e.depth_score or 0.0) <= 10.0 else float(e.depth_score or 0.0)))
+            acc = min(100.0, max(0.0, float(e.accuracy_score or 0.0)))
+            q_tech_scores.append(rel * 0.30 + dep * 0.40 + acc * 0.30)
+        technical_score = round(sum(q_tech_scores) / len(q_tech_scores), 1) if q_tech_scores else 0.0
 
+        # Coding calculation
+        if coding_results:
+            c_scores = [float(cr.get("overall_coding_score", 100.0 if cr.get("all_passed") else 0.0)) for cr in coding_results]
+            coding_score = round(sum(c_scores) / len(c_scores), 1) if c_scores else 0.0
+        else:
+            coding_score = 0.0
+
+        # Role fit calculation
+        role_fit_score = float((role_fit_data or {}).get("overall_fit_score", 0.0))
+
+        # Communication calculation
+        comm_scores = [min(100.0, max(0.0, float(e.communication_score or 0.0) * 10.0 if float(e.communication_score or 0.0) <= 10.0 else float(e.communication_score or 0.0))) for e in evaluations]
+        communication_score = round(sum(comm_scores) / len(comm_scores), 1) if comm_scores else 0.0
+
+        # Behavioral & Video calculation
         if frame_snapshots:
             flag_penalty = sum(len(s.suspicious_flags) for s in frame_snapshots) * 10
             gaze_penalty = (sum(s.looking_away_ratio for s in frame_snapshots) / len(frame_snapshots)) * 50
             video_score = round(max(0.0, 100.0 - flag_penalty - gaze_penalty), 1)
+            behavioral_score = video_score
         else:
             video_score = 100.0
+            behavioral_score = 0.0 if not evaluations else 70.0
 
         overall = round(
             technical_score * self.WEIGHT_TECHNICAL
+            + coding_score * self.WEIGHT_CODING
+            + role_fit_score * self.WEIGHT_ROLE_FIT
             + communication_score * self.WEIGHT_COMMUNICATION
-            + behavioral_score * self.WEIGHT_BEHAVIORAL
-            + video_score * self.WEIGHT_VIDEO,
+            + behavioral_score * self.WEIGHT_BEHAVIORAL,
             1,
         )
 
         return {
             "technical_score": technical_score,
+            "coding_score": coding_score,
+            "role_fit_score": role_fit_score,
             "communication_score": communication_score,
             "behavioral_score": behavioral_score,
             "video_integrity_score": video_score,
             "overall_score": overall,
         }
+
 
     def get_recommendation(self, overall_score: float) -> str:
         if overall_score >= self.THRESHOLD_STRONG:

@@ -287,11 +287,42 @@ class InterviewService:
         }
 
     async def end_interview(self, session: InterviewSession) -> Dict:
-        # Calculate traditional scores
+        # Determine role fit data from profile skills
+        from app.interview.domain.role_taxonomy import StandardRole
+        from app.interview.services.role_mapping_service import map_profile_to_role_fit
+
+        role_enum = None
+        try:
+            if session.job_role:
+                role_enum = StandardRole(session.job_role)
+        except Exception:
+            role_enum = None
+
+        role_fit_data = {}
+        if role_enum:
+            role_fit_data = map_profile_to_role_fit(
+                profile_skills=session.candidate_skills or [],
+                role=role_enum,
+            )
+        elif session.job_role:
+            role_fit_data = {
+                "role": session.job_role,
+                "overall_fit_score": 75.0 if session.candidate_skills else 50.0,
+                "matched_skills": session.candidate_skills or [],
+            }
+
+        # Calculate scores
+        behavioral_metrics = getattr(session, "behavioral_metrics", [])
+        vocal_metrics = getattr(session, "vocal_metrics", [])
+        coding_results = getattr(session, "coding_results", [])
+
         scores = self.analysis_service.calculate_scores(
-            session.evaluations, session.frame_snapshots
+            evaluations=session.evaluations,
+            frame_snapshots=session.frame_snapshots,
+            coding_results=coding_results,
+            role_fit_data=role_fit_data,
         )
-        
+
         # Generate traditional summary
         summary = await generate_report_summary(
             candidate_name=session.candidate_name,
@@ -303,12 +334,8 @@ class InterviewService:
 
         # Build traditional report
         report = self.analysis_service.build_report(session, summary)
-        
-        # Generate comprehensive recruiter report
-        behavioral_metrics = getattr(session, 'behavioral_metrics', [])
-        vocal_metrics = getattr(session, 'vocal_metrics', [])
-        coding_results = getattr(session, 'coding_results', [])
-        
+
+        # Generate comprehensive 5-dimensional recruiter report
         recruiter_report = self.report_generator.generate_report(
             candidate_name=session.candidate_name,
             job_role=session.job_role or "Not specified",
@@ -318,9 +345,22 @@ class InterviewService:
             behavioral_metrics=behavioral_metrics,
             vocal_metrics=vocal_metrics,
             coding_results=coding_results,
-            aggregate_scores=scores
+            aggregate_scores=scores,
+            role_fit_data=role_fit_data,
         )
-        
+
+        # Update scores with 5-dimensional explainable metrics
+        if recruiter_report.five_dimension_scores:
+            scores.update({
+                "technical_knowledge_score": recruiter_report.technical_score,
+                "coding_ability_score": recruiter_report.coding_score,
+                "role_fit_score": recruiter_report.role_fit_score,
+                "communication_score": recruiter_report.communication_score,
+                "behavioral_indicators_score": recruiter_report.behavioral_score,
+                "overall_composite_score": recruiter_report.overall_score,
+                "fit_status": recruiter_report.fit_status,
+            })
+
         # Store comprehensive report
         session.recruiter_report = recruiter_report.__dict__
         session.report = report
@@ -331,10 +371,11 @@ class InterviewService:
         await session.save()
 
         return {
-            "scores": scores, 
+            "scores": scores,
             "report": report,
-            "recruiter_report": recruiter_report.__dict__
+            "recruiter_report": recruiter_report.__dict__,
         }
+
 
     def get_session_state(self, session: InterviewSession) -> Dict[str, Any]:
         """Extract deterministic session state for synchronization & recovery."""

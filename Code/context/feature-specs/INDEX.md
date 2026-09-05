@@ -18,8 +18,9 @@
 | `FEAT-006-BE-coding-sandbox-hidden-tests.md` | Backend | P0 | Sandboxed Hidden Test Runner | `000-shared-contracts` | Server-side execution & private test cases | ☑ Done |
 | `FEAT-006-FE-coding-assessment-ui.md` | Frontend | P1 | Coding Challenge Workspace UI | `FEAT-006-BE` | Code editor with public test runner | ☑ Done |
 | `FEAT-006-VERIFY-coding-sandbox.md` | Verify | P0 | Coding Sandbox Verification | `FEAT-006-BE`, `FEAT-006-FE` | Sandbox isolation & hidden test tests | ☑ Passed |
-| `FEAT-007-BE-explainable-scoring-engine.md` | Backend | P0 | 5-Dimensional Scoring Engine | `FEAT-001-BE` to `FEAT-006-BE` | Transparent 5-dim model & audit log | ☐ Ready |
-| `FEAT-007-VERIFY-explainable-scoring.md` | Verify | P0 | Explainable Scoring Verification | `FEAT-007-BE` | Weight calculations & mathematical audit | ☐ Ready |
+| `FEAT-007-BE-explainable-scoring-engine.md` | Backend | P0 | 5-Dimensional Scoring Engine | `FEAT-001-BE` to `FEAT-006-BE` | Transparent 5-dim model & audit log | ☑ Done |
+| `FEAT-007-VERIFY-explainable-scoring.md` | Verify | P0 | Explainable Scoring Verification | `FEAT-007-BE` | Weight calculations & mathematical audit | ☑ Passed |
+
 | `FEAT-008-BE-tailored-feedback-engine.md` | Backend | P1 | Tailored Feedback & Skill Gap | `FEAT-007-BE` | Question-anchored actionable feedback | ☐ Ready |
 | `FEAT-008-VERIFY-tailored-feedback.md` | Verify | P1 | Feedback Engine Verification | `FEAT-008-BE` | Skill gap roadmap & evidence tests | ☐ Ready |
 | `FEAT-009-BE-pdf-report-generator.md` | Backend | P1 | PDF Recruiter Report Exporter | `FEAT-007-BE`, `FEAT-008-BE` | Publication-grade PDF report engine | ☐ Ready |

@@ -17,7 +17,11 @@ from .stt_service import STTService, transcribe_audio
 from .tts_service import TTSService, text_to_speech
 from .behavioral_analysis import BehavioralAnalysisService, BehavioralMetrics
 from .vocal_analysis import VocalAnalysisService, VocalMetrics
-from .recruiter_report import RecruiterReportGenerator, RecruiterReport
+from .recruiter_report import (
+    RecruiterReportGenerator,
+    RecruiterReport,
+    calculate_five_dimension_scores,
+)
 
 __all__ = [
     "AnalysisService",
@@ -32,6 +36,7 @@ __all__ = [
     "VocalMetrics",
     "RecruiterReportGenerator",
     "RecruiterReport",
+    "calculate_five_dimension_scores",
     "analyze_emotions",
     "evaluate_answer",
     "evaluate_answer_interview",

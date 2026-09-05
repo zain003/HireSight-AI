@@ -11,10 +11,17 @@ from .interview_models import (
     ObservableVocalMetrics,
     QuestionType,
 )
+from .scoring_models import (
+    CandidateFitStatus,
+    FiveDimensionScores,
+    ScoringWeights,
+)
 
 __all__ = [
     "AnswerEvaluation",
+    "CandidateFitStatus",
     "EmotionLabel",
+    "FiveDimensionScores",
     "FrameAnalysisResult",
     "InterviewReport",
     "InterviewSession",
@@ -22,4 +29,6 @@ __all__ = [
     "ObservableCVMetrics",
     "ObservableVocalMetrics",
     "QuestionType",
+    "ScoringWeights",
 ]
+
