@@ -92,13 +92,35 @@ export interface QuestionRubric {
 
 export interface InterviewQuestion {
   question_id: string;
-  question_index: int;
+  question_index: number;
   stage: QuestionStage;
   competency_area: string;
   difficulty: SeniorityLevel;
   question_text: string;
   rubric: QuestionRubric;
   coding_challenge_id?: string;
+  parent_question_id?: string;
+}
+```
+
+```python
+class InterviewSessionState(BaseModel):
+    session_id: str
+    current_question_index: int
+    total_questions: int
+    completed_evaluations_count: int
+    current_question: Optional[Dict[str, Any]] = None
+    status: str
+```
+
+```typescript
+export interface InterviewSessionState {
+  session_id: string;
+  current_question_index: number;
+  total_questions: number;
+  completed_evaluations_count: number;
+  current_question?: Record<string, any>;
+  status: string;
 }
 ```
 

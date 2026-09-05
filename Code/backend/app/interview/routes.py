@@ -13,6 +13,7 @@ from app.interview.schemas import (
     FrameAnalyzeRequest,
     FrameAnalyzeResponse,
     InterviewReportResponse,
+    InterviewSessionState,
     LiveInterviewStartRequest,
     LiveInterviewStartResponse,
     LiveInterviewQuestion,
@@ -130,6 +131,22 @@ async def start_live_interview(
     )
 
 
+@router.get("/live/{session_id}/state", response_model=InterviewSessionState)
+async def get_live_session_state(
+    session_id: str,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Retrieve current synchronization and question state for live interview recovery."""
+    session = await InterviewSession.find_one(
+        {"session_id": session_id, "user_id": str(current_user.id)}
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    state_data = interview_service.get_session_state(session)
+    return InterviewSessionState(**state_data)
+
+
 @router.post("/live/{session_id}/answer", response_model=SubmitAnswerResponse)
 async def submit_live_answer(
     session_id: str,
@@ -141,6 +158,14 @@ async def submit_live_answer(
     )
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
+
+    # Guard against concurrent answer submissions for the same session
+    lock_acquired = await interview_service.submission_lock.acquire(session_id)
+    if not lock_acquired:
+        raise HTTPException(
+            status_code=409,
+            detail="Concurrent answer submission in progress for this session",
+        )
 
     try:
         result = await interview_service.process_answer(
@@ -154,6 +179,8 @@ async def submit_live_answer(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        await interview_service.submission_lock.release(session_id)
 
     follow_up_question = None
     if result.get("follow_up_question"):

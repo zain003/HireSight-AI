@@ -29,6 +29,27 @@ from app.interview.services.vocal_analysis import VocalAnalysisService
 from app.interview.services.recruiter_report import RecruiterReportGenerator
 
 
+import asyncio
+
+class SessionSubmissionLock:
+    """In-memory concurrency lock preventing duplicate simultaneous answer evaluations for the same session."""
+
+    def __init__(self):
+        self._active: set[str] = set()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self, session_id: str) -> bool:
+        async with self._lock:
+            if session_id in self._active:
+                return False
+            self._active.add(session_id)
+            return True
+
+    async def release(self, session_id: str) -> None:
+        async with self._lock:
+            self._active.discard(session_id)
+
+
 class InterviewService:
     MAX_FOLLOWUPS_PER_STAGE = 3
     MAX_FOLLOWUPS_PER_INTERVIEW = 9
@@ -41,6 +62,7 @@ class InterviewService:
         self.behavioral_service = BehavioralAnalysisService()
         self.vocal_service = VocalAnalysisService()
         self.report_generator = RecruiterReportGenerator()
+        self.submission_lock = SessionSubmissionLock()
         
         # Track behavioral and vocal metrics per question
         self.behavioral_metrics_per_question = []
@@ -127,6 +149,12 @@ class InterviewService:
         if question_index < 0 or question_index >= len(session.questions):
             raise ValueError("Invalid question index")
 
+        if question_index < len(session.evaluations):
+            raise ValueError(f"Question {question_index} has already been answered")
+
+        if question_index != len(session.evaluations):
+            raise ValueError(f"Question index {question_index} is out of order. Expected question {len(session.evaluations)}.")
+
         question = session.questions[question_index]
         question_text = question.get("question_text") or ""
         question_type = question.get("question_type") or QuestionType.TECHNICAL.value
@@ -172,11 +200,14 @@ class InterviewService:
 
         evaluation.question_index = question_index
         evaluation.question_text = question_text
-        evaluation.question_type = QuestionType(question_type)
+        try:
+            evaluation.question_type = QuestionType(question_type)
+        except ValueError:
+            evaluation.question_type = QuestionType.TECHNICAL
 
         session.evaluations.append(evaluation)
         session.frame_snapshots.append(frame_analysis)
-        session.current_question_index = max(session.current_question_index, question_index + 1)
+        session.current_question_index = question_index + 1
         session.updated_at = datetime.utcnow()
 
         follow_up_question = None
@@ -213,17 +244,25 @@ class InterviewService:
                 ],
             )
             if follow_up:
+                parent_id = question.get("question_id", f"q_{question_index + 1}")
                 follow_up_question = {
-                    "question_id": f"q_{len(session.questions) + 1}",
+                    "question_id": f"fu_{parent_id}_{uuid.uuid4().hex[:6]}",
                     "question_index": question_index + 1,
                     "question_text": follow_up.get("question_text", ""),
                     "question_type": QuestionType.FOLLOW_UP.value,
                     "stage": follow_up.get("stage") or question.get("stage") or question_type,
                     "difficulty": follow_up.get("difficulty") or None,
+                    "parent_question_id": question.get("question_id"),
                 }
                 session.questions.insert(question_index + 1, follow_up_question)
                 for idx, q in enumerate(session.questions):
                     q["question_index"] = idx
+
+        # Transition status if all questions completed
+        if session.current_question_index >= len(session.questions):
+            session.status = InterviewStatus.COMPLETED.value
+            if not session.ended_at:
+                session.ended_at = datetime.utcnow()
 
         await session.save()
 
@@ -295,4 +334,35 @@ class InterviewService:
             "scores": scores, 
             "report": report,
             "recruiter_report": recruiter_report.__dict__
+        }
+
+    def get_session_state(self, session: InterviewSession) -> Dict[str, Any]:
+        """Extract deterministic session state for synchronization & recovery."""
+        curr_idx = session.current_question_index
+        total_q = len(session.questions)
+        curr_q = None
+        if 0 <= curr_idx < total_q:
+            q = session.questions[curr_idx]
+            curr_q = {
+                "question_id": q.get("question_id"),
+                "question_index": q.get("question_index", curr_idx),
+                "question_text": q.get("question_text"),
+                "question_type": q.get("question_type"),
+                "stage": q.get("stage"),
+                "difficulty": q.get("difficulty"),
+                "parent_question_id": q.get("parent_question_id"),
+                "coding_challenge": q.get("coding_challenge"),
+            }
+
+        status = session.status
+        if curr_idx >= total_q and total_q > 0 and status != InterviewStatus.COMPLETED.value:
+            status = InterviewStatus.COMPLETED.value
+
+        return {
+            "session_id": session.session_id,
+            "current_question_index": curr_idx,
+            "total_questions": total_q,
+            "completed_evaluations_count": len(session.evaluations),
+            "current_question": curr_q,
+            "status": status,
         }

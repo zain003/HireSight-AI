@@ -23,8 +23,18 @@ class LiveInterviewQuestion(BaseModel):
     question_type: str
     stage: Optional[str] = None
     difficulty: Optional[str] = None
+    parent_question_id: Optional[str] = None
     # Passed through for coding evaluation (starter code, public tests); omitted for verbal-only questions.
     coding_challenge: Optional[Dict[str, Any]] = None
+
+
+class InterviewSessionState(BaseModel):
+    session_id: str
+    current_question_index: int
+    total_questions: int
+    completed_evaluations_count: int
+    current_question: Optional[Dict[str, Any]] = None
+    status: str
 
 
 class LiveInterviewStartResponse(BaseModel):

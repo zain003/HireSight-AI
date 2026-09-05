@@ -43,6 +43,19 @@ export const interviewService = {
     return response.data;
   },
 
+  /**
+   * Fetch current session state for recovery on page reload or synchronization.
+   */
+  getSessionState: async (sessionId) => {
+    const response = await api.get(`/interview/live/${sessionId}/state`);
+    return response.data;
+  },
+
+  fetchSessionState: async (sessionId) => {
+    const response = await api.get(`/interview/live/${sessionId}/state`);
+    return response.data;
+  },
+
   registerFace: async (sessionId, imageBase64) => {
     const response = await api.post(`/interview/live/${sessionId}/register-face`, {
       image_base64: imageBase64,

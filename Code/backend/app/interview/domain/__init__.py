@@ -7,6 +7,7 @@ from .interview_models import (
     InterviewReport,
     InterviewSession,
     InterviewStatus,
+    ObservableCVMetrics,
     QuestionType,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "InterviewReport",
     "InterviewSession",
     "InterviewStatus",
+    "ObservableCVMetrics",
     "QuestionType",
 ]

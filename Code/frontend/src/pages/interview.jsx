@@ -4,6 +4,8 @@ import { useRouter } from 'next/router';
 import authService from '@/services/authService';
 import interviewService from '@/services/interviewService';
 import { formatApiDetail } from '@/utils/formatApiDetail';
+import InputModeSelector from '@/components/Interview/InputModeSelector';
+import { Sparkles, FileText, CheckCircle2, ChevronDown, ChevronUp, Lightbulb, RefreshCw } from 'lucide-react';
 
 const CodingWorkspace = dynamic(
   () => import('@/components/Interview/CodingWorkspace'),
@@ -28,6 +30,9 @@ export default function InterviewPage() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [liveTranscript, setLiveTranscript] = useState('');
   const [finalTranscript, setFinalTranscript] = useState('');
+  const [inputMode, setInputMode] = useState('voice'); // 'voice' | 'text'
+  const [textAnswer, setTextAnswer] = useState('');
+  const [showStarGuidance, setShowStarGuidance] = useState(false);
   const [lastScore, setLastScore] = useState(null);
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -151,6 +156,49 @@ export default function InterviewPage() {
       .filter((q) => (q?.question_type || '').toLowerCase() !== 'follow_up').length;
     return Math.max(1, n);
   }, [questions, currentIdx]);
+
+  const isFollowUpQuestion = useMemo(() => {
+    if (!currentQuestion) return false;
+    const qType = (currentQuestion.question_type || '').toLowerCase();
+    const stage = (currentQuestion.stage || '').toLowerCase();
+    return Boolean(
+      currentQuestion.parent_question_id ||
+        qType === 'follow_up' ||
+        stage === 'follow_up'
+    );
+  }, [currentQuestion]);
+
+  const handleInputModeChange = useCallback(
+    (newMode) => {
+      if (newMode === inputMode) return;
+      if (newMode === 'text') {
+        // Stop active speech recognition when entering text mode
+        stopListening();
+        const currentVoiceText = (
+          finalTranscript + (liveTranscript ? ' ' + liveTranscript : '')
+        ).trim();
+        if (currentVoiceText && !textAnswer.trim()) {
+          setTextAnswer(currentVoiceText);
+        }
+      } else if (newMode === 'voice') {
+        if (textAnswer.trim() && !finalTranscript.trim()) {
+          setFinalTranscript(textAnswer.trim());
+        }
+        if (conversationState === 'listening' && !micMuted) {
+          startListening();
+        }
+      }
+      setInputMode(newMode);
+    },
+    [
+      inputMode,
+      finalTranscript,
+      liveTranscript,
+      textAnswer,
+      conversationState,
+      micMuted,
+    ]
+  );
 
   useEffect(() => {
     if (!authService.isAuthenticated()) {
@@ -509,6 +557,68 @@ export default function InterviewPage() {
       reader.readAsDataURL(blob);
     });
 
+  const recoverSessionState = async (targetSessionId) => {
+    setLoading(true);
+    setError('');
+    try {
+      const state = await interviewService.getSessionState(targetSessionId);
+      if (!state) throw new Error('Could not fetch session state');
+
+      setSessionId(state.session_id);
+
+      // Check if session is already completed
+      if (state.status === 'completed' || state.current_question_index >= state.total_questions) {
+        try {
+          const finalReport = await interviewService.getReport(targetSessionId);
+          setReport(finalReport);
+        } catch {
+          // If report not yet generated
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Restore questions from storage or state
+      let loadedQuestions = [];
+      const cached =
+        typeof window !== 'undefined'
+          ? sessionStorage.getItem('hiresight_questions_' + targetSessionId)
+          : null;
+      if (cached) {
+        try {
+          loadedQuestions = JSON.parse(cached);
+        } catch {
+          loadedQuestions = [];
+        }
+      }
+
+      if (loadedQuestions.length === 0 && state.current_question) {
+        loadedQuestions = [state.current_question];
+      }
+
+      setQuestions(loadedQuestions);
+      setCurrentIdx(state.current_question_index);
+      setLastScore(null);
+      setReport(null);
+
+      // Initialize media and speak current question
+      const mediaReady = await initializeMedia();
+      const currentQ =
+        loadedQuestions[state.current_question_index] || state.current_question;
+      if (mediaReady && currentQ) {
+        setTimeout(() => speakQuestion(currentQ.question_text, currentQ), 500);
+      }
+    } catch (err) {
+      console.error('Session recovery failed:', err);
+      setError(
+        formatApiDetail(err.response?.data?.detail) ||
+          'Failed to recover interview session state.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const startInterview = async (jobPostId = null, extraPayload = {}) => {
     setLoading(true);
     setError('');
@@ -521,6 +631,12 @@ export default function InterviewPage() {
       const data = await interviewService.startSession(payload);
       setSessionId(data.session_id);
       setQuestions(data.questions || []);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(
+          'hiresight_questions_' + data.session_id,
+          JSON.stringify(data.questions || [])
+        );
+      }
       setCurrentIdx(0);
       setLastScore(null);
       setReport(null);
@@ -542,6 +658,13 @@ export default function InterviewPage() {
     if (!router.isReady || !authService.isAuthenticated()) return;
     if (sessionId || autoStartedRef.current) return;
 
+    const querySessionId = router.query.sessionId || router.query.session_id;
+    if (querySessionId && typeof querySessionId === 'string') {
+      autoStartedRef.current = true;
+      recoverSessionState(querySessionId);
+      return;
+    }
+
     const queryJobPostId = typeof router.query.jobPostId === 'string' ? router.query.jobPostId : null;
     const queryJobRole = typeof router.query.jobRole === 'string' ? router.query.jobRole : null;
     const autostart = router.query.autostart === 'true' || queryJobPostId || queryJobRole;
@@ -554,13 +677,23 @@ export default function InterviewPage() {
   }, [router.isReady, router.query, sessionId]);
 
   const handleSubmitAnswer = () => {
-    let transcript = finalTranscript.trim();
+    let transcript = '';
+    if (inputMode === 'text') {
+      transcript = textAnswer.trim();
+    } else {
+      transcript = finalTranscript.trim();
+    }
+
     if (!transcript && isCodingPhase) {
       transcript =
-        '[Coding round] Candidate continued in the code editor; verbal walkthrough optional.';
+        '[Coding round] Candidate continued in the code editor; verbal/text walkthrough optional.';
     }
     if (!transcript) {
-      setError('Please speak your answer before submitting.');
+      setError(
+        inputMode === 'text'
+          ? 'Please enter your written response before submitting.'
+          : 'Please speak your answer before submitting.'
+      );
       return;
     }
     submitAnswer(transcript);
@@ -584,13 +717,13 @@ export default function InterviewPage() {
         setError('Could not capture video frame. Please ensure your camera is working.');
         setLoading(false);
         setConversationState('listening');
-        startListening();
+        if (inputMode === 'voice') startListening();
         return;
       }
 
       const frameBase64 = await blobToBase64(frame);
 
-      // Create a dummy audio blob (since we're using transcript from speech recognition)
+      // Create a dummy audio blob (since we're using transcript from speech recognition/text input)
       const dummyAudio = new Blob([new ArrayBuffer(44)], { type: 'audio/wav' });
       const audioBase64 = await blobToBase64(dummyAudio);
 
@@ -615,15 +748,22 @@ export default function InterviewPage() {
         },
       });
 
-      // Clear transcripts for next question
+      // Clear transcripts and text draft for next question
       setLiveTranscript('');
       setFinalTranscript('');
+      setTextAnswer('');
 
       // Handle follow-up questions
       let updatedQuestions = [...questions];
       if (score.follow_up_question) {
         updatedQuestions.splice(currentIdx + 1, 0, score.follow_up_question);
         setQuestions(updatedQuestions);
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem(
+            'hiresight_questions_' + sessionId,
+            JSON.stringify(updatedQuestions)
+          );
+        }
       }
 
       // Check if there are more questions
@@ -654,7 +794,7 @@ export default function InterviewPage() {
       console.error('Error submitting answer:', err);
       setError(formatApiDetail(err.response?.data?.detail) || 'Failed to evaluate answer');
       setConversationState('listening');
-      startListening();
+      if (inputMode === 'voice') startListening();
     } finally {
       setLoading(false);
     }
@@ -965,6 +1105,18 @@ export default function InterviewPage() {
 
               {/* AI question card */}
               <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-5 sm:p-6">
+                {isFollowUpQuestion && (
+                  <div className="mb-4 flex items-start gap-3 rounded-xl border border-violet-400/30 bg-violet-950/40 p-3.5 text-xs text-violet-200 shadow-inner">
+                    <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
+                    <div>
+                      <p className="font-semibold text-violet-100">Adaptive Deep-Dive Follow-Up</p>
+                      <p className="mt-0.5 text-violet-200/80 leading-relaxed">
+                        The interviewer is exploring technical depth based on your previous response. Take your time to clarify specific trade-offs and implementation nuances.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mb-4 flex flex-wrap items-center gap-3">
                   <div className="flex items-center gap-2 text-slate-300">
                     <span
@@ -990,7 +1142,9 @@ export default function InterviewPage() {
                       {conversationState === 'asking' || isSpeakingQuestion
                         ? 'AI interviewer is asking…'
                         : conversationState === 'listening'
-                          ? 'Listening for your answer…'
+                          ? inputMode === 'text'
+                            ? 'Awaiting your text response…'
+                            : 'Listening for your answer…'
                           : conversationState === 'processing'
                             ? 'Processing your response…'
                             : 'Ready'}
@@ -1010,6 +1164,12 @@ export default function InterviewPage() {
                   <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-200">
                     {difficultyBadge}
                   </span>
+                  {isFollowUpQuestion && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-violet-400/40 bg-violet-500/20 px-3 py-1 text-xs font-semibold text-violet-200 shadow-sm">
+                      <Sparkles className="h-3 w-3 text-violet-300" />
+                      Follow-up Question
+                    </span>
+                  )}
                 </div>
                 <p className="text-lg font-medium leading-relaxed text-white sm:text-xl">
                   {currentQuestion.question_text}
@@ -1022,10 +1182,10 @@ export default function InterviewPage() {
                         Coding round · Monaco editor
                       </p>
                       <p className="mt-0.5 text-[11px] text-emerald-100/80">
-                        Problem details stay on the left with your camera. Monaco editor and voice capture are in the
-                        right panel — same grid width as earlier interview phases.
+                        Problem details stay on the left with your camera. Monaco editor and voice/text capture are in the
+                        right panel.
                       </p>
-            </div>
+                    </div>
 
                     <div className="space-y-4 rounded-xl border border-white/10 bg-slate-950/60 p-4 shadow-inner ring-1 ring-white/5">
                       <h3 className="text-base font-semibold text-white">
@@ -1076,7 +1236,7 @@ export default function InterviewPage() {
               </div>
             </div>
 
-            {/* Right: Monaco + voice (coding) or live transcript (other phases) */}
+            {/* Right: Monaco + voice/text (coding) or live transcript / text input (other phases) */}
             <div className="flex min-h-0 flex-col gap-5">
               {isCodingPhase && currentQuestion.coding_challenge ? (
                 <CodingWorkspace
@@ -1092,70 +1252,161 @@ export default function InterviewPage() {
               ) : null}
 
               <div className="flex flex-1 flex-col rounded-2xl border border-white/10 bg-slate-900/50 p-5">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-                    <svg className="h-4 w-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m12 0V9a3 3 0 00-3-3h-.75a3 3 0 00-3 3v.75m12 0h.008v.008H18V9z" />
-                    </svg>
-                    {isCodingPhase ? 'Voice transcript (optional)' : 'Your answer (live transcript)'}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={clearTranscript}
-                      className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/5"
-                    >
-                      Clear
-                    </button>
-                    <button
-                      type="button"
-                      onClick={copyTranscript}
-                      disabled={!displayTranscript.trim()}
-                      className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/5 disabled:opacity-40"
-                    >
-                      Copy
-                    </button>
-                    {isCodingPhase ? (
+                {/* Input Mode Selector Header */}
+                <div className="mb-4 flex flex-col gap-3">
+                  <InputModeSelector
+                    mode={inputMode}
+                    onChange={handleInputModeChange}
+                    disabled={loading || conversationState === 'processing'}
+                    isListening={isListening}
+                    micMuted={micMuted}
+                  />
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/5 pt-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                      {inputMode === 'voice' ? (
+                        <>
+                          <svg className="h-4 w-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m12 0V9a3 3 0 00-3-3h-.75a3 3 0 00-3 3v.75m12 0h.008v.008H18V9z" />
+                          </svg>
+                          <span>{isCodingPhase ? 'Voice transcript (optional)' : 'Spoken response (captions)'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="h-4 w-4 text-indigo-400" />
+                          <span>Written Response Input</span>
+                        </>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => {
-                          if (micMuted) return;
-                          if (!isListening) startListening();
+                          if (inputMode === 'text') {
+                            setTextAnswer('');
+                          } else {
+                            clearTranscript();
+                          }
                         }}
-                        disabled={micMuted || isListening || loading}
-                        className="rounded-lg border border-emerald-500/35 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={inputMode === 'text' ? !textAnswer.trim() : !displayTranscript.trim()}
+                        className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/5 disabled:opacity-40"
                       >
-                        {isListening ? 'Listening…' : 'Resume microphone'}
+                        Clear
                       </button>
-                    ) : null}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const t = inputMode === 'text' ? textAnswer.trim() : displayTranscript.trim();
+                          if (!t) return;
+                          try {
+                            await navigator.clipboard.writeText(t);
+                          } catch {
+                            /* ignore */
+                          }
+                        }}
+                        disabled={inputMode === 'text' ? !textAnswer.trim() : !displayTranscript.trim()}
+                        className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/5 disabled:opacity-40"
+                      >
+                        Copy
+                      </button>
+                      {inputMode === 'voice' && isCodingPhase ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (micMuted) return;
+                            if (!isListening) startListening();
+                          }}
+                          disabled={micMuted || isListening || loading}
+                          className="rounded-lg border border-emerald-500/35 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {isListening ? 'Listening…' : 'Resume microphone'}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-                <div
-                  className={`flex-1 overflow-y-auto rounded-xl border border-white/10 bg-[#0B1120]/80 p-4 ${
-                    isCodingPhase ? 'min-h-[200px]' : 'min-h-[280px]'
-                  }`}
-                >
-                  {displayTranscript ? (
-                    <p className="text-sm leading-relaxed text-slate-200 whitespace-pre-wrap">
-                      {displayTranscript}
-                      {liveTranscript && (
-                        <span className="text-slate-500 italic"> (speaking…)</span>
-                      )}
-                    </p>
-                  ) : (
-                    <div className="flex h-full min-h-[200px] flex-col items-center justify-center text-center text-slate-500">
-                      <svg className="mb-3 h-10 w-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m12 0V9a3 3 0 00-3-3h-.75a3 3 0 00-3 3v.75m12 0h.008v.008H18V9z" />
-                      </svg>
-                      <p className="text-sm">
-                        {isCodingPhase
-                          ? 'Tap Resume microphone to dictate your approach, or type in Monaco only and continue.'
-                          : 'Start speaking — your answer will appear here in real time'}
+
+                {/* Response Input Body (Voice Captions vs Text Editor) */}
+                {inputMode === 'voice' ? (
+                  <div
+                    className={`flex-1 overflow-y-auto rounded-xl border border-white/10 bg-[#0B1120]/80 p-4 ${
+                      isCodingPhase ? 'min-h-[200px]' : 'min-h-[260px]'
+                    }`}
+                  >
+                    {displayTranscript ? (
+                      <p className="text-sm leading-relaxed text-slate-200 whitespace-pre-wrap">
+                        {displayTranscript}
+                        {liveTranscript && (
+                          <span className="text-slate-500 italic"> (speaking…)</span>
+                        )}
                       </p>
+                    ) : (
+                      <div className="flex h-full min-h-[200px] flex-col items-center justify-center text-center text-slate-500">
+                        <svg className="mb-3 h-10 w-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m12 0V9a3 3 0 00-3-3h-.75a3 3 0 00-3 3v.75m12 0h.008v.008H18V9z" />
+                        </svg>
+                        <p className="text-sm">
+                          {isCodingPhase
+                            ? 'Tap Resume microphone to dictate your approach, or type in Monaco only and continue.'
+                            : 'Start speaking — your answer will appear here in real time'}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-600">
+                          Microphone not working? Switch to Text Input mode above.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-1 flex-col gap-2.5">
+                    <div className="relative flex-1">
+                      <textarea
+                        value={textAnswer}
+                        onChange={(e) => setTextAnswer(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                            e.preventDefault();
+                            handleSubmitAnswer();
+                          }
+                        }}
+                        disabled={loading || conversationState === 'processing'}
+                        placeholder="Type your technical response here... Detail algorithms, system architecture, trade-offs, and practical examples."
+                        className={`w-full rounded-xl border border-white/15 bg-[#0B1120]/90 p-4 text-sm leading-relaxed text-slate-100 placeholder:text-slate-500 focus:border-indigo-400/50 focus:outline-none focus:ring-1 focus:ring-indigo-400/30 resize-none font-sans ${
+                          isCodingPhase ? 'min-h-[180px]' : 'min-h-[240px]'
+                        }`}
+                        rows={isCodingPhase ? 6 : 8}
+                      />
                     </div>
-                  )}
-                </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-slate-400">
+                      <span className="font-mono text-[11px] text-slate-400">
+                        {textAnswer.trim().split(/\s+/).filter(Boolean).length} words · {textAnswer.length} chars
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowStarGuidance(!showStarGuidance)}
+                        className="inline-flex items-center gap-1 text-[11px] text-indigo-300 transition hover:text-indigo-200"
+                      >
+                        <Lightbulb className="h-3.5 w-3.5 text-amber-400" />
+                        <span>{showStarGuidance ? 'Hide STAR Framework' : 'STAR Framework Tips'}</span>
+                        {showStarGuidance ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+
+                    {showStarGuidance && (
+                      <div className="rounded-xl border border-indigo-400/20 bg-indigo-950/40 p-3.5 text-[11px] text-slate-300 space-y-1.5 shadow-inner">
+                        <p className="font-semibold text-indigo-200">Recommended Structuring Technique (STAR):</p>
+                        <ul className="list-disc list-inside space-y-0.5 text-slate-400">
+                          <li><strong className="text-slate-200">Situation:</strong> Context, scale, or business requirements.</li>
+                          <li><strong className="text-slate-200">Task:</strong> Your core technical responsibility and constraints.</li>
+                          <li><strong className="text-slate-200">Action:</strong> Architecture chosen, patterns used, and trade-offs made.</li>
+                          <li><strong className="text-slate-200">Result:</strong> Measured impact, reliability, latency, or throughput gain.</li>
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
                 
+                {/* Score Indicators */}
                 <div className="mt-4 grid grid-cols-3 gap-3">
                   <div className="rounded-xl border border-white/10 bg-[#0B1120]/60 px-3 py-3 text-center">
                     <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Pace</p>
@@ -1193,9 +1444,11 @@ export default function InterviewPage() {
                   <svg className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
                   </svg>
-                  {isCodingPhase
-                    ? 'Speech recognition stays off while you type; resume it here for verbal notes.'
-                    : 'AI analyzes tone & content live'}
+                  {inputMode === 'text'
+                    ? 'Tip: Press Ctrl + Enter to quickly submit your response.'
+                    : isCodingPhase
+                      ? 'Speech recognition stays off while you type; resume it here for verbal notes.'
+                      : 'AI evaluates answer depth, relevance, and technical accuracy live'}
                 </p>
 
                 <div className="mt-4 flex gap-3">
@@ -1212,8 +1465,11 @@ export default function InterviewPage() {
                     onClick={handleSubmitAnswer}
                     disabled={
                       loading ||
-                      conversationState !== 'listening' ||
-                      (!isCodingPhase && !displayTranscript.trim())
+                      conversationState === 'processing' ||
+                      (inputMode === 'voice'
+                        ? conversationState !== 'listening' ||
+                          (!isCodingPhase && !displayTranscript.trim())
+                        : !textAnswer.trim())
                     }
                     className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                   >
@@ -1223,20 +1479,22 @@ export default function InterviewPage() {
                     </svg>
                   </button>
                 </div>
-                {conversationState === 'listening' && (
-                  <p className="mt-2 text-center text-[11px] text-slate-500">
-                    {isCodingPhase ? (
-                      <>
-                        Code in Monaco, optionally narrate with <span className="text-slate-400">Resume microphone</span>,
-                        then <span className="text-slate-400">Next question</span> (works without speech).
-                      </>
-                    ) : (
-                      <>
-                        Speak your answer, then tap <span className="text-slate-400">Next question</span>
-                      </>
-                    )}
-                  </p>
-                )}
+                <p className="mt-2 text-center text-[11px] text-slate-500">
+                  {inputMode === 'text' ? (
+                    <>
+                      Enter your written answer, then tap <span className="text-slate-400">Next question</span> (or Ctrl+Enter)
+                    </>
+                  ) : isCodingPhase ? (
+                    <>
+                      Code in Monaco, optionally narrate with <span className="text-slate-400">Resume microphone</span>,
+                      then <span className="text-slate-400">Next question</span>.
+                    </>
+                  ) : (
+                    <>
+                      Speak your answer, then tap <span className="text-slate-400">Next question</span>
+                    </>
+                  )}
+                </p>
               </div>
             </div>
           </div>

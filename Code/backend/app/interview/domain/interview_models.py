@@ -80,6 +80,16 @@ class EmotionLabel(str, Enum):
     SUSPICIOUS = "suspicious"
 
 
+class ObservableCVMetrics(BaseModel):
+    """Normalized observable computer vision metrics from video frames."""
+    gaze_stability_ratio: float = 0.0      # 0-100 (percentage of frames looking at screen center)
+    head_pose_variance: float = 0.0        # 0-100 (inverse of angular variance in pitch/yaw/roll)
+    facial_movement_dynamics: float = 0.0  # 0-100 (measured micro-movement dynamics)
+    frame_presence_ratio: float = 0.0      # 0-100 (face detected frame ratio)
+    blink_frequency_cpm: float = 0.0       # Blinks per minute
+    observable_flags: List[str] = Field(default_factory=list)  # Observable physical anomalies only
+
+
 class FrameAnalysisResult(BaseModel):
     blink_count: int = 0
     gaze_direction: str = "center"
@@ -87,6 +97,7 @@ class FrameAnalysisResult(BaseModel):
     face_detected: bool = True
     looking_away_ratio: float = 0.0
     suspicious_flags: List[str] = Field(default_factory=list)
+    observable_cv_metrics: Optional[ObservableCVMetrics] = None
 
 
 class AnswerEvaluation(BaseModel):
