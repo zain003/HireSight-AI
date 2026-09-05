@@ -80,3 +80,37 @@ class FiveDimensionScores(BaseModel):
         default_factory=dict,
         description="Complete mathematical audit trail including formulas, raw inputs, and normalized terms",
     )
+
+
+class TailoredFeedback(BaseModel):
+    """Evidence-anchored tailored candidate feedback across technical, coding, communication, and role gaps."""
+
+    strongest_technical_areas: List[str] = Field(
+        default_factory=list,
+        description="Technical concepts and competencies where candidate demonstrated mastery",
+    )
+    weakest_technical_areas: List[str] = Field(
+        default_factory=list,
+        description="Technical concepts and questions where candidate showed gaps or missed key points",
+    )
+    coding_analysis_summary: str = Field(
+        default="",
+        description="Concise summary of coding performance, test pass rates, and runtime/edge-case handling",
+    )
+    communication_observations: List[str] = Field(
+        default_factory=list,
+        description="Objective observations on speaking rate, pause ratios, and clarity (physical metrics only)",
+    )
+    behavioral_observations: List[str] = Field(
+        default_factory=list,
+        description="Objective observations on gaze stability, head pose, blink frequency, and frame presence",
+    )
+    missing_role_skills: List[str] = Field(
+        default_factory=list,
+        description="Role-specific competencies and concepts with sub-60% demonstrated coverage",
+    )
+    actionable_improvement_recommendations: List[str] = Field(
+        default_factory=list,
+        description="Concrete, technology-specific remediation roadmap and practice areas",
+    )
+

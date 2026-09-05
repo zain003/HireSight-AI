@@ -265,6 +265,32 @@ export interface FiveDimensionScores {
 
 ---
 
+### 6. Tailored Feedback & Skill Gap Model
+```python
+class TailoredFeedback(BaseModel):
+    strongest_technical_areas: List[str]
+    weakest_technical_areas: List[str]
+    coding_analysis_summary: str
+    communication_observations: List[str]
+    behavioral_observations: List[str]
+    missing_role_skills: List[str]
+    actionable_improvement_recommendations: List[str]
+```
+
+```typescript
+export interface TailoredFeedback {
+  strongest_technical_areas: string[];
+  weakest_technical_areas: string[];
+  coding_analysis_summary: string;
+  communication_observations: string[];
+  behavioral_observations: string[];
+  missing_role_skills: string[];
+  actionable_improvement_recommendations: string[];
+}
+```
+
+---
+
 ## Standard API Response Envelope
 
 ```python

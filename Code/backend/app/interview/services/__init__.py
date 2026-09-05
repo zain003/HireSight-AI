@@ -22,6 +22,10 @@ from .recruiter_report import (
     RecruiterReport,
     calculate_five_dimension_scores,
 )
+from .feedback_generator import (
+    generate_tailored_feedback,
+    TailoredFeedback,
+)
 
 __all__ = [
     "AnalysisService",
@@ -37,6 +41,8 @@ __all__ = [
     "RecruiterReportGenerator",
     "RecruiterReport",
     "calculate_five_dimension_scores",
+    "generate_tailored_feedback",
+    "TailoredFeedback",
     "analyze_emotions",
     "evaluate_answer",
     "evaluate_answer_interview",
@@ -49,3 +55,4 @@ __all__ = [
     "transcribe_audio",
     "verify_face_frame",
 ]
+

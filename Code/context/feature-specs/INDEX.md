@@ -21,8 +21,8 @@
 | `FEAT-007-BE-explainable-scoring-engine.md` | Backend | P0 | 5-Dimensional Scoring Engine | `FEAT-001-BE` to `FEAT-006-BE` | Transparent 5-dim model & audit log | ☑ Done |
 | `FEAT-007-VERIFY-explainable-scoring.md` | Verify | P0 | Explainable Scoring Verification | `FEAT-007-BE` | Weight calculations & mathematical audit | ☑ Passed |
 
-| `FEAT-008-BE-tailored-feedback-engine.md` | Backend | P1 | Tailored Feedback & Skill Gap | `FEAT-007-BE` | Question-anchored actionable feedback | ☐ Ready |
-| `FEAT-008-VERIFY-tailored-feedback.md` | Verify | P1 | Feedback Engine Verification | `FEAT-008-BE` | Skill gap roadmap & evidence tests | ☐ Ready |
+| `FEAT-008-BE-tailored-feedback-engine.md` | Backend | P1 | Tailored Feedback & Skill Gap | `FEAT-007-BE` | Question-anchored actionable feedback | ☑ Done |
+| `FEAT-008-VERIFY-tailored-feedback.md` | Verify | P1 | Feedback Engine Verification | `FEAT-008-BE` | Skill gap roadmap & evidence tests | ☑ Passed |
 | `FEAT-009-BE-pdf-report-generator.md` | Backend | P1 | PDF Recruiter Report Exporter | `FEAT-007-BE`, `FEAT-008-BE` | Publication-grade PDF report engine | ☐ Ready |
 | `FEAT-009-FE-report-export-view.md` | Frontend | P1 | Recruiter Report Export View | `FEAT-009-BE` | PDF download & printable report UI | ☐ Ready |
 | `FEAT-009-VERIFY-report-export.md` | Verify | P1 | Report Export Verification | `FEAT-009-BE`, `FEAT-009-FE` | PDF generation & layout verification | ☐ Ready |

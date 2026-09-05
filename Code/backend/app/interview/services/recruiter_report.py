@@ -20,6 +20,8 @@ from app.interview.domain.scoring_models import (
 )
 from app.interview.services.behavioral_analysis import BehavioralMetrics
 from app.interview.services.vocal_analysis import VocalMetrics
+from app.interview.services.feedback_generator import generate_tailored_feedback
+
 
 
 def calculate_five_dimension_scores(
@@ -387,6 +389,9 @@ class RecruiterReport:
     five_dimension_scores: Optional[Dict[str, Any]] = None
     scoring_formula_audit: Optional[Dict[str, Any]] = None
 
+    # Evidence-Anchored Tailored Feedback
+    tailored_feedback: Optional[Dict[str, Any]] = None
+
 
 class RecruiterReportGenerator:
     """
@@ -441,6 +446,27 @@ class RecruiterReportGenerator:
         behavioral_score = five_dim.behavioral_indicators_score
         overall_score = five_dim.overall_composite_score
         fit_status_str = five_dim.fit_status.value
+
+        # Generate Evidence-Anchored Tailored Feedback
+        from app.interview.domain.role_taxonomy import StandardRole, get_role_competency_matrix
+        role_comps = []
+        try:
+            standard_role = StandardRole(job_role)
+            role_comps = get_role_competency_matrix(standard_role)
+        except Exception:
+            role_comps = []
+
+        coding_eval_target = None
+        if coding_results:
+            coding_eval_target = coding_results[0] if len(coding_results) == 1 else coding_results
+
+        tailored_fb = generate_tailored_feedback(
+            evaluations=evaluations,
+            coding_evaluation=coding_eval_target,
+            role_competencies=role_comps,
+            vocal_metrics=vocal_metrics,
+            cv_metrics=behavioral_metrics,
+        )
         
         # Collect red flags and strengths
         all_red_flags = self._collect_all_red_flags(
@@ -550,7 +576,9 @@ class RecruiterReportGenerator:
             fit_status=fit_status_str,
             five_dimension_scores=five_dim.model_dump(),
             scoring_formula_audit=five_dim.scoring_formula_audit,
+            tailored_feedback=tailored_fb.model_dump(),
         )
+
 
     
     def _aggregate_behavioral_metrics(
