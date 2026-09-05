@@ -23,10 +23,10 @@ Establish the complete spec-driven blueprint in `context/feature-specs/` and pre
 - ✅ **FEAT-001-BE**: Standardized Role & Competency Mapping Engine (`backend/app/interview/domain/role_taxonomy.py`, `backend/app/interview/services/role_mapping_service.py`, `GET /interview/config/roles`, `POST /interview/config/role-fit`, 12/12 unit tests passing).
 - ✅ **FEAT-001-FE**: Pre-Interview Role & Difficulty Selection UI (`frontend/src/pages/interview-setup.jsx`, `frontend/src/components/Interview/InterviewConfigCard.jsx`, `frontend/src/services/interviewService.js`, production build validated).
 - ✅ **FEAT-001-VERIFY**: Role Mapping & Pre-Interview Configuration End-to-End Verification Suite (`backend/test_feat_001_verification.py`, 14/14 checks passing, `feature-test-reports/FEAT-001-test-report.md`).
+- ✅ **FEAT-002-BE**: Rubric-Backed Question Generation Engine (`backend/app/interview/domain/interview_models.py`, `backend/app/interview/services/llm_service.py`, `backend/app/interview/application/interview_service.py`, deterministic stage sequencing, complete fallback banks across all 7 standard roles, 8/8 unit tests passing).
+- ✅ **FEAT-002-VERIFY**: Rubric-Backed Question Engine Verification Suite (`backend/test_feat_002_verification.py`, 10/10 automated checks passing with 100% success rate, generated `feature-test-reports/FEAT-002-test-report.md`).
 
 ### In Progress / Upcoming Specs
-- 📋 **FEAT-002-BE** (P0 - Ready): Rubric-Backed Question Generation Engine (`backend/app/interview/services/llm_service.py`).
-- 🔄 **FEAT-002-VERIFY**: Rubric-Backed Question Engine Verification (`FEAT-002-VERIFY-question-engine.md`).
 - 🔄 **FEAT-003**: Session State Resilience (`backend/app/interview/application/interview_service.py`).
 - 🔄 **FEAT-004**: Computer Vision Refinement (Normalized gaze & 3D head pose).
 - 🔄 **FEAT-005**: Acoustic Speech Analysis Refinement (WPM, pause ratios).

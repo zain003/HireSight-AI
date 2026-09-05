@@ -7,9 +7,21 @@ import os
 import re
 import secrets
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
+
+from app.interview.domain.interview_models import (
+    InterviewQuestion,
+    QuestionRubric,
+    QuestionStage,
+)
+from app.interview.domain.role_taxonomy import (
+    ROLE_COMPETENCY_MATRICES,
+    SeniorityLevel,
+    StandardRole,
+    get_role_competency_matrix,
+)
 
 
 def _strip_fences(text: str) -> str:
@@ -1759,3 +1771,996 @@ async def generate_report_summary(
             "red_flags": [],
             "hiring_decision_notes": "Review evaluations manually.",
         }
+
+
+# ============================================================================
+# FEAT-002-BE: Rubric-Backed Question Generation Engine
+# ============================================================================
+
+def _normalize_role_and_seniority(
+    job_role: StandardRole | str,
+    seniority: SeniorityLevel | str = SeniorityLevel.MID,
+) -> tuple[StandardRole, SeniorityLevel]:
+    """Normalize input role and seniority into canonical domain enums."""
+    # Match role
+    role_out = StandardRole.BACKEND_ENGINEER
+    if isinstance(job_role, StandardRole):
+        role_out = job_role
+    elif isinstance(job_role, str):
+        normalized = job_role.strip().lower().replace(" ", "_").replace("-", "_")
+        for r in StandardRole:
+            if r.value == normalized or r.value in normalized or normalized in r.value:
+                role_out = r
+                break
+        else:
+            if "front" in normalized:
+                role_out = StandardRole.FRONTEND_ENGINEER
+            elif "full" in normalized:
+                role_out = StandardRole.FULLSTACK_ENGINEER
+            elif "devops" in normalized or "sre" in normalized or "cloud" in normalized:
+                role_out = StandardRole.DEVOPS_ENGINEER
+            elif "data" in normalized or "etl" in normalized or "analytics" in normalized:
+                role_out = StandardRole.DATA_ENGINEER
+            elif "ml" in normalized or "machine" in normalized or "ai" in normalized or "learning" in normalized:
+                role_out = StandardRole.ML_ENGINEER
+            elif "qa" in normalized or "test" in normalized or "quality" in normalized:
+                role_out = StandardRole.QA_AUTOMATION_ENGINEER
+            else:
+                role_out = StandardRole.BACKEND_ENGINEER
+
+    # Match seniority
+    sen_out = SeniorityLevel.MID
+    if isinstance(seniority, SeniorityLevel):
+        sen_out = seniority
+    elif isinstance(seniority, str):
+        sen_norm = seniority.strip().lower()
+        if "lead" in sen_norm or "principal" in sen_norm or "staff" in sen_norm:
+            sen_out = SeniorityLevel.LEAD
+        elif "senior" in sen_norm or "sr" in sen_norm:
+            sen_out = SeniorityLevel.SENIOR
+        elif "entry" in sen_norm or "junior" in sen_norm or "intern" in sen_norm or "assoc" in sen_norm:
+            sen_out = SeniorityLevel.ENTRY
+        else:
+            sen_out = SeniorityLevel.MID
+
+    return role_out, sen_out
+
+
+_OFFLINE_RUBRIC_QUESTION_BANK: Dict[StandardRole, List[Dict[str, Any]]] = {
+    StandardRole.FRONTEND_ENGINEER: [
+        {
+            "stage": QuestionStage.ICEBREAKER,
+            "competency_area": "Core Web Technologies & Frameworks",
+            "question_text": "Please introduce your background in web development: what UI frameworks (React, Next.js, Vue) you specialize in, and what core architectural principles guide your frontend work?",
+            "rubric": QuestionRubric(
+                reference_answer="Candidate provides clear overview of frontend experience, discusses React/Vue/Next.js frameworks, component architectures, modularity, and user-centric engineering.",
+                key_concepts_expected=["Component-Based Architecture", "State Management", "Modern JavaScript (ES6+)", "Responsive Design"],
+                depth_criteria={
+                    "basic": "Mentions basic HTML/CSS/JS syntax without framework depth.",
+                    "intermediate": "Explains component lifecycles, hooks, and responsive layouts.",
+                    "advanced": "Articulates performance implications, state synchronization, and scalable architecture.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CORE_TECHNICAL,
+            "competency_area": "Modern UI Frameworks (React/Vue/Next.js)",
+            "question_text": "How does React's Virtual DOM diffing algorithm and reconciliation process work, and how does key prop usage prevent unnecessary re-renders?",
+            "rubric": QuestionRubric(
+                reference_answer="React maintains a virtual representation of the DOM. During state changes, it generates a new virtual tree, runs a heuristic O(N) diffing algorithm comparing element types and keys, and batches minimal mutation patches to the real DOM via Fiber reconciliation.",
+                key_concepts_expected=["Virtual DOM", "Reconciliation Heuristics", "Key Prop Identity", "Fiber Architecture", "DOM Batching"],
+                depth_criteria={
+                    "basic": "States that virtual DOM is faster than real DOM without explaining diffing.",
+                    "intermediate": "Explains tree comparison, element type checks, and why keys are necessary for lists.",
+                    "advanced": "Explains Fiber work loop, time slicing, batching, and DOM mutation minimizing.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CORE_TECHNICAL,
+            "competency_area": "Web Performance & Core Vitals",
+            "question_text": "What are Core Web Vitals (LCP, INP/FID, CLS), how do bundle size and render-blocking scripts impact them, and what optimization techniques do you apply?",
+            "rubric": QuestionRubric(
+                reference_answer="LCP measures largest contentful paint (loading), INP/FID measures interaction responsiveness, and CLS measures visual stability. Mitigations include code splitting via dynamic imports, critical CSS inlining, asset compression/CDN caching, image optimization (Next.js Image), and SSR/SSG.",
+                key_concepts_expected=["Core Web Vitals (LCP/INP/CLS)", "Code Splitting & Lazy Loading", "SSR vs SSG vs Client Rendering", "Resource Prioritization & CDN Caching"],
+                depth_criteria={
+                    "basic": "Mentions image compression and minification.",
+                    "intermediate": "Explains specific Core Web Vital thresholds and code-splitting with React.lazy/dynamic imports.",
+                    "advanced": "Deep dives into critical rendering path, hydration bottlenecks, layout thrashing, and server components.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.DEEP_DIVE,
+            "competency_area": "Client-Side Architecture & State",
+            "question_text": "In your frontend work{project_clause}, how did you design client-side state management, handle caching/invalidation, and maintain consistent UI state under network latency?",
+            "rubric": QuestionRubric(
+                reference_answer="Candidate describes structured state architecture (Zustand/Redux/React Query), optimistic UI updates, normalized cache schemas, mutation invalidations, and error boundary fallbacks.",
+                key_concepts_expected=["Global vs Server State", "Optimistic Updates", "Cache Invalidation (SWR/React Query)", "Error Boundaries & Fallbacks"],
+                depth_criteria={
+                    "basic": "Relies strictly on local useState or prop drilling.",
+                    "intermediate": "Uses structured global store or data-fetching hooks with standard cache policies.",
+                    "advanced": "Implements optimistic mutations, offline rollback, normalized caching, and performance memoization.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CODING,
+            "competency_area": "Algorithm Design & Sliding Window",
+            "question_text": "Implement a function `length_of_longest_substring(s: str) -> int` that returns the length of the longest substring without repeating characters.",
+            "rubric": QuestionRubric(
+                reference_answer="Use sliding window approach with two pointers and a hash map/set to track character occurrences and indices in O(N) time and O(min(N, M)) space.",
+                key_concepts_expected=["Sliding Window Technique", "Hash Map / Set Index Tracking", "O(N) Time Complexity", "Edge Case Handling (empty string, all identical characters)"],
+                depth_criteria={
+                    "basic": "O(N^2) brute force nested loops.",
+                    "intermediate": "O(N) sliding window with set/map tracking.",
+                    "advanced": "Optimized single-pass window jump with direct index mapping and zero allocation.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+            "coding_challenge": {
+                "title": "Longest Substring Without Repeating Characters",
+                "problem_statement": "Given a string s, find the length of the longest substring without repeating characters.",
+                "starter_code": "def length_of_longest_substring(s: str) -> int:\n    # TODO: Implement sliding window\n    pass\n",
+                "test_cases": [
+                    {"input": "abcabcbb", "expected_output": "3", "is_hidden": False},
+                    {"input": "bbbbb", "expected_output": "1", "is_hidden": False},
+                    {"input": "pwwkew", "expected_output": "3", "is_hidden": True},
+                ],
+            },
+        },
+        {
+            "stage": QuestionStage.CLOSING,
+            "competency_area": "Testing & Web Security",
+            "question_text": "How do you protect frontend applications from XSS and CSRF attacks, enforce Content Security Policies (CSP), and structure automated frontend testing?",
+            "rubric": QuestionRubric(
+                reference_answer="XSS prevention includes contextual output encoding, avoiding dangerouslySetInnerHTML, sanitizing user inputs, and strict CSP headers. CSRF protection utilizes SameSite cookie attributes and anti-CSRF tokens. Testing integrates Jest/RTL unit tests and Playwright E2E suites.",
+                key_concepts_expected=["XSS Mitigation & Sanitization", "Content Security Policy (CSP)", "SameSite Cookies & CSRF", "Component & E2E Testing (Playwright/Jest)"],
+                depth_criteria={
+                    "basic": "Mentions avoiding dangerous HTML and running simple unit tests.",
+                    "intermediate": "Explains CSP directives, HTTP-only cookies, and React Testing Library user-event simulations.",
+                    "advanced": "Covers DOM-based XSS vectors, nonce-based CSP, iframe sandboxing, and automated visual regression.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+    ],
+    StandardRole.BACKEND_ENGINEER: [
+        {
+            "stage": QuestionStage.ICEBREAKER,
+            "competency_area": "Backend Systems & Architecture",
+            "question_text": "Please introduce your backend engineering background: preferred languages/frameworks (FastAPI, Django, Node, Go), database technologies, and your approach to building reliable server architectures.",
+            "rubric": QuestionRubric(
+                reference_answer="Candidate summarizes server-side experience, API frameworks (FastAPI/Node/Go/Django), database designs, and architectural principles (modularity, reliability, testability).",
+                key_concepts_expected=["RESTful API Conventions", "Relational & NoSQL Databases", "Async I/O & Microservices", "System Reliability"],
+                depth_criteria={
+                    "basic": "Mentions basic CRUD endpoints and standard database connections.",
+                    "intermediate": "Describes clean layering (routes, services, repositories) and async request lifecycles.",
+                    "advanced": "Articulates architectural trade-offs, scalability patterns, and operational telemetry.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CORE_TECHNICAL,
+            "competency_area": "Database Architecture & Query Optimization",
+            "question_text": "Explain database indexing internals (B-Trees vs Hash indexes), composite index column ordering rules, and how you diagnose slow queries using execution plans (EXPLAIN ANALYZE).",
+            "rubric": QuestionRubric(
+                reference_answer="B-Trees store sorted data for range and equality queries with O(log N) operations. Composite indexes follow leftmost prefix matching. EXPLAIN ANALYZE reveals sequential scans, index scans, cost estimates, and buffer hits, allowing targeted index creation.",
+                key_concepts_expected=["B-Tree Index Structure", "Leftmost Prefix Rule", "Sequential Scan vs Index Scan", "EXPLAIN ANALYZE Query Plans", "Index Selectivity"],
+                depth_criteria={
+                    "basic": "States that indexes make SELECT queries faster but slow down writes.",
+                    "intermediate": "Explains B-Tree traversal, composite index ordering, and how to read basic execution plans.",
+                    "advanced": "Analyzes index selectivity, covering indexes (INDEX INCLUDE), vacuum/page fragmentation, and locking overhead.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CORE_TECHNICAL,
+            "competency_area": "Concurrency, Async & Performance",
+            "question_text": "Compare asynchronous non-blocking event loops (like Python Asyncio or Node.js) with multithreading / multiprocessing. How do you prevent event loop starvation and manage shared resources?",
+            "rubric": QuestionRubric(
+                reference_answer="Async event loops use cooperative multitasking over a single thread to handle high I/O concurrency via non-blocking sockets. CPU-bound tasks block the loop and must be delegated to process/thread worker pools. Shared state synchronization requires mutexes, locks, or atomic operations.",
+                key_concepts_expected=["Event Loop & Non-Blocking I/O", "CPU-Bound vs I/O-Bound Workloads", "Thread/Process Worker Pools", "Race Conditions & Mutexes", "Connection Pooling"],
+                depth_criteria={
+                    "basic": "Distinguishes async from sync by saying async doesn't wait for requests.",
+                    "intermediate": "Explains event loop polling (epoll/kqueue), await suspension points, and offloading heavy tasks.",
+                    "advanced": "Details GIL implications in Python, thread pool sizing, coroutine starvation detection, and backpressure mechanisms.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.DEEP_DIVE,
+            "competency_area": "Distributed Systems & Messaging",
+            "question_text": "In your system architecture work{project_clause}, how do you ensure message ordering, idempotency, and fault tolerance when building event-driven services with message brokers like Kafka or RabbitMQ?",
+            "rubric": QuestionRubric(
+                reference_answer="Partition keys ensure per-entity ordering in Kafka. Idempotency is enforced using unique idempotency keys stored in database transactions (Transactional Outbox Pattern). Dead-letter queues and exponential backoff retries manage fault tolerance.",
+                key_concepts_expected=["Message Broker Partitioning / Topics", "Idempotency Keys & Deduplication", "Transactional Outbox Pattern", "Dead Letter Queues (DLQ) & Retries", "Eventual Consistency"],
+                depth_criteria={
+                    "basic": "Mentions publishing messages to a queue and consuming them.",
+                    "intermediate": "Explains partition keys, consumer group offset commits, and at-least-once delivery handling.",
+                    "advanced": "Designs end-to-end transactional outbox pattern, dual-write mitigation, exactly-once processing guarantees, and poison-pill recovery.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CODING,
+            "competency_area": "Data Structures & LRU Cache",
+            "question_text": "Design and implement a Least Recently Used (LRU) Cache supporting get(key) and put(key, value) operations in O(1) time complexity.",
+            "rubric": QuestionRubric(
+                reference_answer="Combine a hash map for O(1) key lookups with a doubly linked list to track node access order, moving accessed items to the head and evicting the tail on capacity overflow.",
+                key_concepts_expected=["Hash Map + Doubly Linked List", "O(1) Time Complexity for Get and Put", "Capacity Eviction Policy (Tail Node)", "Node Pointer Manipulation (Head/Tail Sentinel Nodes)"],
+                depth_criteria={
+                    "basic": "Uses an array or list with O(N) search and shift operations.",
+                    "intermediate": "Implements hash map + doubly linked list with correct pointer updates and eviction.",
+                    "advanced": "Utilizes sentinel dummy nodes for clean boundary conditions, thread-safe locks, and unit tests.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+            "coding_challenge": {
+                "title": "LRU Cache Implementation",
+                "problem_statement": "Design a data structure that follows the constraints of a Least Recently Used (LRU) cache with O(1) get and put operations.",
+                "starter_code": "class LRUCache:\n    def __init__(self, capacity: int):\n        pass\n    def get(self, key: int) -> int:\n        pass\n    def put(self, key: int, value: int) -> None:\n        pass\n",
+                "test_cases": [
+                    {"input": "capacity=2, put(1,1), put(2,2), get(1)", "expected_output": "1", "is_hidden": False},
+                    {"input": "put(3,3), get(2)", "expected_output": "-1", "is_hidden": False},
+                ],
+            },
+        },
+        {
+            "stage": QuestionStage.CLOSING,
+            "competency_area": "Backend Security & Reliability",
+            "question_text": "How do you build backend resilience against cascading outages using circuit breakers, rate limiting, and structured logging/telemetry?",
+            "rubric": QuestionRubric(
+                reference_answer="Circuit breakers (closed/open/half-open states) trip upon consecutive downstream failures to prevent thread exhaustion. Token bucket rate limiters prevent API abuse. Structured JSON logging with correlation IDs enables distributed request tracing.",
+                key_concepts_expected=["Circuit Breaker Pattern (Open/Closed/Half-Open)", "Rate Limiting (Token Bucket / Leaky Bucket)", "Correlation IDs & Distributed Tracing", "Graceful Degradation & Fallbacks"],
+                depth_criteria={
+                    "basic": "Mentions try-catch blocks and basic logging.",
+                    "intermediate": "Explains circuit breaker state transitions, rate limiter HTTP 429 responses, and centralized logs.",
+                    "advanced": "Designs adaptive rate limiters, fallback cache degradation, OpenTelemetry span propagation, and health check probes.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+    ],
+    StandardRole.FULLSTACK_ENGINEER: [
+        {
+            "stage": QuestionStage.ICEBREAKER,
+            "competency_area": "Fullstack Architecture",
+            "question_text": "Please introduce your fullstack background: how you bridge frontend user interfaces with backend API services, and your experience across the entire delivery lifecycle.",
+            "rubric": QuestionRubric(
+                reference_answer="Candidate outlines experience with React/Next.js on frontend, FastAPI/Node on backend, database modeling, and deployment practices.",
+                key_concepts_expected=["End-to-End Development", "API Client & Server Contracts", "Database Modeling", "Containerized Deployment"],
+                depth_criteria={
+                    "basic": "Mentions basic UI and endpoint creation.",
+                    "intermediate": "Explains full stack data flows, state synchronization, and schema validations.",
+                    "advanced": "Articulates full architectural trade-offs, SSR vs CSR, caching layers, and CI/CD pipelines.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CORE_TECHNICAL,
+            "competency_area": "Backend Systems & REST/GraphQL APIs",
+            "question_text": "How do you design and secure RESTful / GraphQL API contracts between frontend and backend, including JWT authentication, refresh tokens, and CORS configuration?",
+            "rubric": QuestionRubric(
+                reference_answer="APIs use consistent REST schemas or GraphQL types. Authentication uses short-lived access JWTs and HTTP-only Secure SameSite refresh tokens. CORS headers restrict origin, methods, and credentials.",
+                key_concepts_expected=["JWT Access & Refresh Token Lifecycle", "HTTP-Only Secure Cookies", "CORS Configuration (Allowed Origins)", "Input Validation & Pydantic/Zod Schemas"],
+                depth_criteria={
+                    "basic": "Mentions storing JWT in localStorage without security analysis.",
+                    "intermediate": "Explains token refresh rotation, HTTP-only cookie security, and CORS headers.",
+                    "advanced": "Designs silent authentication refresh, CSRF protection alongside JWT, and automated OpenAPI contract sync.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CORE_TECHNICAL,
+            "competency_area": "Database Design & ORM/ODM Integration",
+            "question_text": "Explain how ORMs/ODMs (like SQLAlchemy, Prisma, or Beanie) map object models to databases, how the N+1 query problem happens, and how you resolve it.",
+            "rubric": QuestionRubric(
+                reference_answer="ORMs translate domain objects to SQL/NoSQL queries. The N+1 problem occurs when fetching a parent record triggers N individual queries for child associations. Resolution uses joined load (eager loading), selectinload, or database aggregation pipelines.",
+                key_concepts_expected=["ORM/ODM Mapping", "N+1 Query Problem", "Eager vs Lazy Loading", "Join Optimization & Aggregation Pipelines", "Database Indexing"],
+                depth_criteria={
+                    "basic": "Defines what an ORM does.",
+                    "intermediate": "Explains why N+1 queries degrade performance and demonstrates eager loading solutions.",
+                    "advanced": "Analyzes memory vs network trade-offs of large joins, batch querying strategies, and raw query fallbacks.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.DEEP_DIVE,
+            "competency_area": "DevOps, CI/CD & Deployment",
+            "question_text": "In your fullstack work{project_clause}, how do you structure Docker multi-stage builds, manage environment secrets across environments, and set up automated CI/CD deployment pipelines?",
+            "rubric": QuestionRubric(
+                reference_answer="Multi-stage Docker builds separate build toolchains from minimal runtime images to minimize surface area and size. CI/CD runs automated linting, unit/E2E tests, and deploys container images with securely injected runtime secrets.",
+                key_concepts_expected=["Docker Multi-Stage Builds", "CI/CD Pipeline Stages", "Environment Secret Management", "Zero-Downtime Deployment"],
+                depth_criteria={
+                    "basic": "Writes basic single-stage Dockerfile and pushes code.",
+                    "intermediate": "Structures multi-stage Docker builds, separates dev/prod configs, and automates test pipelines.",
+                    "advanced": "Implements immutable container tagging, vulnerability scanning in CI, non-root container users, and rollback automation.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CODING,
+            "competency_area": "Data Aggregation & Algorithm Design",
+            "question_text": "Write a function `aggregate_user_sessions(events: List[dict]) -> Dict[str, dict]` that groups logs by user_id and computes total duration and most frequent action.",
+            "rubric": QuestionRubric(
+                reference_answer="Iterate through logs in O(N) time, populating a dictionary indexed by user_id. Track session timestamps and action frequencies using hash counters.",
+                key_concepts_expected=["Hash Map Grouping", "Time Complexity O(N)", "Frequency Counting", "Edge Case Handling (empty logs, malformed records)"],
+                depth_criteria={
+                    "basic": "Uses nested loops with poor efficiency.",
+                    "intermediate": "O(N) dictionary aggregation with clean data output.",
+                    "advanced": "Handles out-of-order timestamps, edge cases, and memory-efficient streaming generators.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+            "coding_challenge": {
+                "title": "Log Aggregation & User Session Metrics",
+                "problem_statement": "Given a list of event dictionaries with keys 'user_id', 'timestamp', and 'action', aggregate total session time and top action per user.",
+                "starter_code": "def aggregate_user_sessions(events: list) -> dict:\n    # TODO: Implement aggregation logic\n    pass\n",
+                "test_cases": [
+                    {"input": "[{'user_id': 'u1', 'timestamp': 100, 'action': 'click'}, {'user_id': 'u1', 'timestamp': 150, 'action': 'click'}]", "expected_output": "{'u1': {'total_duration': 50, 'top_action': 'click'}}", "is_hidden": False},
+                ],
+            },
+        },
+        {
+            "stage": QuestionStage.CLOSING,
+            "competency_area": "Fullstack Security & Testing",
+            "question_text": "What OWASP Top 10 vulnerabilities are most critical in fullstack web applications, and how do you enforce automated security scans and integration tests?",
+            "rubric": QuestionRubric(
+                reference_answer="Critical vulnerabilities include SQL/NoSQL injection, broken access control, XSS, and CSRF. Enforce input sanitization, role-based authorization middleware, secure headers, and automated security scanning (SAST/DAST) in CI.",
+                key_concepts_expected=["OWASP Top 10 Vulnerabilities", "Broken Access Control / RBAC", "SQL/NoSQL Injection Mitigation", "Automated Security Scanners (SAST/DAST)", "Integration Test Suites"],
+                depth_criteria={
+                    "basic": "Lists common vulnerabilities without prevention details.",
+                    "intermediate": "Explains RBAC checks, parameterized queries, and unit/integration testing strategies.",
+                    "advanced": "Designs defense-in-depth architecture, JWT replay protection, automated dependency vulnerability alerts, and regression test suites.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+    ],
+    StandardRole.DEVOPS_ENGINEER: [
+        {
+            "stage": QuestionStage.ICEBREAKER,
+            "competency_area": "Infrastructure as Code & Cloud Platforms",
+            "question_text": "Could you introduce your DevOps and Site Reliability Engineering background, your experience with Infrastructure as Code (Terraform/CloudFormation), and your philosophy on automation?",
+            "rubric": QuestionRubric(
+                reference_answer="Candidate summarizes cloud infrastructure experience (AWS/GCP/Azure), Terraform IaC, Kubernetes container orchestration, and CI/CD automation.",
+                key_concepts_expected=["Infrastructure as Code (Terraform)", "Cloud Architecture & Networking (VPC/Subnets)", "Container Orchestration", "CI/CD Pipeline Automation"],
+                depth_criteria={
+                    "basic": "Mentions configuring cloud resources via GUI console.",
+                    "intermediate": "Explains modular Terraform code, state locking with S3/DynamoDB, and automated deployment.",
+                    "advanced": "Articulates multi-region redundancy, least-privilege IAM policies, and immutable infrastructure patterns.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CORE_TECHNICAL,
+            "competency_area": "Containerization & Orchestration",
+            "question_text": "Explain Kubernetes architecture: what are the roles of the Control Plane (API Server, etcd, Scheduler, Controller Manager) vs Worker Nodes (Kubelet, Kube-proxy), and how does a Deployment roll out updates?",
+            "rubric": QuestionRubric(
+                reference_answer="API Server validates manifests and stores cluster state in etcd. Scheduler assigns Pods to nodes; Controller Manager reconciles desired state. Kubelet executes containers via CRI, and Kube-proxy manages network routing. Deployments manage ReplicaSets for rolling updates with readiness probes.",
+                key_concepts_expected=["Kubernetes Control Plane (API Server, etcd, Scheduler)", "Worker Node Components (Kubelet, Kube-proxy)", "ReplicaSets & Rolling Update Strategy", "Liveness & Readiness Probes"],
+                depth_criteria={
+                    "basic": "Defines what a Pod and Container are.",
+                    "intermediate": "Explains Control plane component responsibilities, rolling update parameters (maxSurge, maxUnavailable), and health probes.",
+                    "advanced": "Analyzes etcd consensus/raft, CNI networking plugins, ingress controller routing, and custom resource definitions (CRDs).",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CORE_TECHNICAL,
+            "competency_area": "CI/CD Automation & Release Engineering",
+            "question_text": "Compare Blue-Green, Canary, and Rolling deployment strategies. How do you automate canary analysis and execute automated rollbacks based on error budget or metric thresholds?",
+            "rubric": QuestionRubric(
+                reference_answer="Blue-Green switches 100% traffic between identical environments. Canary routes a small traffic percentage (e.g. 5%) to new versions while monitoring Prometheus metrics (HTTP 5xx error rate, latency). If thresholds exceed error budgets, deployment automatically rolls back.",
+                key_concepts_expected=["Blue-Green vs Canary vs Rolling Deployments", "Traffic Shifting & Ingress Routing", "Automated Canary Analysis (Argo Rollouts / Flagger)", "Prometheus Metric Gates & Auto-Rollback"],
+                depth_criteria={
+                    "basic": "Defines blue-green and canary at a high level.",
+                    "intermediate": "Explains traffic shifting mechanisms and health check monitoring during release.",
+                    "advanced": "Designs progressive delivery with Argo Rollouts, webhook integrations, error budget depletion tracking, and automated rollback.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.DEEP_DIVE,
+            "competency_area": "Observability, Monitoring & Alerting",
+            "question_text": "In your observability work{project_clause}, how do you implement the Three Pillars of Observability (Metrics, Logs, Traces) using Prometheus, Loki/ELK, and OpenTelemetry, and how do you calculate SLOs and Error Budgets?",
+            "rubric": QuestionRubric(
+                reference_answer="Prometheus scrapes numeric metrics; Loki/ELK aggregates indexed structured logs; OpenTelemetry traces requests across microservices. SLOs define target reliability (e.g. 99.9% success rate), and the Error Budget (0.1%) governs release velocity and alerting urgency.",
+                key_concepts_expected=["Metrics, Structured Logs & Distributed Traces", "Prometheus Scraping & PromQL", "Distributed Tracing Spans (OpenTelemetry)", "SLI, SLO & Error Budget Formulas"],
+                depth_criteria={
+                    "basic": "Mentions setting up simple CPU/Memory alerts.",
+                    "intermediate": "Explains PromQL queries, trace context propagation, and standard log aggregation.",
+                    "advanced": "Calculates multi-window burn rate alerts for error budgets, distributed tracing sampling strategies, and high-cardinality metric management.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CODING,
+            "competency_area": "Log Parsing & Top-K Algorithm",
+            "question_text": "Write a function `top_error_ips(log_lines: List[str], k: int) -> List[tuple]` that parses HTTP server access logs and returns the top K IP addresses generating HTTP 5xx errors.",
+            "rubric": QuestionRubric(
+                reference_answer="Parse log lines using regular expressions or structured splits, filter for 5xx status codes, accumulate IP frequencies in a hash map, and extract top K using a heap or sorted order.",
+                key_concepts_expected=["Log Line Parsing / Regex", "HTTP 5xx Status Code Filtering", "Hash Map Frequency Counting", "Top-K Extraction (Heap / Sorting)", "Time & Space Complexity"],
+                depth_criteria={
+                    "basic": "Reads file and performs simple split without error handling.",
+                    "intermediate": "Parses accurately, counts occurrences in dictionary, and outputs top K correctly.",
+                    "advanced": "Uses min-heap for O(N log K) time efficiency, handles corrupt log lines gracefully, and optimizes for streaming memory.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+            "coding_challenge": {
+                "title": "Top Offending Error IPs",
+                "problem_statement": "Given a list of access log lines in Common Log Format, return the top k IP addresses with HTTP status >= 500 sorted by error count descending.",
+                "starter_code": "def top_error_ips(log_lines: list, k: int) -> list:\n    # TODO: Implement log parser and top-k counter\n    pass\n",
+                "test_cases": [
+                    {"input": "['192.168.1.1 - - [01/Jan/2026] \"GET /api\" 500 120', '192.168.1.2 - - [01/Jan/2026] \"GET /api\" 200 120', '192.168.1.1 - - [01/Jan/2026] \"POST /api\" 503 120'], k=1", "expected_output": "[('192.168.1.1', 2)]", "is_hidden": False},
+                ],
+            },
+        },
+        {
+            "stage": QuestionStage.CLOSING,
+            "competency_area": "DevSecOps & Site Reliability (SRE)",
+            "question_text": "How do you implement secrets management (HashiCorp Vault / AWS KMS), container image vulnerability scanning, and disaster recovery / backup automation in production?",
+            "rubric": QuestionRubric(
+                reference_answer="Secrets are encrypted at rest and in transit via Vault/KMS with dynamic short-lived credentials. CI pipelines scan container images (Trivy/Grype) for CVEs. Automated snapshots and cross-region replication ensure RPO and RTO disaster recovery targets.",
+                key_concepts_expected=["Secrets Management (Vault / KMS)", "Dynamic Short-Lived Secrets", "Container CVE Scanning (Trivy/Grype)", "RPO / RTO & Disaster Recovery Replication"],
+                depth_criteria={
+                    "basic": "Mentions using .env files and manual backups.",
+                    "intermediate": "Explains Vault integration, least-privilege IAM, and scheduled automated backup cron jobs.",
+                    "advanced": "Implements mutual TLS (mTLS), automated certificate rotation, immutable audit logging, and chaos engineering disaster simulations.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+    ],
+    StandardRole.DATA_ENGINEER: [
+        {
+            "stage": QuestionStage.ICEBREAKER,
+            "competency_area": "Data Pipeline Engineering (ETL/ELT)",
+            "question_text": "Please introduce your data engineering background, the scale of data pipelines you've built, and your experience with batch vs streaming data architectures.",
+            "rubric": QuestionRubric(
+                reference_answer="Candidate summarizes ETL/ELT pipelines, distributed processing engines (Spark/Flink), messaging systems (Kafka), and cloud data warehouses.",
+                key_concepts_expected=["Batch vs Streaming Architectures", "ETL/ELT Pipelines", "Distributed Data Engines (Spark/Kafka)", "Data Warehousing"],
+                depth_criteria={
+                    "basic": "Mentions writing simple SQL queries and CSV exports.",
+                    "intermediate": "Explains pipeline orchestration (Airflow) and schema management.",
+                    "advanced": "Articulates trade-offs between Lambda and Kappa architectures, data lakehouses, and scaling bottlenecks.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CORE_TECHNICAL,
+            "competency_area": "Big Data & Distributed Computing",
+            "question_text": "Explain Apache Spark internals: what is the difference between transformations (narrow vs wide dependencies) and actions, and how do you optimize data shuffles and avoid skewed partitions?",
+            "rubric": QuestionRubric(
+                reference_answer="Transformations define a lazy DAG; narrow dependencies (map/filter) execute within partitions without shuffling, while wide dependencies (groupBy/join) trigger network shuffles. Mitigate skew via salting keys, broadcast joins for small tables, and adaptive query execution (AQE).",
+                key_concepts_expected=["Spark Lazy DAG & RDDs/DataFrames", "Narrow vs Wide Dependencies", "Shuffle Spill & Network Overhead", "Broadcast Joins & Salting Keys for Data Skew", "Adaptive Query Execution (AQE)"],
+                depth_criteria={
+                    "basic": "Mentions running PySpark queries without understanding executors.",
+                    "intermediate": "Explains transformations vs actions and why wide dependencies trigger expensive shuffles.",
+                    "advanced": "Diagnoses skew in Spark UI, tunes shuffle partition counts, applies broadcast hash joins, and manages off-heap memory.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CORE_TECHNICAL,
+            "competency_area": "Data Warehousing & Modeling",
+            "question_text": "How do you design dimensional models in cloud data warehouses (Snowflake, BigQuery, Databricks)? Compare Star vs Snowflake schemas, and explain how columnar storage (Parquet/ORC) improves analytical query speeds.",
+            "rubric": QuestionRubric(
+                reference_answer="Star schemas use denormalized dimension tables around a central fact table for fast joins; Snowflake schemas normalize dimensions to reduce redundancy. Columnar storage reads only requested columns and utilizes dictionary encoding and run-length compression for high scan throughput.",
+                key_concepts_expected=["Star vs Snowflake Schema", "Fact vs Dimension Tables (SCD Type 1/2)", "Columnar Storage (Parquet / ORC)", "Partitioning, Clustering & File Pruning"],
+                depth_criteria={
+                    "basic": "Defines relational tables without dimensional concepts.",
+                    "intermediate": "Explains fact/dimension relationships and how columnar file formats reduce I/O.",
+                    "advanced": "Designs Slowly Changing Dimensions (SCD Type 2), cluster keys for micro-partition pruning, and lakehouse Delta Lake ACID transactions.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.DEEP_DIVE,
+            "competency_area": "Stream Processing & Messaging",
+            "question_text": "In your stream processing work{project_clause}, how do you handle event-time vs processing-time, manage late-arriving data with watermarks in Kafka/Flink, and guarantee exactly-once processing?",
+            "rubric": QuestionRubric(
+                reference_answer="Event-time reflects when an event occurred; processing-time is when the engine receives it. Watermarks track event-time progress to trigger window computations and handle bounded late data with side outputs. Two-phase commit protocol ensures end-to-end exactly-once semantics.",
+                key_concepts_expected=["Event-Time vs Processing-Time", "Watermarking & Late Data Handling", "Sliding/Tumbling Window Computations", "Exactly-Once Semantics (2PC / Idempotency)"],
+                depth_criteria={
+                    "basic": "Treats all data as incoming timestamps without event-time concepts.",
+                    "intermediate": "Explains window aggregation, watermark generation, and dead-letter queues for late data.",
+                    "advanced": "Designs end-to-end transactional sinks, stateful checkpointing in Flink, and out-of-order event reconciliation.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CODING,
+            "competency_area": "Streaming Sliding Window Algorithm",
+            "question_text": "Write a function `detect_high_frequency_users(transactions: List[tuple], window_sec: int = 60, threshold: int = 3) -> List[str]` that detects users with more than `threshold` transactions within any `window_sec` interval.",
+            "rubric": QuestionRubric(
+                reference_answer="Sort transactions or maintain a deque of recent timestamps per user within the window, popping stale timestamps and checking queue length in O(N) amortized time.",
+                key_concepts_expected=["Sliding Window / Queue Mechanism", "Per-User Deque of Timestamps", "Amortized O(N) Time Complexity", "Edge Cases (simultaneous timestamps, empty inputs)"],
+                depth_criteria={
+                    "basic": "O(N^2) pairwise comparisons of all transactions.",
+                    "intermediate": "Uses deque or sliding window per user with accurate 60-second bounds.",
+                    "advanced": "Optimizes memory footprint, handles unsorted streams, and supports streaming iterator generation.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+            "coding_challenge": {
+                "title": "Sliding Window Transaction Rate Limiter / Detector",
+                "problem_statement": "Given tuples of (user_id, timestamp_sec, amount), return unique user_ids with more than 3 transactions in any 60 second window.",
+                "starter_code": "def detect_high_frequency_users(transactions: list, window_sec: int = 60, threshold: int = 3) -> list:\n    # TODO: Implement sliding window detector\n    pass\n",
+                "test_cases": [
+                    {"input": "[('u1', 10, 100), ('u1', 20, 50), ('u1', 40, 25), ('u1', 50, 10)]", "expected_output": "['u1']", "is_hidden": False},
+                ],
+            },
+        },
+        {
+            "stage": QuestionStage.CLOSING,
+            "competency_area": "Data Governance & Quality",
+            "question_text": "How do you enforce automated data quality testing (Great Expectations), data lineage tracking, and schema evolution (Avro/Protobuf) in enterprise data platforms?",
+            "rubric": QuestionRubric(
+                reference_answer="Data quality checks validate null constraints, value distributions, and uniqueness before table writes. Schema registries enforce backward/forward compatibility for Avro/Protobuf models. Data lineage tracking catalogs upstream/downstream impact.",
+                key_concepts_expected=["Automated Data Quality Checks (Great Expectations)", "Schema Evolution (Backward/Forward Compatibility)", "Data Lineage & Metadata Catalogs", "Data Governance & Privacy (GDPR)"],
+                depth_criteria={
+                    "basic": "Manual spot-checking and basic SQL null checks.",
+                    "intermediate": "Integrates automated quality assertions into Airflow DAGs and explains schema registry compatibility modes.",
+                    "advanced": "Architects automated CI/CD schema validation, automated data quarantine for bad records, and column-level lineage governance.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+    ],
+    StandardRole.ML_ENGINEER: [
+        {
+            "stage": QuestionStage.ICEBREAKER,
+            "competency_area": "Machine Learning Fundamentals & Algorithms",
+            "question_text": "Please introduce your Machine Learning and AI engineering background, the models you have trained or deployed to production, and your experience with MLOps workflows.",
+            "rubric": QuestionRubric(
+                reference_answer="Candidate summarizes ML experience (classical models, deep learning, PyTorch/TensorFlow, LLMs), model serving, and experiment tracking.",
+                key_concepts_expected=["Model Training & Evaluation Lifecycle", "PyTorch / TensorFlow Frameworks", "MLOps & Model Serving", "Feature Engineering"],
+                depth_criteria={
+                    "basic": "Mentions running scikit-learn tutorial models.",
+                    "intermediate": "Explains loss functions, overfitting prevention, and standard deployment with FastAPI.",
+                    "advanced": "Articulates end-to-end model governance, distributed training architectures, and production inference optimization.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CORE_TECHNICAL,
+            "competency_area": "Deep Learning & Neural Architectures",
+            "question_text": "Explain Transformer architecture internals: how does Multi-Head Self-Attention compute query, key, and value matrices, why is scaling by sqrt(d_k) necessary, and how do positional encodings work?",
+            "rubric": QuestionRubric(
+                reference_answer="Self-attention computes Attention(Q, K, V) = softmax(Q * K^T / sqrt(d_k)) * V. Scaling by sqrt(d_k) prevents dot-product values from growing large and vanishing softmax gradients. Positional encodings (sinusoidal or learned/RoPE) inject sequence order.",
+                key_concepts_expected=["Query, Key, Value Matrices (Q, K, V)", "Scaled Dot-Product Formula", "Softmax Gradient Vanishing Mitigation", "Multi-Head Projection & Concatenation", "Positional Encodings (RoPE / Sinusoidal)"],
+                depth_criteria={
+                    "basic": "States that Transformers use attention to look at words.",
+                    "intermediate": "Explains matrix operations (Q, K, V), softmax role, and multi-head benefits.",
+                    "advanced": "Details computational complexity O(N^2), FlashAttention memory optimizations, and RoPE rotary embeddings.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CORE_TECHNICAL,
+            "competency_area": "MLOps & Model Deployment Pipelines",
+            "question_text": "How do you optimize deep learning model inference latency and throughput in production using techniques like ONNX Runtime, TensorRT, model quantization (INT8/FP8), and dynamic batching?",
+            "rubric": QuestionRubric(
+                reference_answer="ONNX Runtime and TensorRT perform graph optimizations, layer fusion, and kernel auto-tuning. Quantization converts FP32/FP16 weights to INT8/FP8 to reduce memory bandwidth and accelerate computation. Dynamic batching bundles concurrent inference requests.",
+                key_concepts_expected=["Model Graph Optimization & Layer Fusion", "Quantization (Post-Training / QAT / INT8)", "Inference Servers (Triton / TorchServe / ONNX)", "Dynamic Batching & GPU Memory Bandwidth"],
+                depth_criteria={
+                    "basic": "Mentions loading model weights in a Python script.",
+                    "intermediate": "Explains ONNX graph export, quantization precision trade-offs, and batching.",
+                    "advanced": "Analyzes memory-bound vs compute-bound kernels, KV cache optimization in LLM serving (vLLM / PagedAttention), and latency profiling.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.DEEP_DIVE,
+            "competency_area": "Large Language Models & Generative AI",
+            "question_text": "In your Generative AI / LLM work{project_clause}, how do you architect a production Retrieval-Augmented Generation (RAG) system with hybrid search, vector embeddings, re-ranking, and hallucination guardrails?",
+            "rubric": QuestionRubric(
+                reference_answer="Chunk documents with semantic overlap, embed into vector databases (Qdrant/Milvus), and execute hybrid search (BM25 keyword + dense vector). Use cross-encoder re-ranking to select top context, inject into prompt with system constraints, and validate output with guardrails.",
+                key_concepts_expected=["Semantic Chunking & Overlap", "Dense Embeddings vs Sparse BM25 (Hybrid Search)", "Cross-Encoder Re-ranking", "Vector Database Indexing (HNSW)", "Hallucination Mitigation & Output Guardrails"],
+                depth_criteria={
+                    "basic": "Uses naive text split and single vector search call.",
+                    "intermediate": "Implements hybrid retrieval, re-ranking, and structured prompt template context injection.",
+                    "advanced": "Designs self-corrective RAG (CRAG/GraphRAG), embedding fine-tuning, latency caching, and automated LLM-as-a-judge evaluation.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CODING,
+            "competency_area": "Vector Operations & Numerical Stability",
+            "question_text": "Write a function `cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float` that computes the cosine similarity between two vectors, with numerical zero-division guards.",
+            "rubric": QuestionRubric(
+                reference_answer="Compute dot product divided by the product of Euclidean norms: dot(u, v) / (norm(u) * norm(v)). Guard against zero division using epsilon and handle dimension mismatches.",
+                key_concepts_expected=["Dot Product & Euclidean L2 Norm", "Cosine Similarity Mathematical Formula", "Zero Division Protection (Epsilon / Checks)", "Numerical Stability & Vector Dimension Validation"],
+                depth_criteria={
+                    "basic": "Simple formula without zero-magnitude checking.",
+                    "intermediate": "Accurate math calculation with zero-vector handling.",
+                    "advanced": "Vectorized numpy/list implementation with high precision stability and dimension assertion.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+            "coding_challenge": {
+                "title": "Cosine Similarity with Numerical Guardrails",
+                "problem_statement": "Compute the cosine similarity between two float vectors u and v. Return 0.0 if either vector has zero magnitude.",
+                "starter_code": "def cosine_similarity(vec_a: list, vec_b: list) -> float:\n    # TODO: Implement robust cosine similarity\n    pass\n",
+                "test_cases": [
+                    {"input": "vec_a=[1.0, 0.0], vec_b=[1.0, 0.0]", "expected_output": "1.0", "is_hidden": False},
+                    {"input": "vec_a=[1.0, 0.0], vec_b=[0.0, 1.0]", "expected_output": "0.0", "is_hidden": False},
+                ],
+            },
+        },
+        {
+            "stage": QuestionStage.CLOSING,
+            "competency_area": "Data Processing & Model Evaluation",
+            "question_text": "How do you detect and monitor data drift and concept drift in production ML models, evaluate fairness/bias, and execute automated retraining pipelines?",
+            "rubric": QuestionRubric(
+                reference_answer="Data drift compares input feature distributions over time (using KS-test, PSI, or Wasserstein distance); concept drift detects degradation in target relationship. Set alerts on drift metrics and trigger automated retraining pipelines with validation gates.",
+                key_concepts_expected=["Data Drift vs Concept Drift", "Statistical Drift Metrics (PSI / KS-Test / Wasserstein)", "Fairness & Demographic Bias Audits", "Automated Retraining Gates & Shadow Deployments"],
+                depth_criteria={
+                    "basic": "Mentions checking model accuracy periodically.",
+                    "intermediate": "Explains Population Stability Index (PSI), distribution shift monitoring, and shadow testing.",
+                    "advanced": "Architects continuous learning pipelines with rollback triggers, bias mitigation techniques, and automated feature store integration.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+    ],
+    StandardRole.QA_AUTOMATION_ENGINEER: [
+        {
+            "stage": QuestionStage.ICEBREAKER,
+            "competency_area": "Test Automation Frameworks & Strategy",
+            "question_text": "Please introduce your Quality Engineering and Test Automation background, the test frameworks you specialize in (Playwright, Cypress, PyTest), and how you design scalable automated test suites.",
+            "rubric": QuestionRubric(
+                reference_answer="Candidate summarizes test automation experience (Playwright/Cypress/Selenium/PyTest), the testing pyramid (unit, integration, E2E), and CI/CD quality gate integration.",
+                key_concepts_expected=["Testing Pyramid Architecture", "Page Object Model (POM)", "Modern Test Frameworks (Playwright/PyTest)", "CI/CD Quality Gates"],
+                depth_criteria={
+                    "basic": "Mentions manual testing and basic recorded scripts.",
+                    "intermediate": "Explains Page Object Model design, test data management, and parallel test execution.",
+                    "advanced": "Architects comprehensive enterprise test automation frameworks with dynamic reporting and automated regression gates.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CORE_TECHNICAL,
+            "competency_area": "Modern E2E Testing Frameworks",
+            "question_text": "How does Playwright/Cypress improve upon legacy Selenium architecture? How do you handle asynchronous waiting, dynamic DOM rendering, and flaky test elimination in modern SPAs?",
+            "rubric": QuestionRubric(
+                reference_answer="Playwright uses direct browser protocol (CDP) for fast execution, isolated browser contexts, and built-in auto-waiting for actionability (attached, visible, stable, enabled) without arbitrary sleep calls, eliminating timing flakiness.",
+                key_concepts_expected=["Auto-Waiting & Actionability Checks", "Browser Context Isolation", "CDP Protocol vs WebDriver", "Flaky Test Root Cause Elimination (No Hardcoded Sleeps)", "Dynamic Locators (Role, Text, TestId)"],
+                depth_criteria={
+                    "basic": "Suggests using time.sleep() to wait for elements.",
+                    "intermediate": "Explains explicit waits, auto-waiting locators, and isolated test contexts.",
+                    "advanced": "Details network interception for mocking, trace viewer debugging, retry policies, and worker parallelism.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CORE_TECHNICAL,
+            "competency_area": "API & Backend Testing",
+            "question_text": "Explain how to design an API automated test framework (REST/GraphQL): how do you validate status codes, JSON schema compliance, response headers, and mock external dependencies using tools like Pact or WireMock?",
+            "rubric": QuestionRubric(
+                reference_answer="Framework structures test cases around API endpoints, validates HTTP status codes, deserializes responses against JSON Schemas (Pydantic/JSON Schema), asserts payload contracts, and mocks flaky third-party services via contract testing (Pact) or service virtualization.",
+                key_concepts_expected=["API Status Code & Contract Verification", "JSON Schema Validation", "Consumer-Driven Contract Testing (Pact)", "Service Virtualization & Mocking", "Data-Driven Test Parameterization"],
+                depth_criteria={
+                    "basic": "Checks status code 200 using requests/Postman.",
+                    "intermediate": "Validates JSON response schemas, headers, and parameterizes test fixtures.",
+                    "advanced": "Implements consumer-driven contract testing, dynamic payload generators, and automated OpenAPI spec diff validation.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.DEEP_DIVE,
+            "competency_area": "Performance, Load & Stress Testing",
+            "question_text": "In your performance testing work{project_clause}, how do you design load and stress test scenarios with k6 or JMeter? How do you measure latency percentiles (p95, p99), throughput (RPS), and diagnose system bottlenecks?",
+            "rubric": QuestionRubric(
+                reference_answer="Define virtual user profiles, ramp-up schedules, and realistic think-times. Measure p95/p99 latency percentiles, request error rates, and RPS under load. Diagnose CPU/memory saturation, database lock contention, and connection pool exhaustion.",
+                key_concepts_expected=["Load vs Stress vs Soak Testing", "Latency Percentiles (p95 / p99)", "Throughput (RPS) & Concurrency", "Bottleneck Isolation (DB Locks, Connection Pools, Memory Leaks)"],
+                depth_criteria={
+                    "basic": "Runs a basic script sending concurrent requests without metrics.",
+                    "intermediate": "Explains latency distribution percentiles vs averages and ramp-up stages.",
+                    "advanced": "Analyzes coordinated omission in load generators, database connection starvation, and CI performance regression budgets.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+        {
+            "stage": QuestionStage.CODING,
+            "competency_area": "Test Results Processing & Reporting",
+            "question_text": "Write a function `generate_test_summary(results: List[dict]) -> dict` that parses test outcome records and returns total count, passed count, failed count, pass rate percentage, and names of failed tests.",
+            "rubric": QuestionRubric(
+                reference_answer="Iterate through test results, count pass/fail statuses, calculate percentage safely handling zero division, and aggregate failure names in O(N) time.",
+                key_concepts_expected=["List & Dictionary Processing", "Zero Division Protection", "Accurate Percentage Calculation", "O(N) Time Complexity", "Edge Case Handling (empty results)"],
+                depth_criteria={
+                    "basic": "Simple loops without empty list handling.",
+                    "intermediate": "Clean dictionary aggregation with accurate calculations.",
+                    "advanced": "Handles edge cases, structures formatted output report, and supports categorized failure groupings.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+            "coding_challenge": {
+                "title": "Test Results Summary Reporter",
+                "problem_statement": "Given a list of dicts with keys 'test_name' and 'status' ('PASSED'/'FAILED'), return a dict summary with totals and pass rate percentage.",
+                "starter_code": "def generate_test_summary(results: list) -> dict:\n    # TODO: Implement test summary generator\n    pass\n",
+                "test_cases": [
+                    {"input": "[{'test_name': 'test_login', 'status': 'PASSED'}, {'test_name': 'test_payment', 'status': 'FAILED'}]", "expected_output": "{'total': 2, 'passed': 1, 'failed': 1, 'pass_rate': 50.0, 'failed_tests': ['test_payment']}", "is_hidden": False},
+                ],
+            },
+        },
+        {
+            "stage": QuestionStage.CLOSING,
+            "competency_area": "Quality Engineering, Test Strategy & Bug Triage",
+            "question_text": "How do you manage the defect lifecycle, conduct Root Cause Analysis (RCA) on production escapes, and integrate automated regression suites into CI/CD release gates?",
+            "rubric": QuestionRubric(
+                reference_answer="Track defects through triage, severity/priority assignment, investigation, verification, and closure. For production escapes, conduct 5-Whys RCA and write automated regression tests. CI/CD gates block merges on test suite failures.",
+                key_concepts_expected=["Defect Lifecycle (Triage, Severity, RCA)", "5-Whys Root Cause Analysis", "Automated Regression Gates in CI/CD", "Risk-Based Test Prioritization"],
+                depth_criteria={
+                    "basic": "Describes reporting bugs in Jira.",
+                    "intermediate": "Explains severity vs priority, RCA practices, and automated smoke test gating.",
+                    "advanced": "Designs automated release gating with flaky test quarantining, risk-based test selection, and metric-driven quality dashboards.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            ),
+        },
+    ],
+}
+
+
+def _generate_fallback_rubric_plan(
+    job_role: StandardRole,
+    seniority: SeniorityLevel,
+    candidate_skills: List[str],
+    candidate_projects: Optional[List[Dict]] = None,
+    total_questions: int = 6,
+) -> List[InterviewQuestion]:
+    """
+    Generate deterministic, stage-paced interview questions with complete grading rubrics.
+    Guaranteed to execute in < 50ms (in-memory lookup).
+    """
+    role_bank = _OFFLINE_RUBRIC_QUESTION_BANK.get(
+        job_role, _OFFLINE_RUBRIC_QUESTION_BANK[StandardRole.BACKEND_ENGINEER]
+    )
+
+    # Resolve candidate project context
+    project_clause = ""
+    if candidate_projects and len(candidate_projects) > 0:
+        first_proj = candidate_projects[0]
+        p_name = str((first_proj or {}).get("name", "")).strip()
+        if p_name:
+            project_clause = f" on '{p_name}'"
+
+    allocated_questions: List[InterviewQuestion] = []
+    
+    # We select templates according to stage allocation
+    # Default 6-question pace: 1 Icebreaker, 2 Core Technical, 1 Deep Dive, 1 Coding, 1 Closing
+    for idx in range(total_questions):
+        template_idx = idx % len(role_bank)
+        tmpl = role_bank[template_idx]
+        
+        stage = tmpl["stage"]
+        comp_area = tmpl["competency_area"]
+        raw_text = tmpl["question_text"]
+        
+        # Format project clause if applicable
+        if "{project_clause}" in raw_text:
+            question_text = raw_text.replace("{project_clause}", project_clause)
+        else:
+            question_text = raw_text
+
+        # Base rubric
+        base_rubric: QuestionRubric = tmpl["rubric"]
+        rubric_copy = QuestionRubric(
+            reference_answer=base_rubric.reference_answer,
+            key_concepts_expected=list(base_rubric.key_concepts_expected),
+            depth_criteria=dict(base_rubric.depth_criteria),
+            scoring_guide=dict(base_rubric.scoring_guide),
+        )
+
+        q_id = f"q_{idx + 1}"
+        coding_ch = tmpl.get("coding_challenge")
+        coding_id = f"code_{job_role.value}_{idx + 1}" if stage == QuestionStage.CODING else None
+
+        allocated_questions.append(
+            InterviewQuestion(
+                question_id=q_id,
+                question_index=idx,
+                stage=stage,
+                competency_area=comp_area,
+                difficulty=seniority,
+                question_text=question_text,
+                rubric=rubric_copy,
+                coding_challenge_id=coding_id,
+                coding_challenge=coding_ch,
+            )
+        )
+
+    return allocated_questions
+
+
+async def generate_rubric_backed_plan(
+    job_role: StandardRole | str,
+    seniority: SeniorityLevel | str = SeniorityLevel.MID,
+    candidate_skills: Optional[List[str]] = None,
+    candidate_projects: Optional[List[Dict]] = None,
+    total_questions: int = 6,
+    job_description: Optional[str] = None,
+    required_job_skills: Optional[List[str]] = None,
+) -> List[InterviewQuestion]:
+    """
+    Generate personalized, stage-paced interview questions with pre-computed reference
+    answers, expected concepts, and grading rubrics.
+    Falls back gracefully to offline curated question bank on LLM failure.
+    """
+    norm_role, norm_seniority = _normalize_role_and_seniority(job_role, seniority)
+    candidate_skills = list(candidate_skills or [])
+    candidate_projects = list(candidate_projects or [])
+    required_job_skills = list(required_job_skills or [])
+    total_q = max(4, int(total_questions))
+
+    project_summary = _project_summary(candidate_projects)
+    
+    prompt = (
+        f"You are a technical interview committee lead at a top technology firm.\n"
+        f"Generate a deterministic, stage-paced interview question plan for a candidate applying as:\n"
+        f"JOB ROLE: {norm_role.value}\n"
+        f"SENIORITY: {norm_seniority.value}\n"
+        f"JOB DESCRIPTION: {job_description or 'Standard software engineering role'}\n"
+        f"REQUIRED JOB SKILLS: {', '.join(required_job_skills) if required_job_skills else 'Standard role skills'}\n"
+        f"CANDIDATE SKILLS: {', '.join(candidate_skills) if candidate_skills else 'Standard tech skills'}\n"
+        f"CANDIDATE PROJECTS:\n{project_summary}\n\n"
+        f"STAGE ALLOCATION (Must generate exactly {total_q} questions in this sequential order):\n"
+        f"1. Stage 'icebreaker' (Question 1): Candidate intro, role motivations, stack background.\n"
+        f"2. Stage 'core_technical' (Questions 2..{total_q - 3}): Core engineering concepts and fundamentals from role competency matrix.\n"
+        f"3. Stage 'deep_dive' (Question {total_q - 2}): Project or complex architectural deep dive on trade-offs and bottlenecks.\n"
+        f"4. Stage 'coding' (Question {total_q - 1}): Algorithmic problem with clear problem_statement and test_cases.\n"
+        f"5. Stage 'closing' (Question {total_q}): Web security, testing, reliability, and engineering leadership.\n\n"
+        "MANDATORY RUBRIC REQUIREMENTS FOR EVERY SINGLE QUESTION:\n"
+        "- Every question MUST include a 'rubric' object.\n"
+        "- 'reference_answer': A comprehensive 2-4 sentence explanation of an exemplary answer.\n"
+        "- 'key_concepts_expected': A JSON list with AT LEAST 2 technical keywords/concepts.\n"
+        "- 'depth_criteria': Object with keys 'basic', 'intermediate', and 'advanced'.\n"
+        "- 'scoring_guide': Object with 'relevance_max' (30.0), 'depth_max' (40.0), 'accuracy_max' (30.0).\n\n"
+        "OUTPUT FORMAT: Return ONLY a valid JSON array of question objects matching this schema:\n"
+        "[\n"
+        "  {\n"
+        "    \"question_text\": \"...\",\n"
+        "    \"stage\": \"icebreaker|core_technical|deep_dive|coding|closing\",\n"
+        "    \"competency_area\": \"...\",\n"
+        "    \"difficulty\": \"entry|mid|senior|lead\",\n"
+        "    \"rubric\": {\n"
+        "      \"reference_answer\": \"...\",\n"
+        "      \"key_concepts_expected\": [\"concept1\", \"concept2\"],\n"
+        "      \"depth_criteria\": {\"basic\": \"...\", \"intermediate\": \"...\", \"advanced\": \"...\"},\n"
+        "      \"scoring_guide\": {\"relevance_max\": 30.0, \"depth_max\": 40.0, \"accuracy_max\": 30.0}\n"
+        "    }\n"
+        "  }\n"
+        "]\n"
+        "No markdown, no backticks, no commentary outside the JSON array."
+    )
+
+    try:
+        raw_resp = _try_interview_llm_call(
+            messages=[{"role": "user", "content": prompt}],
+            system="You are an expert technical interviewer. Return only a valid JSON array of interview questions with complete rubrics.",
+            temperature=0.7,
+            max_tokens=4000,
+        )
+        if not raw_resp:
+            return _generate_fallback_rubric_plan(
+                norm_role, norm_seniority, candidate_skills, candidate_projects, total_q
+            )
+
+        parsed_items = _parse_json_array(raw_resp)
+        if not isinstance(parsed_items, list) or len(parsed_items) == 0:
+            return _generate_fallback_rubric_plan(
+                norm_role, norm_seniority, candidate_skills, candidate_projects, total_q
+            )
+
+        validated_questions: List[InterviewQuestion] = []
+        for idx, item in enumerate(parsed_items[:total_q]):
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("question_text", "")).strip()
+            if not text:
+                continue
+
+            stage_str = str(item.get("stage", "core_technical")).strip().lower()
+            try:
+                stage_enum = QuestionStage(stage_str)
+            except ValueError:
+                stage_enum = QuestionStage.CORE_TECHNICAL
+
+            diff_str = str(item.get("difficulty", norm_seniority.value)).strip().lower()
+            try:
+                diff_enum = SeniorityLevel(diff_str)
+            except ValueError:
+                diff_enum = norm_seniority
+
+            comp_area = str(item.get("competency_area", "Technical Competency")).strip()
+
+            raw_rubric = item.get("rubric") or {}
+            ref_ans = str(raw_rubric.get("reference_answer", "")).strip()
+            expected_concepts = raw_rubric.get("key_concepts_expected", [])
+            if not isinstance(expected_concepts, list) or len(expected_concepts) < 2:
+                # Fill default concepts if missing
+                expected_concepts = [comp_area, f"{norm_role.value} best practices"]
+
+            if not ref_ans:
+                ref_ans = f"Candidate is expected to explain {comp_area} principles, implementation steps, and trade-offs."
+
+            depth_crit = raw_rubric.get("depth_criteria")
+            if not isinstance(depth_crit, dict) or not all(k in depth_crit for k in ["basic", "intermediate", "advanced"]):
+                depth_crit = {
+                    "basic": "Candidate demonstrates superficial understanding with partial concepts.",
+                    "intermediate": "Candidate explains standard working principles and typical use cases.",
+                    "advanced": "Candidate explains deep internal mechanics, performance trade-offs, and edge cases.",
+                }
+
+            scoring_guide = raw_rubric.get("scoring_guide")
+            if not isinstance(scoring_guide, dict):
+                scoring_guide = {"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0}
+
+            rubric = QuestionRubric(
+                reference_answer=ref_ans,
+                key_concepts_expected=[str(c).strip() for c in expected_concepts if str(c).strip()],
+                depth_criteria={k: str(v) for k, v in depth_crit.items()},
+                scoring_guide={k: float(v) for k, v in scoring_guide.items()},
+            )
+
+            coding_ch = item.get("coding_challenge")
+            coding_id = f"code_{norm_role.value}_{idx + 1}" if stage_enum == QuestionStage.CODING else None
+
+            validated_questions.append(
+                InterviewQuestion(
+                    question_id=f"q_{idx + 1}",
+                    question_index=idx,
+                    stage=stage_enum,
+                    competency_area=comp_area,
+                    difficulty=diff_enum,
+                    question_text=text,
+                    rubric=rubric,
+                    coding_challenge_id=coding_id,
+                    coding_challenge=coding_ch,
+                )
+            )
+
+        if len(validated_questions) < total_q:
+            # Fallback if insufficient valid questions generated
+            return _generate_fallback_rubric_plan(
+                norm_role, norm_seniority, candidate_skills, candidate_projects, total_q
+            )
+
+        return validated_questions
+
+    except Exception:
+        return _generate_fallback_rubric_plan(
+            norm_role, norm_seniority, candidate_skills, candidate_projects, total_q
+        )

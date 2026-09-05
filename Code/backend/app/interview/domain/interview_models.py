@@ -4,9 +4,54 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+
+from app.interview.domain.role_taxonomy import SeniorityLevel
+
+
+class QuestionStage(str, Enum):
+    """Paced stages for structured, explainable live interviews."""
+    ICEBREAKER = "icebreaker"
+    CORE_TECHNICAL = "core_technical"
+    DEEP_DIVE = "deep_dive"
+    CODING = "coding"
+    CLOSING = "closing"
+    FOLLOW_UP = "follow_up"
+
+
+class QuestionRubric(BaseModel):
+    """Deterministic grading rubric and reference answer key for an interview question."""
+    reference_answer: str
+    key_concepts_expected: List[str] = Field(default_factory=list)
+    depth_criteria: Dict[str, str] = Field(
+        default_factory=lambda: {
+            "basic": "Candidate demonstrates superficial understanding with partial concepts.",
+            "intermediate": "Candidate explains standard working principles and typical use cases.",
+            "advanced": "Candidate explains deep internal mechanics, performance trade-offs, and edge cases.",
+        }
+    )
+    scoring_guide: Dict[str, float] = Field(
+        default_factory=lambda: {
+            "relevance_max": 30.0,
+            "depth_max": 40.0,
+            "accuracy_max": 30.0,
+        }
+    )
+
+
+class InterviewQuestion(BaseModel):
+    """Structured interview question with stage pacing and reference evaluation rubric."""
+    question_id: str
+    question_index: int
+    stage: QuestionStage
+    competency_area: str
+    difficulty: SeniorityLevel
+    question_text: str
+    rubric: QuestionRubric
+    coding_challenge_id: Optional[str] = None
+    coding_challenge: Optional[Dict[str, Any]] = None
 
 
 class QuestionType(str, Enum):

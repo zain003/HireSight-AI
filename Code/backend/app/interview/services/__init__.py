@@ -11,6 +11,7 @@ from .llm_service import (
     generate_interview_question,
     generate_question_plan,
     generate_report_summary,
+    generate_rubric_backed_plan,
 )
 from .stt_service import STTService, transcribe_audio
 from .tts_service import TTSService, text_to_speech
@@ -38,6 +39,7 @@ __all__ = [
     "generate_interview_question",
     "generate_question_plan",
     "generate_report_summary",
+    "generate_rubric_backed_plan",
     "text_to_speech",
     "transcribe_audio",
     "verify_face_frame",

@@ -20,8 +20,10 @@ from app.interview.services import (
     generate_followup_question,
     generate_question_plan,
     generate_report_summary,
+    generate_rubric_backed_plan,
     evaluate_answer_interview,
 )
+from app.interview.services.role_mapping_service import infer_seniority_level
 from app.interview.services.behavioral_analysis import BehavioralAnalysisService
 from app.interview.services.vocal_analysis import VocalAnalysisService
 from app.interview.services.recruiter_report import RecruiterReportGenerator
@@ -60,52 +62,35 @@ class InterviewService:
         experience_years: Optional[int] = None,
         job_post_id: Optional[str] = None,
     ) -> InterviewSession:
-        plan = await generate_question_plan(
+        target_seniority = infer_seniority_level(experience_years)
+        rubric_plan = await generate_rubric_backed_plan(
             job_role=job_role,
-            job_description=job_description,
+            seniority=target_seniority,
             candidate_skills=candidate_skills,
-            required_job_skills=required_job_skills or [],
-            total_questions=LIVE_INTERVIEW_TOTAL_QUESTIONS,
             candidate_projects=candidate_projects or [],
-            candidate_job_titles=candidate_job_titles or [],
-            candidate_certifications=candidate_certifications or [],
-            candidate_companies=candidate_companies or [],
-            experience_years=experience_years,
+            total_questions=total_questions or 6,
+            job_description=job_description,
+            required_job_skills=required_job_skills or [],
         )
 
         questions = []
-        for idx, q in enumerate(plan):
-            q_text = (q.get("question_text") or "").strip()
-            q_type = (q.get("question_type") or "technical").strip().lower()
-            if q_type == "introduction":
-                question_type = QuestionType.INTRODUCTION
-            elif q_type == "icebreaker":
-                question_type = QuestionType.ICEBREAKER
-            elif q_type == "behavioral":
-                question_type = QuestionType.BEHAVIORAL
-            elif q_type == "follow_up":
-                question_type = QuestionType.FOLLOW_UP
-            elif q_type == "closing":
-                question_type = QuestionType.CLOSING
-            elif q_type == "situational":
-                question_type = QuestionType.SITUATIONAL
-            elif q_type == "cv_based":
-                question_type = QuestionType.CV_BASED
-            elif q_type == "coding":
-                question_type = QuestionType.CODING
-            else:
-                question_type = QuestionType.TECHNICAL
-
+        for idx, q in enumerate(rubric_plan):
+            q_type = q.stage.value if q.stage else "technical"
+            rubric_dict = q.rubric.model_dump() if hasattr(q.rubric, "model_dump") else q.rubric.dict()
             entry = {
-                "question_id": f"q_{idx + 1}",
+                "question_id": q.question_id or f"q_{idx + 1}",
                 "question_index": idx,
-                "question_text": q_text,
-                "question_type": question_type.value,
-                "stage": (q.get("stage") or "").strip().lower() or question_type.value,
-                "difficulty": (q.get("difficulty") or "").strip().lower() or None,
+                "question_text": q.question_text,
+                "question_type": q_type,
+                "stage": q.stage.value if q.stage else q_type,
+                "competency_area": q.competency_area,
+                "difficulty": q.difficulty.value if q.difficulty else target_seniority.value,
+                "rubric": rubric_dict,
             }
-            if q.get("coding_challenge"):
-                entry["coding_challenge"] = q["coding_challenge"]
+            if q.coding_challenge_id:
+                entry["coding_challenge_id"] = q.coding_challenge_id
+            if q.coding_challenge:
+                entry["coding_challenge"] = q.coding_challenge
             questions.append(entry)
 
         session_id = f"int_{uuid.uuid4().hex[:12]}"

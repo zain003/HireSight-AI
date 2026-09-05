@@ -6,8 +6,8 @@
 | `FEAT-001-BE-role-competency-mapping.md` | Backend | P0 | Role & Competency Mapping | `000-shared-contracts` | Standard role taxonomy & seniority inference | ☑ Done |
 | `FEAT-001-FE-interview-config-role-select.md` | Frontend | P0 | Pre-Interview Configuration UI | `FEAT-001-BE` | Role & difficulty confirmation interface | ☑ Done |
 | `FEAT-001-VERIFY-role-mapping.md` | Verify | P0 | Role Mapping Verification | `FEAT-001-BE`, `FEAT-001-FE` | End-to-end verification for role mapping | ☑ Done |
-| `FEAT-002-BE-question-engine-rubrics.md` | Backend | P0 | Rubric-Backed Question Engine | `FEAT-001-BE` | Question generation with reference rubrics | ☐ Ready |
-| `FEAT-002-VERIFY-question-engine.md` | Verify | P0 | Question Engine Verification | `FEAT-002-BE` | Rubric generation & storage test suite | ☐ Ready |
+| `FEAT-002-BE-question-engine-rubrics.md` | Backend | P0 | Rubric-Backed Question Engine | `FEAT-001-BE` | Question generation with reference rubrics | ☑ Done |
+| `FEAT-002-VERIFY-question-engine.md` | Verify | P0 | Question Engine Verification | `FEAT-002-BE` | Rubric generation & storage test suite | ☑ Passed |
 | `FEAT-003-BE-session-state-sync.md` | Backend | P0 | Session State Synchronization | `FEAT-002-BE` | Dynamic follow-up & session recovery API | ☐ Ready |
 | `FEAT-003-FE-interview-resilience-input.md` | Frontend | P0 | Interview Resilience & Input Toggle | `FEAT-003-BE` | Question reload recovery & text/voice toggle | ☐ Ready |
 | `FEAT-003-VERIFY-session-sync.md` | Verify | P0 | Session Sync Verification | `FEAT-003-BE`, `FEAT-003-FE` | Multi-step recovery verification pass | ☐ Ready |
