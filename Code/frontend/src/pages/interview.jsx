@@ -576,12 +576,28 @@ export default function InterviewPage() {
     }
 
     // 1. Start continuous MediaRecorder to capture candidate voice
-    if (mediaStreamRef.current && mediaStreamRef.current.getAudioTracks().length > 0) {
+    const audioTracks = mediaStreamRef.current ? mediaStreamRef.current.getAudioTracks() : [];
+    if (audioTracks.length > 0) {
       try {
+        audioTracks.forEach((t) => {
+          t.enabled = true;
+        });
+
         if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
-          const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav'];
-          const mimeType = types.find((t) => MediaRecorder.isTypeSupported(t)) || '';
-          const mr = mimeType ? new MediaRecorder(mediaStreamRef.current, { mimeType }) : new MediaRecorder(mediaStreamRef.current);
+          // Isolate audio tracks to prevent MediaRecorder crashing on mixed video+audio streams
+          const audioOnlyStream = new MediaStream(audioTracks);
+          const types = [
+            'audio/webm;codecs=opus',
+            'audio/webm',
+            'audio/ogg;codecs=opus',
+            'audio/ogg',
+            'audio/mp4',
+            'audio/wav',
+          ];
+          const mimeType = types.find((t) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
+          const mr = mimeType
+            ? new MediaRecorder(audioOnlyStream, { mimeType })
+            : new MediaRecorder(audioOnlyStream);
 
           mr.ondataavailable = (e) => {
             if (e.data && e.data.size > 0) {
@@ -603,30 +619,38 @@ export default function InterviewPage() {
           !loadingRef.current &&
           !micMutedRef.current &&
           inputModeRef.current === 'voice' &&
-          audioChunksRef.current &&
-          audioChunksRef.current.length > 0 &&
           !isTranscribingChunkRef.current
         ) {
           try {
-            const mime = audioChunksRef.current[0]?.type || 'audio/webm';
-            const audioBlob = new Blob(audioChunksRef.current, { type: mime });
-            if (audioBlob.size > 800) {
-              isTranscribingChunkRef.current = true;
-              const b64 = await blobToBase64(audioBlob);
-              const fmt = mime.includes('mp4') ? 'mp4' : mime.includes('ogg') ? 'ogg' : 'webm';
-              const text = await interviewService.transcribeAudio(b64, fmt, 'en');
-              if (text && text !== '[Could not transcribe audio]' && text.trim().length > 0) {
-                setFinalTranscript(text.trim());
-                setSpeechNotice(null);
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+              try {
+                mediaRecorderRef.current.requestData();
+              } catch {}
+            }
+
+            if (audioChunksRef.current && audioChunksRef.current.length > 0) {
+              const mime = audioChunksRef.current[0]?.type || 'audio/webm';
+              const audioBlob = new Blob(audioChunksRef.current, { type: mime });
+              if (audioBlob.size > 400) {
+                isTranscribingChunkRef.current = true;
+                const b64 = await blobToBase64(audioBlob);
+                const fmt = mime.includes('mp4') ? 'mp4' : mime.includes('ogg') ? 'ogg' : 'webm';
+                const text = await interviewService.transcribeAudio(b64, fmt, 'en');
+                if (text && text !== '[Could not transcribe audio]' && text.trim().length > 0) {
+                  setFinalTranscript(text.trim());
+                  accumulatedFinalRef.current = text.trim();
+                  setLiveTranscript('');
+                  setSpeechNotice(null);
+                }
               }
             }
           } catch (e) {
-            // ignore chunk error
+            console.warn('Live transcribe chunk notice:', e);
           } finally {
             isTranscribingChunkRef.current = false;
           }
         }
-      }, 2000);
+      }, 1500);
     }
 
     // 3. Start Browser Web Speech Recognition (for instant local text preview)
