@@ -211,7 +211,7 @@ export default function InterviewSetupPage() {
       const payload = {
         job_role: roleDisplayName,
         candidate_skills: profileSkills,
-        num_questions: 20,
+        num_questions: 6,
         ...(jobPost?.id || router.query.jobPostId ? { job_post_id: jobPost?.id || router.query.jobPostId } : {}),
       };
 

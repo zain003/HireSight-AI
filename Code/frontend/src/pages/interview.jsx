@@ -1529,7 +1529,7 @@ export default function InterviewPage() {
                     currentQuestion.coding_challenge_id ||
                     `CHAL-${currentQuestion.question_id}`
                   }
-                  questionIndex={currentQuestionIndex}
+                  questionIndex={currentIdx}
                   starterCode={currentQuestion.coding_challenge.starter_code || ''}
                   starterTemplates={currentQuestion.coding_challenge.starter_templates || {}}
                   recommendedLanguages={

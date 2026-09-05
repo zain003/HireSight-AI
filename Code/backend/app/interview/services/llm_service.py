@@ -2653,7 +2653,7 @@ def _generate_fallback_rubric_plan(
 ) -> List[InterviewQuestion]:
     """
     Generate deterministic, stage-paced interview questions with complete grading rubrics.
-    Guaranteed to execute in < 50ms (in-memory lookup).
+    Guaranteed to execute in < 50ms (in-memory lookup) with ZERO repeated questions.
     """
     role_bank = _OFFLINE_RUBRIC_QUESTION_BANK.get(
         job_role, _OFFLINE_RUBRIC_QUESTION_BANK[StandardRole.BACKEND_ENGINEER]
@@ -2669,11 +2669,10 @@ def _generate_fallback_rubric_plan(
 
     allocated_questions: List[InterviewQuestion] = []
     
-    # We select templates according to stage allocation
-    # Default 6-question pace: 1 Icebreaker, 2 Core Technical, 1 Deep Dive, 1 Coding, 1 Closing
-    for idx in range(total_questions):
-        template_idx = idx % len(role_bank)
-        tmpl = role_bank[template_idx]
+    # Strictly select unique templates from role_bank without repeating
+    target_count = min(len(role_bank), max(4, int(total_questions or 6)))
+    for idx in range(target_count):
+        tmpl = role_bank[idx]
         
         stage = tmpl["stage"]
         comp_area = tmpl["competency_area"]
@@ -2727,13 +2726,13 @@ async def generate_rubric_backed_plan(
     """
     Generate personalized, stage-paced interview questions with pre-computed reference
     answers, expected concepts, and grading rubrics.
-    Falls back gracefully to offline curated question bank on LLM failure.
+    Guarantees strict deduplication and zero question repetition.
     """
     norm_role, norm_seniority = _normalize_role_and_seniority(job_role, seniority)
     candidate_skills = list(candidate_skills or [])
     candidate_projects = list(candidate_projects or [])
     required_job_skills = list(required_job_skills or [])
-    total_q = max(4, int(total_questions))
+    total_q = min(6, max(4, int(total_questions or 6)))
 
     project_summary = _project_summary(candidate_projects)
     
@@ -2794,13 +2793,22 @@ async def generate_rubric_backed_plan(
                 norm_role, norm_seniority, candidate_skills, candidate_projects, total_q
             )
 
+        seen_normalized_texts = set()
         validated_questions: List[InterviewQuestion] = []
-        for idx, item in enumerate(parsed_items[:total_q]):
+        for idx, item in enumerate(parsed_items):
+            if len(validated_questions) >= total_q:
+                break
             if not isinstance(item, dict):
                 continue
             text = str(item.get("question_text", "")).strip()
             if not text:
                 continue
+
+            # Deduplicate by normalized text key
+            norm_key = re.sub(r"[^\w\s]", "", text.lower())[:80]
+            if norm_key in seen_normalized_texts:
+                continue
+            seen_normalized_texts.add(norm_key)
 
             stage_str = str(item.get("stage", "core_technical")).strip().lower()
             try:
@@ -2845,13 +2853,14 @@ async def generate_rubric_backed_plan(
                 scoring_guide={k: float(v) for k, v in scoring_guide.items()},
             )
 
-            coding_ch = _normalize_coding_challenge(item.get("coding_challenge"), norm_role.value, idx) if stage_enum == QuestionStage.CODING else None
-            coding_id = f"code_{norm_role.value}_{idx + 1}" if stage_enum == QuestionStage.CODING else None
+            q_out_idx = len(validated_questions)
+            coding_ch = _normalize_coding_challenge(item.get("coding_challenge"), norm_role.value, q_out_idx) if stage_enum == QuestionStage.CODING else None
+            coding_id = f"code_{norm_role.value}_{q_out_idx + 1}" if stage_enum == QuestionStage.CODING else None
 
             validated_questions.append(
                 InterviewQuestion(
-                    question_id=f"q_{idx + 1}",
-                    question_index=idx,
+                    question_id=f"q_{q_out_idx + 1}",
+                    question_index=q_out_idx,
                     stage=stage_enum,
                     competency_area=comp_area,
                     difficulty=diff_enum,
