@@ -110,6 +110,34 @@ class FrameAnalysisResult(BaseModel):
     observable_cv_metrics: Optional[ObservableCVMetrics] = None
 
 
+class TestCaseResult(BaseModel):
+    """Result of running code against a single test case."""
+    __test__ = False
+    test_id: int
+    is_hidden: bool = False
+    passed: bool
+    runtime_ms: float = 0.0
+    memory_kb: float = 0.0
+    stdout: Optional[str] = None     # Included ONLY for public test cases
+    error_message: Optional[str] = None
+
+
+class CodingChallengeEvaluation(BaseModel):
+    """Evaluation summary for a submitted coding challenge solution."""
+    challenge_id: str
+    language: str
+    source_code: str
+    compile_success: bool
+    public_tests_passed: int = 0
+    public_tests_total: int = 0
+    hidden_tests_passed: int = 0
+    hidden_tests_total: int = 0
+    overall_coding_score: float = 0.0      # 0-100 explainable score
+    execution_time_total_ms: float = 0.0
+    peak_memory_kb: float = 0.0
+    results: List[TestCaseResult] = Field(default_factory=list)
+
+
 class AnswerEvaluation(BaseModel):
     question_index: int = 0
     question_text: str = ""

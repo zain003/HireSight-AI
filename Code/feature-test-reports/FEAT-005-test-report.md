@@ -1,5 +1,5 @@
 # FEAT-005 Verification Test Report: Vocal Acoustic Analysis Engine
-**Execution Timestamp**: 2026-09-05T12:49:20.302988Z
+**Execution Timestamp**: 2026-09-05T13:06:37.584075Z
 **Target Spec**: `FEAT-005-BE-vocal-acoustic-speech-engine.md`
 **Verification Spec**: `context/feature-specs/FEAT-005-VERIFY-vocal-engine.md`
 
@@ -14,7 +14,7 @@
 
 ## 2. Audio Format Resiliency & Performance Checks
 - [x] **Audio Format Decoding Resiliency (Stereo-to-Mono & Corrupt Payload Handling)**: `PASSED` Stereo converted to 1D mono (len=16000), Corrupt flags=['Audio conversion failed or empty data']
-- [x] **Audio Processing Latency Benchmark (< 250ms for clip)**: `PASSED` Execution time: 14.77ms for 5.0s audio clip
+- [x] **Audio Processing Latency Benchmark (< 250ms for clip)**: `PASSED` Execution time: 25.15ms for 5.0s audio clip
 - [x] **Memory Stability across 50 Consecutive Audio Stream Evaluations**: `PASSED` Zero buffer leaks or uncollected allocations across 50 full DSP cycles
 
 ## 3. Acceptance Criteria Checklist

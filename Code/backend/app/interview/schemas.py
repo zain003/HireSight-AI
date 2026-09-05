@@ -3,7 +3,13 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 
-from app.interview.domain.interview_models import AnswerEvaluation, FrameAnalysisResult, InterviewReport
+from app.interview.domain.interview_models import (
+    AnswerEvaluation,
+    CodingChallengeEvaluation,
+    FrameAnalysisResult,
+    InterviewReport,
+    TestCaseResult,
+)
 
 
 class LiveInterviewStartRequest(BaseModel):
@@ -155,6 +161,29 @@ class RunCodeResponse(BaseModel):
     missing_tools: List[str] = Field(default_factory=list)
     results: List[CodingRunTestResult]
     all_passed: bool
+
+
+# Alias for spec contract compliance
+RunPublicCodeResponse = RunCodeResponse
+
+
+class SubmitCodingChallengeRequest(BaseModel):
+    """Candidate submission of coding challenge code for server-side evaluation."""
+    challenge_id: str
+    language: str
+    source_code: str = Field(..., max_length=400_000)
+    question_index: Optional[int] = None
+
+    @field_validator("language")
+    @classmethod
+    def normalize_lang(cls, v: str) -> str:
+        key = (v or "").strip().lower()
+        key = _CODE_LANG_ALIASES.get(key, key)
+        if key not in SUPPORTED_CODE_LANGS:
+            raise ValueError(
+                f"Unsupported language: {v}. Use one of: {sorted(SUPPORTED_CODE_LANGS)}."
+            )
+        return key
 
 
 # --- Role & Competency Configuration (FEAT-001) ---

@@ -96,10 +96,26 @@ export const interviewService = {
   },
 
   /**
-   * Run candidate code locally against public stdin/stdout tests (backend subprocess).
+   * Run candidate code locally against public stdin/stdout tests (backend subprocess sandbox).
+   */
+  runPublicCode: async (payload) => {
+    const response = await api.post('/interview/coding/run-public', payload);
+    return response.data;
+  },
+
+  /**
+   * Run candidate code locally (backward compatible alias).
    */
   runCode: async (payload) => {
-    const response = await api.post('/interview/coding/run', payload);
+    const response = await api.post('/interview/coding/run-public', payload);
+    return response.data;
+  },
+
+  /**
+   * Submit candidate coding challenge solution for server-side evaluation against public & hidden suites.
+   */
+  submitCodingChallenge: async (sessionId, payload) => {
+    const response = await api.post(`/interview/live/${sessionId}/submit-coding-challenge`, payload);
     return response.data;
   },
 };

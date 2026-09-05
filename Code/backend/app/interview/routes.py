@@ -1,3 +1,6 @@
+import asyncio
+import base64
+from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -8,6 +11,7 @@ from app.interview.application.interview_service import InterviewService
 from app.interview.domain.role_taxonomy import SeniorityLevel, StandardRole
 from app.interview.models import InterviewSession
 from app.interview.schemas import (
+    CodingChallengeEvaluation,
     FaceRegisterRequest,
     FaceVerifyRequest,
     FrameAnalyzeRequest,
@@ -22,8 +26,10 @@ from app.interview.schemas import (
     RoleFitResponse,
     RunCodeRequest,
     RunCodeResponse,
+    RunPublicCodeResponse,
     SubmitAnswerRequest,
     SubmitAnswerResponse,
+    SubmitCodingChallengeRequest,
     TTSRequest,
     TTSResponse,
 )
@@ -31,6 +37,7 @@ from app.interview.services import FaceService, TTSService
 from app.interview.services.code_execution import (
     DEFAULT_COMPILE_TIMEOUT_SEC,
     DEFAULT_RUN_TIMEOUT_SEC,
+    evaluate_coding_challenge,
     execute_code,
 )
 from app.interview.services.role_mapping_service import (
@@ -328,6 +335,7 @@ async def generate_tts(request: TTSRequest):
     return TTSResponse(audio_base64=audio_b64, format="mp3")
 
 
+@router.post("/coding/run-public", response_model=RunPublicCodeResponse)
 @router.post("/coding/run", response_model=RunCodeResponse)
 async def run_code_sample_tests(
     request: RunCodeRequest,
@@ -351,6 +359,42 @@ async def run_code_sample_tests(
     return await asyncio.to_thread(_sync_run)
 
 
+@router.post("/live/{session_id}/submit-coding-challenge", response_model=CodingChallengeEvaluation)
+async def submit_live_coding_challenge(
+    session_id: str,
+    request: SubmitCodingChallengeRequest,
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Evaluate candidate coding solution against both public and secret hidden test suites.
+    Persists evaluation in session document with zero leakage of hidden inputs/outputs.
+    """
+    session = await InterviewSession.find_one(
+        {"session_id": session_id, "user_id": str(current_user.id)}
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    evaluation = await asyncio.to_thread(
+        evaluate_coding_challenge,
+        challenge_id=request.challenge_id,
+        language=request.language,
+        source_code=request.source_code,
+    )
+
+    # Store coding result in session
+    if not hasattr(session, 'coding_results') or session.coding_results is None:
+        session.coding_results = []
+
+    eval_dict = evaluation.model_dump()
+    eval_dict["timestamp"] = datetime.utcnow().isoformat()
+    eval_dict["question_index"] = request.question_index
+    session.coding_results.append(eval_dict)
+
+    await session.save()
+    return evaluation
+
+
 @router.post("/live/{session_id}/submit-coding-result")
 async def submit_coding_result(
     session_id: str,
@@ -359,7 +403,7 @@ async def submit_coding_result(
 ):
     """
     Submit coding challenge results for tracking in final report.
-    Called after candidate runs code tests.
+    Called after candidate runs code tests (legacy compatible).
     """
     session = await InterviewSession.find_one(
         {"session_id": session_id, "user_id": str(current_user.id)}

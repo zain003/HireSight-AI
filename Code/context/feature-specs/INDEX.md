@@ -15,9 +15,9 @@
 | `FEAT-004-VERIFY-cv-engine.md` | Verify | P0 | CV Engine Verification | `FEAT-004-BE` | Landmark normalization & resolution tests | ☑ Passed |
 | `FEAT-005-BE-vocal-acoustic-speech-engine.md` | Backend | P0 | Vocal Acoustic Analysis Engine | `000-shared-contracts` | Conversational WPM, pause ratio, & pitch | ☑ Done |
 | `FEAT-005-VERIFY-vocal-engine.md` | Verify | P0 | Vocal Engine Verification | `FEAT-005-BE` | Audio conversion & acoustic feature tests | ☑ Passed |
-| `FEAT-006-BE-coding-sandbox-hidden-tests.md` | Backend | P0 | Sandboxed Hidden Test Runner | `000-shared-contracts` | Server-side execution & private test cases | ☐ Ready |
-| `FEAT-006-FE-coding-assessment-ui.md` | Frontend | P1 | Coding Challenge Workspace UI | `FEAT-006-BE` | Code editor with public test runner | ☐ Ready |
-| `FEAT-006-VERIFY-coding-sandbox.md` | Verify | P0 | Coding Sandbox Verification | `FEAT-006-BE`, `FEAT-006-FE` | Sandbox isolation & hidden test tests | ☐ Ready |
+| `FEAT-006-BE-coding-sandbox-hidden-tests.md` | Backend | P0 | Sandboxed Hidden Test Runner | `000-shared-contracts` | Server-side execution & private test cases | ☑ Done |
+| `FEAT-006-FE-coding-assessment-ui.md` | Frontend | P1 | Coding Challenge Workspace UI | `FEAT-006-BE` | Code editor with public test runner | ☑ Done |
+| `FEAT-006-VERIFY-coding-sandbox.md` | Verify | P0 | Coding Sandbox Verification | `FEAT-006-BE`, `FEAT-006-FE` | Sandbox isolation & hidden test tests | ☑ Passed |
 | `FEAT-007-BE-explainable-scoring-engine.md` | Backend | P0 | 5-Dimensional Scoring Engine | `FEAT-001-BE` to `FEAT-006-BE` | Transparent 5-dim model & audit log | ☐ Ready |
 | `FEAT-007-VERIFY-explainable-scoring.md` | Verify | P0 | Explainable Scoring Verification | `FEAT-007-BE` | Weight calculations & mathematical audit | ☐ Ready |
 | `FEAT-008-BE-tailored-feedback-engine.md` | Backend | P1 | Tailored Feedback & Skill Gap | `FEAT-007-BE` | Question-anchored actionable feedback | ☐ Ready |

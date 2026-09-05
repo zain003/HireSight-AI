@@ -1241,7 +1241,15 @@ export default function InterviewPage() {
               {isCodingPhase && currentQuestion.coding_challenge ? (
                 <CodingWorkspace
                   key={currentQuestion.question_id}
+                  sessionId={sessionId}
+                  challengeId={
+                    currentQuestion.coding_challenge?.challenge_id ||
+                    currentQuestion.coding_challenge_id ||
+                    `CHAL-${currentQuestion.question_id}`
+                  }
+                  questionIndex={currentQuestionIndex}
                   starterCode={currentQuestion.coding_challenge.starter_code || ''}
+                  starterTemplates={currentQuestion.coding_challenge.starter_templates || {}}
                   recommendedLanguages={
                     currentQuestion.coding_challenge.recommended_languages || ['python']
                   }
