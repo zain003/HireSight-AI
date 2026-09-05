@@ -1,10 +1,12 @@
 import asyncio
 import base64
+import io
 from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
-from app.auth.dependencies import get_current_active_user
+from app.auth.dependencies import get_current_active_user, get_current_admin_user
 from app.auth.job_post_model import JobPost
 from app.auth.models import Profile, User
 from app.interview.application.interview_service import InterviewService
@@ -21,6 +23,7 @@ from app.interview.schemas import (
     LiveInterviewStartRequest,
     LiveInterviewStartResponse,
     LiveInterviewQuestion,
+    RecruiterReportExportPayload,
     RoleConfigResponse,
     RoleFitRequest,
     RoleFitResponse,
@@ -34,6 +37,7 @@ from app.interview.schemas import (
     TTSResponse,
 )
 from app.interview.services import FaceService, TTSService
+from app.interview.services.pdf_generator_service import pdf_generator_service
 from app.interview.services.code_execution import (
     DEFAULT_COMPILE_TIMEOUT_SEC,
     DEFAULT_RUN_TIMEOUT_SEC,
@@ -248,7 +252,7 @@ async def get_live_report(
 @router.get("/admin/session/{session_id}/recruiter-report")
 async def get_recruiter_report_admin(
     session_id: str,
-    _admin: User = Depends(get_current_active_user),  # Add admin check in production
+    _admin: User = Depends(get_current_admin_user),
 ):
     """
     Get comprehensive recruiter report for hiring decision.
@@ -272,6 +276,54 @@ async def get_recruiter_report_admin(
         "recruiter_report": session.recruiter_report,
         "generated_at": session.ended_at.isoformat() if session.ended_at else None
     }
+
+
+@router.get("/admin/session/{session_id}/export/json", response_model=RecruiterReportExportPayload)
+async def export_recruiter_report_json(
+    session_id: str,
+    _admin: User = Depends(get_current_admin_user),
+):
+    """
+    Export candidate recruiter assessment report as structured JSON for ATS integration.
+    Strictly protected for admin roles only.
+    """
+    session = await InterviewSession.find_one({"session_id": session_id})
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    user = await User.get(session.user_id) if session.user_id else None
+    profile = await Profile.find_one({"user_id": session.user_id}) if session.user_id else None
+
+    return pdf_generator_service.build_export_payload(session, user=user, profile=profile)
+
+
+@router.get("/admin/session/{session_id}/export/pdf")
+async def export_recruiter_report_pdf(
+    session_id: str,
+    _admin: User = Depends(get_current_admin_user),
+):
+    """
+    Generate and stream publication-grade multi-page PDF recruiter dossier.
+    Strictly protected for admin roles only.
+    """
+    session = await InterviewSession.find_one({"session_id": session_id})
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    user = await User.get(session.user_id) if session.user_id else None
+    profile = await Profile.find_one({"user_id": session.user_id}) if session.user_id else None
+
+    payload = pdf_generator_service.build_export_payload(session, user=user, profile=profile)
+    pdf_bytes = await asyncio.to_thread(pdf_generator_service.generate_pdf, payload)
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=recruiter_report_{session_id}.pdf",
+            "Content-Length": str(len(pdf_bytes)),
+        },
+    )
 
 
 @router.post("/live/{session_id}/register-face")

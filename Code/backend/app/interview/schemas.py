@@ -8,7 +8,13 @@ from app.interview.domain.interview_models import (
     CodingChallengeEvaluation,
     FrameAnalysisResult,
     InterviewReport,
+    ObservableCVMetrics,
+    ObservableVocalMetrics,
     TestCaseResult,
+)
+from app.interview.domain.scoring_models import (
+    FiveDimensionScores,
+    TailoredFeedback,
 )
 
 
@@ -229,5 +235,19 @@ class RoleFitResponse(BaseModel):
     missing_concepts: List[str]
     total_required_concepts: int
     total_matched_concepts: int
+
+
+# --- Recruiter Report Export (FEAT-009) ---
+
+class RecruiterReportExportPayload(BaseModel):
+    session_id: str
+    candidate_name: str
+    target_role: str
+    scores: FiveDimensionScores
+    feedback: TailoredFeedback
+    questions_summary: List[Dict[str, Any]] = Field(default_factory=list)
+    coding_summary: Optional[Dict[str, Any]] = None
+    cv_summary: ObservableCVMetrics
+    vocal_summary: ObservableVocalMetrics
 
 

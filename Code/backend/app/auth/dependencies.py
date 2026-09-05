@@ -48,6 +48,16 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
         print("[DEBUG] user_id missing in payload.")
         raise credentials_exception
 
+    if user_id == "admin":
+        return User(
+            id="admin",
+            email="admin@fyp.com",
+            username="admin",
+            full_name="Admin User",
+            is_active=True,
+            hashed_password="",
+        )
+
     # Get user from database
     auth_service = AuthService()
     user = await auth_service.get_user_by_id(user_id)
@@ -78,4 +88,24 @@ async def get_current_active_user(
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     
+    return current_user
+
+
+async def get_current_admin_user(
+    current_user: User = Depends(get_current_active_user),
+) -> User:
+    """
+    Dependency to ensure user has admin role.
+    Raises HTTP 403 Forbidden if user is not an administrator.
+    """
+    is_admin = (
+        current_user.username == "admin"
+        or str(getattr(current_user, "id", "")) == "admin"
+        or getattr(current_user, "role", None) == "admin"
+    )
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required to access recruiter reports",
+        )
     return current_user
