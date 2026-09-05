@@ -145,3 +145,50 @@ class RunCodeResponse(BaseModel):
     missing_tools: List[str] = Field(default_factory=list)
     results: List[CodingRunTestResult]
     all_passed: bool
+
+
+# --- Role & Competency Configuration (FEAT-001) ---
+
+class CompetencyWeightOut(BaseModel):
+    competency_area: str
+    importance_weight: float
+    required_concepts: List[str]
+
+
+class RoleDetailOut(BaseModel):
+    id: str
+    title: str
+    description: str
+    competencies: List[CompetencyWeightOut]
+
+
+class RoleConfigResponse(BaseModel):
+    supported_roles: List[RoleDetailOut]
+    default_seniority: str
+    seniority_levels: List[str]
+
+
+class RoleFitCompetencyBreakdown(BaseModel):
+    competency_area: str
+    importance_weight: float
+    coverage_ratio: float
+    weighted_score: float
+    matched_concepts: List[str]
+    missing_concepts: List[str]
+
+
+class RoleFitRequest(BaseModel):
+    role: str
+    skills: List[str] = Field(default_factory=list)
+
+
+class RoleFitResponse(BaseModel):
+    role: str
+    overall_fit_score: float
+    competency_breakdown: List[RoleFitCompetencyBreakdown]
+    matched_skills: List[str]
+    missing_concepts: List[str]
+    total_required_concepts: int
+    total_matched_concepts: int
+
+

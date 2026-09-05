@@ -1,14 +1,11 @@
-"""Live interview module routes."""
-
-import asyncio
-import base64
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth.dependencies import get_current_active_user
 from app.auth.job_post_model import JobPost
 from app.auth.models import Profile, User
 from app.interview.application.interview_service import InterviewService
+from app.interview.domain.role_taxonomy import SeniorityLevel, StandardRole
 from app.interview.models import InterviewSession
 from app.interview.schemas import (
     FaceRegisterRequest,
@@ -19,6 +16,9 @@ from app.interview.schemas import (
     LiveInterviewStartRequest,
     LiveInterviewStartResponse,
     LiveInterviewQuestion,
+    RoleConfigResponse,
+    RoleFitRequest,
+    RoleFitResponse,
     RunCodeRequest,
     RunCodeResponse,
     SubmitAnswerRequest,
@@ -32,6 +32,11 @@ from app.interview.services.code_execution import (
     DEFAULT_RUN_TIMEOUT_SEC,
     execute_code,
 )
+from app.interview.services.role_mapping_service import (
+    get_supported_roles_config,
+    infer_seniority_level,
+    map_profile_to_role_fit,
+)
 
 
 router = APIRouter()
@@ -39,6 +44,34 @@ router = APIRouter()
 interview_service = InterviewService()
 face_service = FaceService()
 tts_service = TTSService()
+
+
+@router.get("/config/roles", response_model=RoleConfigResponse)
+async def get_interview_roles_config(
+    experience_years: Optional[int] = Query(
+        None, description="Optional verified candidate experience in years"
+    ),
+):
+    """Retrieve supported standardized roles, competency clusters, and inferred seniority."""
+    config = get_supported_roles_config(experience_years=experience_years)
+    return RoleConfigResponse(**config)
+
+
+@router.post("/config/role-fit", response_model=RoleFitResponse)
+async def analyze_candidate_role_fit(
+    request: RoleFitRequest,
+):
+    """Analyze candidate skill overlap and coverage against a target role's competency matrix."""
+    try:
+        role_enum = StandardRole(request.role)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid role '{request.role}'. Supported roles: {[r.value for r in StandardRole]}",
+        )
+    fit_data = map_profile_to_role_fit(profile_skills=request.skills, role=role_enum)
+    return RoleFitResponse(**fit_data)
+
 
 
 @router.post("/live/start", response_model=LiveInterviewStartResponse)

@@ -4,6 +4,27 @@
 import api from './api';
 
 export const interviewService = {
+  /**
+   * Fetch standardized tech roles and competency mappings.
+   */
+  getRoleConfigs: async (experienceYears = null) => {
+    const params = experienceYears !== null ? { experience_years: experienceYears } : {};
+    const response = await api.get('/interview/config/roles', { params });
+    return response.data;
+  },
+
+  /**
+   * Analyze candidate skill overlap and role fit for a selected role.
+   */
+  getRoleFit: async (role, skills = [], yearsExperience = null) => {
+    const response = await api.post('/interview/config/role-fit', {
+      role,
+      skills,
+      ...(yearsExperience !== null ? { years_experience: yearsExperience } : {}),
+    });
+    return response.data;
+  },
+
   startSession: async (payload) => {
     const response = await api.post('/interview/live/start', payload);
     return response.data;

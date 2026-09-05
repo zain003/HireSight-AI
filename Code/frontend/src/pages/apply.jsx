@@ -67,9 +67,9 @@ export default function ApplyPage() {
   const handleStartInterview = () => {
     const jobId = selectedJob?.id;
     if (jobId) {
-      router.push(`/interview?jobPostId=${encodeURIComponent(jobId)}`);
+      router.push(`/interview-setup?jobPostId=${encodeURIComponent(jobId)}`);
     } else {
-      router.push('/interview');
+      router.push('/interview-setup');
     }
   };
 

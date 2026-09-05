@@ -509,13 +509,14 @@ export default function InterviewPage() {
       reader.readAsDataURL(blob);
     });
 
-  const startInterview = async (jobPostId = null) => {
+  const startInterview = async (jobPostId = null, extraPayload = {}) => {
     setLoading(true);
     setError('');
     try {
       const payload = {
         num_questions: 20,
         ...(jobPostId ? { job_post_id: jobPostId } : {}),
+        ...extraPayload,
       };
       const data = await interviewService.startSession(payload);
       setSessionId(data.session_id);
@@ -541,13 +542,16 @@ export default function InterviewPage() {
     if (!router.isReady || !authService.isAuthenticated()) return;
     if (sessionId || autoStartedRef.current) return;
 
-    const queryJobPostId = router.query.jobPostId;
-    if (!queryJobPostId || Array.isArray(queryJobPostId)) return;
+    const queryJobPostId = typeof router.query.jobPostId === 'string' ? router.query.jobPostId : null;
+    const queryJobRole = typeof router.query.jobRole === 'string' ? router.query.jobRole : null;
+    const autostart = router.query.autostart === 'true' || queryJobPostId || queryJobRole;
 
-    autoStartedRef.current = true;
-    startInterview(queryJobPostId);
+    if (autostart) {
+      autoStartedRef.current = true;
+      startInterview(queryJobPostId, queryJobRole ? { job_role: queryJobRole } : {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady, router.query.jobPostId, sessionId]);
+  }, [router.isReady, router.query, sessionId]);
 
   const handleSubmitAnswer = () => {
     let transcript = finalTranscript.trim();

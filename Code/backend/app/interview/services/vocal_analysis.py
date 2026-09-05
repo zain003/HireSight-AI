@@ -23,8 +23,12 @@ except ImportError:
     Model = None
     KaldiRecognizer = None
 
-import librosa
-import soundfile as sf
+try:
+    import librosa
+    import soundfile as sf
+except ImportError:
+    librosa = None
+    sf = None
 
 
 @dataclass

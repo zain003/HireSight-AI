@@ -50,10 +50,22 @@ backend/uploads/
 # Docker volumes
 postgres_data/
 
-# Python cache
+# Python cache & virtual environments
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+venv/
+.venv/
+backend/venv/
+backend/.venv/
 
-# Node modules
+# Node modules & build artifacts
 node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+frontend/out/
+build/
+dist/

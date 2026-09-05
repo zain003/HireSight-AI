@@ -6,8 +6,15 @@ import base64
 import io
 from typing import Dict, List, Optional, Tuple
 import numpy as np
-import cv2
-import mediapipe as mp
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+
+try:
+    import mediapipe as mp
+except ImportError:
+    mp = None
 from dataclasses import dataclass
 
 
@@ -32,18 +39,24 @@ class BehavioralAnalysisService:
     """
     
     def __init__(self):
-        self.mp_face_mesh = mp.solutions.face_mesh
-        self.mp_face_detection = mp.solutions.face_detection
-        self.face_mesh = self.mp_face_mesh.FaceMesh(
-            max_num_faces=1,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
-        self.face_detection = self.mp_face_detection.FaceDetection(
-            model_selection=1,
-            min_detection_confidence=0.5
-        )
+        if mp is not None:
+            self.mp_face_mesh = mp.solutions.face_mesh
+            self.mp_face_detection = mp.solutions.face_detection
+            self.face_mesh = self.mp_face_mesh.FaceMesh(
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5
+            )
+            self.face_detection = self.mp_face_detection.FaceDetection(
+                model_selection=1,
+                min_detection_confidence=0.5
+            )
+        else:
+            self.mp_face_mesh = None
+            self.mp_face_detection = None
+            self.face_mesh = None
+            self.face_detection = None
         
         # Landmark indices for specific features
         self.LEFT_EYE_INDICES = [33, 160, 158, 133, 153, 144]

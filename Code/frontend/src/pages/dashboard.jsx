@@ -132,12 +132,23 @@ export default function Dashboard() {
 
       <main className="container mx-auto space-y-8 px-6 py-8">
         <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-6 text-white shadow-xl backdrop-blur-sm">
-          <h2 className="text-2xl font-bold">
-            Welcome back, <span className="text-indigo-300">{user?.username}</span>
-          </h2>
-          <p className="mt-1 text-sm text-slate-300">
-            Manage your profile, upload resume, and check interview readiness from one place.
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold">
+                Welcome back, <span className="text-indigo-300">{user?.username}</span>
+              </h2>
+              <p className="mt-1 text-sm text-slate-300">
+                Manage your profile, upload resume, and check interview readiness from one place.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push('/interview-setup')}
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 transition-all hover:from-indigo-400 hover:to-violet-500 hover:shadow-indigo-500/40"
+            >
+              Configure & Start Interview
+            </button>
+          </div>
           <div className="mt-5 grid gap-4 sm:grid-cols-3">
             <div className="rounded-xl border border-white/15 bg-slate-900/50 p-4">
               <p className="text-xs uppercase tracking-[0.12em] text-slate-300">Profile status</p>
