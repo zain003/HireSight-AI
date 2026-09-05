@@ -56,7 +56,7 @@ class NERModelService:
                 aggregation_strategy="simple",
                 device=-1,  # CPU
             )
-            print("✓ BERT-NER model loaded successfully")
+            print("[OK] BERT-NER model loaded successfully")
 
     def extract_entities(self, text: str) -> Dict[str, List[str]]:
         """

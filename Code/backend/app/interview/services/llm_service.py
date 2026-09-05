@@ -91,13 +91,35 @@ def _sdk_call(
     if system:
         msg_list.append({"role": "system", "content": system})
     msg_list.extend(messages)
-    resp = client.chat.completions.create(
-        model=os.getenv("LLM_MODEL", "llama-3.3-70b-versatile"),
-        messages=msg_list,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
-    return resp.choices[0].message.content
+    
+    preferred_model = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
+    fallback_models = [
+        preferred_model,
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.8-27b",
+        "openai/gpt-oss-20b",
+        "qwen/qwen3.6-27b",
+        "groq/compound",
+    ]
+    # Deduplicate while preserving order
+    seen = set()
+    models_to_try = [m for m in fallback_models if not (m in seen or seen.add(m))]
+    
+    last_exc = None
+    for model in models_to_try:
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=msg_list,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return resp.choices[0].message.content
+        except Exception as exc:
+            last_exc = exc
+            continue
+            
+    raise last_exc or RuntimeError("All Groq model attempts failed")
 
 
 def _try_sdk_call(
@@ -1687,10 +1709,32 @@ async def evaluate_answer_interview(
     else:
         is_correct = bool(raw_is_correct)
 
+    from app.interview.domain.interview_models import QuestionType
+    qt = question_type
+    if not isinstance(qt, QuestionType):
+        try:
+            qt = QuestionType(str(qt).lower().strip())
+        except ValueError:
+            norm_qt = str(qt or "").lower().strip()
+            if "tech" in norm_qt or "core" in norm_qt:
+                qt = QuestionType.TECHNICAL
+            elif "deep" in norm_qt or "dive" in norm_qt or "cv" in norm_qt:
+                qt = QuestionType.DEEP_DIVE
+            elif "ice" in norm_qt or "intro" in norm_qt:
+                qt = QuestionType.ICEBREAKER
+            elif "code" in norm_qt:
+                qt = QuestionType.CODING
+            elif "behav" in norm_qt:
+                qt = QuestionType.BEHAVIORAL
+            elif "close" in norm_qt or "closing" in norm_qt:
+                qt = QuestionType.CLOSING
+            else:
+                qt = QuestionType.TECHNICAL
+
     return AnswerEvaluation(
         question_index=0,
         question_text=question_text,
-        question_type=question_type,
+        question_type=qt,
         candidate_transcript=candidate_transcript,
         relevance_score=float(data.get("relevance_score", 5)),
         depth_score=float(data.get("depth_score", 5)),
@@ -2534,6 +2578,72 @@ _OFFLINE_RUBRIC_QUESTION_BANK: Dict[StandardRole, List[Dict[str, Any]]] = {
 }
 
 
+def _normalize_coding_challenge(coding_ch: Optional[Dict[str, Any]], role_value: str, idx: int) -> Optional[Dict[str, Any]]:
+    """Guarantees a complete candidate-facing coding challenge payload with public test cases."""
+    if not coding_ch or not isinstance(coding_ch, dict):
+        pool = _fallback_coding_challenges(role_value, 1)
+        if pool:
+            coding_ch = dict(pool[0])
+        else:
+            return None
+
+    ch = dict(coding_ch)
+    if "challenge_id" not in ch:
+        ch["challenge_id"] = f"code_{role_value}_{idx + 1}"
+    if "title" not in ch:
+        ch["title"] = f"Coding Challenge ({role_value.replace('_', ' ').title()})"
+    if "problem_statement" not in ch:
+        ch["problem_statement"] = "Implement the requested algorithm according to standard input/output specifications."
+    if "starter_code" not in ch:
+        ch["starter_code"] = "import sys\n\ndef main():\n    # TODO: Implement solution\n    pass\n\nif __name__ == '__main__':\n    main()\n"
+    if "starter_templates" not in ch or not ch["starter_templates"]:
+        ch["starter_templates"] = {
+            "python": ch.get("starter_code", ""),
+            "javascript": "const fs = require('fs');\n\nfunction main() {\n    // TODO: Implement solution\n}\nmain();\n",
+            "cpp": "#include <iostream>\nusing namespace std;\nint main() {\n    // TODO: Implement solution\n    return 0;\n}\n",
+            "c": "#include <stdio.h>\nint main() {\n    // TODO: Implement solution\n    return 0;\n}\n",
+            "java": "import java.util.*;\npublic class Solution {\n    public static void main(String[] args) {\n        // TODO: Implement solution\n    }\n}\n",
+        }
+    if "recommended_languages" not in ch:
+        ch["recommended_languages"] = ["python", "javascript", "cpp", "c", "java"]
+
+    # Normalize public test cases
+    if "public_test_cases" not in ch or not ch["public_test_cases"]:
+        if "test_cases" in ch and isinstance(ch["test_cases"], list):
+            public_cases = []
+            for i, tc in enumerate(ch["test_cases"]):
+                if isinstance(tc, dict) and not tc.get("is_hidden", False):
+                    inp = str(tc.get("input", "")).strip()
+                    out = str(tc.get("expected_output", "")).strip()
+                    public_cases.append({
+                        "test_id": i + 1,
+                        "description": tc.get("description", f"Sample Test {i + 1}"),
+                        "stdin": inp + "\n" if not inp.endswith("\n") else inp,
+                        "expected_stdout": out + "\n" if not out.endswith("\n") else out,
+                        "is_hidden": False,
+                    })
+            ch["public_test_cases"] = public_cases if public_cases else [
+                {
+                    "test_id": 1,
+                    "description": "Sample test",
+                    "stdin": "5\n4 2 7 2 1\n",
+                    "expected_stdout": "YES\n",
+                    "is_hidden": False,
+                }
+            ]
+        else:
+            ch["public_test_cases"] = [
+                {
+                    "test_id": 1,
+                    "description": "Sample test",
+                    "stdin": "5\n4 2 7 2 1\n",
+                    "expected_stdout": "YES\n",
+                    "is_hidden": False,
+                }
+            ]
+    return ch
+
+
 def _generate_fallback_rubric_plan(
     job_role: StandardRole,
     seniority: SeniorityLevel,
@@ -2585,7 +2695,7 @@ def _generate_fallback_rubric_plan(
         )
 
         q_id = f"q_{idx + 1}"
-        coding_ch = tmpl.get("coding_challenge")
+        coding_ch = _normalize_coding_challenge(tmpl.get("coding_challenge"), job_role.value, idx) if stage == QuestionStage.CODING else None
         coding_id = f"code_{job_role.value}_{idx + 1}" if stage == QuestionStage.CODING else None
 
         allocated_questions.append(
@@ -2735,7 +2845,7 @@ async def generate_rubric_backed_plan(
                 scoring_guide={k: float(v) for k, v in scoring_guide.items()},
             )
 
-            coding_ch = item.get("coding_challenge")
+            coding_ch = _normalize_coding_challenge(item.get("coding_challenge"), norm_role.value, idx) if stage_enum == QuestionStage.CODING else None
             coding_id = f"code_{norm_role.value}_{idx + 1}" if stage_enum == QuestionStage.CODING else None
 
             validated_questions.append(

@@ -3,6 +3,7 @@ API routes for authentication module.
 Follows Clean Architecture - API Layer.
 No business logic here, delegates to service layer.
 """
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 
 from app.auth.schemas import (
@@ -342,19 +343,16 @@ async def create_or_update_profile(
     return profile_dict
 
 
-@router.get("/profile", response_model=ProfileResponse)
+@router.get("/profile", response_model=Optional[ProfileResponse])
 async def get_profile(current_user: User = Depends(get_current_active_user)):
     """
     Get current user's profile.
-    Requires authentication.
+    Requires authentication. Returns null if profile is not yet created.
     """
     auth_service = AuthService()
     profile = await auth_service.get_profile(str(current_user.id))
     if not profile:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Profile not found"
-        )
+        return None
     # Convert ObjectId to string for id field
     profile_dict = profile.dict()
     profile_dict["id"] = str(profile.id)

@@ -118,6 +118,18 @@ export const interviewService = {
     const response = await api.post(`/interview/live/${sessionId}/submit-coding-challenge`, payload);
     return response.data;
   },
+
+  /**
+   * Live speech-to-text audio stream transcription via backend Whisper AI.
+   */
+  transcribeAudio: async (audioBase64, audioFormat = 'webm', language = 'en') => {
+    const response = await api.post('/interview/live/transcribe', {
+      audio_base64: audioBase64,
+      audio_format: audioFormat,
+      language,
+    });
+    return response.data?.text || '';
+  },
 };
 
 export default interviewService;

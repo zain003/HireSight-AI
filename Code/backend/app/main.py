@@ -20,11 +20,11 @@ async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup: Connect to MongoDB
     await MongoDB.connect_db()
-    print("✓ MongoDB connected and initialized")
+    print("[OK] MongoDB connected and initialized")
     yield
     # Shutdown: Close MongoDB connection
     await MongoDB.close_db()
-    print("✓ Application shutdown")
+    print("[OK] Application shutdown")
 
 
 # Initialize FastAPI application

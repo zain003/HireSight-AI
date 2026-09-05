@@ -46,6 +46,7 @@ class InterviewSessionState(BaseModel):
     total_questions: int
     completed_evaluations_count: int
     current_question: Optional[Dict[str, Any]] = None
+    questions: List[LiveInterviewQuestion] = Field(default_factory=list)
     status: str
 
 
@@ -76,7 +77,7 @@ class SubmitAnswerResponse(BaseModel):
 class InterviewReportResponse(BaseModel):
     session_id: str
     status: str
-    aggregate_scores: Dict[str, float]
+    aggregate_scores: Dict[str, Any]
     report: InterviewReport
     # Enhanced recruiter report
     recruiter_report: Optional[Dict[str, Any]] = None
@@ -249,5 +250,15 @@ class RecruiterReportExportPayload(BaseModel):
     coding_summary: Optional[Dict[str, Any]] = None
     cv_summary: ObservableCVMetrics
     vocal_summary: ObservableVocalMetrics
+
+
+class LiveSTTRequest(BaseModel):
+    audio_base64: str
+    audio_format: str = "webm"
+    language: str = "en"
+
+
+class LiveSTTResponse(BaseModel):
+    text: str
 
 

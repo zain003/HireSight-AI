@@ -31,6 +31,24 @@ from app.interview.services.recruiter_report import RecruiterReportGenerator
 
 import asyncio
 
+
+def to_serializable(obj: Any) -> Any:
+    """Recursively converts Pydantic models, dataclasses, and custom objects into BSON/JSON-serializable types."""
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, dict):
+        return {str(k): to_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [to_serializable(i) for i in obj]
+    if hasattr(obj, "model_dump") and callable(obj.model_dump):
+        return to_serializable(obj.model_dump())
+    if hasattr(obj, "dict") and callable(obj.dict):
+        return to_serializable(obj.dict())
+    if hasattr(obj, "__dict__"):
+        return to_serializable(obj.__dict__)
+    return str(obj)
+
+
 class SessionSubmissionLock:
     """In-memory concurrency lock preventing duplicate simultaneous answer evaluations for the same session."""
 
@@ -177,14 +195,14 @@ class InterviewService:
             audio_format=audio_format
         )
         
-        # Store metrics for final report
-        if not hasattr(session, 'behavioral_metrics'):
+        # Store metrics for final report (convert to serializable dicts for MongoDB)
+        if not hasattr(session, 'behavioral_metrics') or session.behavioral_metrics is None:
             session.behavioral_metrics = []
-        if not hasattr(session, 'vocal_metrics'):
+        if not hasattr(session, 'vocal_metrics') or session.vocal_metrics is None:
             session.vocal_metrics = []
             
-        session.behavioral_metrics.append(behavioral_metrics)
-        session.vocal_metrics.append(vocal_metrics)
+        session.behavioral_metrics.append(to_serializable(behavioral_metrics))
+        session.vocal_metrics.append(to_serializable(vocal_metrics))
 
         # 4. Legacy frame analysis (for compatibility)
         frame_analysis = await self.face_service.analyze(frame_base64_list)
@@ -362,7 +380,8 @@ class InterviewService:
             })
 
         # Store comprehensive report
-        session.recruiter_report = recruiter_report.__dict__
+        serialized_recruiter_report = to_serializable(recruiter_report)
+        session.recruiter_report = serialized_recruiter_report
         session.report = report
         session.status = InterviewStatus.COMPLETED.value
         session.ended_at = datetime.utcnow()
@@ -373,7 +392,7 @@ class InterviewService:
         return {
             "scores": scores,
             "report": report,
-            "recruiter_report": recruiter_report.__dict__,
+            "recruiter_report": serialized_recruiter_report,
         }
 
 
@@ -382,11 +401,11 @@ class InterviewService:
         curr_idx = session.current_question_index
         total_q = len(session.questions)
         curr_q = None
-        if 0 <= curr_idx < total_q:
-            q = session.questions[curr_idx]
-            curr_q = {
-                "question_id": q.get("question_id"),
-                "question_index": q.get("question_index", curr_idx),
+        questions_list = []
+        for idx, q in enumerate(session.questions):
+            q_dict = {
+                "question_id": q.get("question_id", f"q_{idx+1}"),
+                "question_index": q.get("question_index", idx),
                 "question_text": q.get("question_text"),
                 "question_type": q.get("question_type"),
                 "stage": q.get("stage"),
@@ -394,6 +413,9 @@ class InterviewService:
                 "parent_question_id": q.get("parent_question_id"),
                 "coding_challenge": q.get("coding_challenge"),
             }
+            questions_list.append(q_dict)
+            if idx == curr_idx:
+                curr_q = q_dict
 
         status = session.status
         if curr_idx >= total_q and total_q > 0 and status != InterviewStatus.COMPLETED.value:
@@ -405,5 +427,6 @@ class InterviewService:
             "total_questions": total_q,
             "completed_evaluations_count": len(session.evaluations),
             "current_question": curr_q,
+            "questions": questions_list,
             "status": status,
         }

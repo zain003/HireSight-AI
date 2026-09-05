@@ -59,6 +59,8 @@ class QuestionType(str, Enum):
     ICEBREAKER = "icebreaker"
     BEHAVIORAL = "behavioral"
     TECHNICAL = "technical"
+    CORE_TECHNICAL = "core_technical"
+    DEEP_DIVE = "deep_dive"
     CV_BASED = "cv_based"
     CODING = "coding"
     FOLLOW_UP = "follow_up"

@@ -61,9 +61,28 @@ export default function InterviewConfigCard({
   loading = false,
   error = '',
 }) {
-  const selectedRole = useMemo(() => {
-    return roles.find((r) => r.role_id === selectedRoleId) || roles[0] || null;
+  const effectiveRole = useMemo(() => {
+    if (selectedRoleId) {
+      const found = roles.find((r) => r.role_id === selectedRoleId);
+      if (found) return found;
+    }
+    return roles[0] || {
+      role_id: 'backend_engineer',
+      display_name: 'Backend Engineer',
+      inferred_seniority: 'mid',
+      competency_areas: ['API Design', 'Database Architecture', 'Concurrency & Distributed Systems'],
+    };
   }, [roles, selectedRoleId]);
+
+  const effectiveRoleId = selectedRoleId || effectiveRole.role_id;
+
+  React.useEffect(() => {
+    if (!selectedRoleId && effectiveRole?.role_id) {
+      onSelectRole?.(effectiveRole.role_id);
+    }
+  }, [selectedRoleId, effectiveRole, onSelectRole]);
+
+  const selectedRole = effectiveRole;
 
   const agendaStages = useMemo(() => {
     let techDuration = '15 min';
@@ -431,17 +450,17 @@ export default function InterviewConfigCard({
             Configured Assessment
           </p>
           <p className="text-base font-bold text-white">
-            {selectedRole?.display_name || 'Engineering Role'} · <span className="capitalize">{seniority}</span> Tier · <span className="uppercase font-mono">{codingLanguage}</span>
+            {effectiveRole.display_name} · <span className="capitalize">{seniority}</span> Tier · <span className="uppercase font-mono">{codingLanguage}</span>
           </p>
         </div>
 
         <button
           type="button"
-          disabled={loading || !selectedRoleId}
+          disabled={loading || !effectiveRoleId}
           onClick={() =>
             onStartInterview?.({
-              roleId: selectedRoleId,
-              roleDisplayName: selectedRole?.display_name,
+              roleId: effectiveRoleId,
+              roleDisplayName: effectiveRole.display_name,
               seniority,
               codingLanguage,
             })

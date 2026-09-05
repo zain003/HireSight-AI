@@ -31,14 +31,14 @@ class MongoDB:
             document_models=[User, Profile, Session, JobPost, InterviewSession]
         )
         
-        print(f"✅ Connected to MongoDB: {database_name}")
+        print(f"[OK] Connected to MongoDB: {database_name}")
     
     @classmethod
     async def close_db(cls):
         """Close MongoDB connection"""
         if cls.client:
             cls.client.close()
-            print("✅ MongoDB connection closed")
+            print("[OK] MongoDB connection closed")
 
 
 # Dependency for FastAPI routes

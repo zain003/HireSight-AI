@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # Groq LLM settings (fallback when Grok is unavailable)
     GROQ_API_KEY: Optional[str] = None
-    LLM_MODEL: str = "llama-3.3-70b-versatile"
+    LLM_MODEL: str = "openai/gpt-oss-120b"
 
     # xAI Grok — preferred for live interview generation when set (see backend/.env)
     GROK_API_KEY: Optional[str] = None
@@ -48,8 +48,8 @@ class Settings(BaseSettings):
     GROK_API_BASE: str = "https://api.x.ai/v1"
     
     # CORS
-    CORS_ORIGINS: str = "http://localhost:3000"
-    CORS_ORIGIN_REGEX: Optional[str] = r"^http://localhost:\d+$"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
+    CORS_ORIGIN_REGEX: Optional[str] = r"^http://(localhost|127\.0\.0\.1):\d+$"
     
     # OCR
     TESSERACT_PATH: Optional[str] = None

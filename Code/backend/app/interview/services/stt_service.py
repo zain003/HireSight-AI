@@ -30,9 +30,12 @@ async def transcribe_groq_whisper(
     language: str = "en",
     audio_format: str = "webm",
 ) -> Optional[str]:
+    tmp_path = None
     try:
         audio_bytes = base64.b64decode(audio_base64)
-        suffix = f".{audio_format}"
+        if len(audio_bytes) < 100:
+            return ""
+        suffix = f".{audio_format.lstrip('.')}"
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(audio_bytes)
             tmp_path = tmp.name
@@ -41,22 +44,36 @@ async def transcribe_groq_whisper(
 
         def _run():
             client = _get_stt_client()
-            with open(tmp_path, "rb") as f:
-                result = client.audio.transcriptions.create(
-                    file=(f"audio{suffix}", f.read()),
-                    model="whisper-large-v3-turbo",
-                    language=language,
-                    response_format="text",
-                    temperature=0.0,
-                )
-            os.unlink(tmp_path)
-            return result
+            models = ["whisper-large-v3-turbo", "whisper-large-v3"]
+            last_err = None
+            for m in models:
+                try:
+                    with open(tmp_path, "rb") as f:
+                        result = client.audio.transcriptions.create(
+                            file=(f"audio{suffix}", f.read()),
+                            model=m,
+                            language=language,
+                            response_format="text",
+                            temperature=0.0,
+                        )
+                    text = result.text if hasattr(result, "text") else str(result)
+                    return text.strip()
+                except Exception as exc:
+                    last_err = exc
+                    continue
+            raise last_err or RuntimeError("Groq whisper transcription failed")
 
         transcript = await loop.run_in_executor(None, _run)
-        return str(transcript).strip()
+        return transcript
     except Exception as exc:
         print(f"[STT Groq Error] {exc}")
         return None
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
 
 async def transcribe_local_whisper(

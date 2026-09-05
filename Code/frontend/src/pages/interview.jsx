@@ -45,11 +45,22 @@ export default function InterviewPage() {
   const [elapsedSec, setElapsedSec] = useState(0);
   const [micMuted, setMicMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [speechNotice, setSpeechNotice] = useState(null);
 
   const videoRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const mediaRecorderRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const animFrameRef = useRef(null);
+  const accumulatedFinalRef = useRef('');
+  const finalTranscriptRef = useRef(finalTranscript);
+  const liveTranscriptionIntervalRef = useRef(null);
+  const isTranscribingChunkRef = useRef(false);
   const recognitionRef = useRef(null);
+  const restartListeningTimeoutRef = useRef(null);
   const ttsAudioRef = useRef(null);
   const autoStartedRef = useRef(false);
   const silenceTimerRef = useRef(null);
@@ -57,6 +68,7 @@ export default function InterviewPage() {
   const conversationStateRef = useRef(conversationState);
   const loadingRef = useRef(loading);
   const micMutedRef = useRef(micMuted);
+  const inputModeRef = useRef(inputMode);
   /** When true, TTS end does not start Web Speech (so Monaco can receive keyboard input). */
   const skipSpeechListenAfterRef = useRef(false);
 
@@ -65,30 +77,48 @@ export default function InterviewPage() {
     [questions, currentIdx]
   );
 
-  /** Phase order: introduction → technical → behavioral → CV-based → coding */
+  /** Phase order: introduction → technical → behavioral → deep_dive → coding → closing */
   const stageOrder = useMemo(
-    () => ['introduction', 'technical', 'behavioral', 'cv_based', 'coding'],
+    () => ['introduction', 'technical', 'behavioral', 'deep_dive', 'coding', 'closing'],
     []
   );
 
   const resolveStageFromQuestion = useCallback(
     (question, idx) => {
-    const explicit = (question?.stage || '').toLowerCase();
-    if (stageOrder.includes(explicit)) return explicit;
+      if (!question) return 'introduction';
+      const explicit = (question?.stage || '').toLowerCase().trim();
+      const type = (question?.question_type || '').toLowerCase().trim();
 
-    const type = (question?.question_type || '').toLowerCase();
-    if (stageOrder.includes(type)) return type;
+      const normalize = (val) => {
+        if (!val) return '';
+        if (val === 'icebreaker' || val === 'intro' || val === 'introduction') return 'introduction';
+        if (val === 'core_technical' || val === 'technical' || val === 'tech') return 'technical';
+        if (val === 'behavioral' || val === 'situational' || val === 'star') return 'behavioral';
+        if (val === 'deep_dive' || val === 'cv_based' || val === 'system_design' || val === 'architecture') return 'deep_dive';
+        if (val === 'coding' || val === 'code_sandbox') return 'coding';
+        if (val === 'closing' || val === 'wrap_up' || val === 'conclusion') return 'closing';
+        return '';
+      };
 
-    if (type === 'follow_up' && idx > 0) {
-      for (let i = idx - 1; i >= 0; i -= 1) {
-        const prev = questions[i];
-        const prevStage = (prev?.stage || prev?.question_type || '').toLowerCase();
-        if (stageOrder.includes(prevStage)) return prevStage;
+      const fromExplicit = normalize(explicit);
+      if (fromExplicit) return fromExplicit;
+
+      const fromType = normalize(type);
+      if (fromType) return fromType;
+
+      if (question?.coding_challenge) return 'coding';
+
+      if ((type === 'follow_up' || explicit === 'follow_up') && idx > 0) {
+        for (let i = idx - 1; i >= 0; i -= 1) {
+          const prev = questions[i];
+          const prevNorm = normalize(prev?.stage) || normalize(prev?.question_type);
+          if (prevNorm) return prevNorm;
+        }
       }
-    }
+
       return 'introduction';
     },
-    [questions, stageOrder]
+    [questions]
   );
 
   const stageLimits = useMemo(() => {
@@ -96,8 +126,9 @@ export default function InterviewPage() {
       introduction: 0,
       technical: 0,
       behavioral: 0,
-      cv_based: 0,
+      deep_dive: 0,
       coding: 0,
+      closing: 0,
     };
     questions.forEach((q, i) => {
       if ((q?.question_type || '').toLowerCase() === 'follow_up') return;
@@ -112,18 +143,19 @@ export default function InterviewPage() {
   }, [currentQuestion, currentIdx, resolveStageFromQuestion]);
 
   const isCodingPhase = useMemo(
-    () => currentStageKey === 'coding' && !!currentQuestion?.coding_challenge,
+    () => currentStageKey === 'coding' || (currentQuestion?.question_type || '').toLowerCase() === 'coding' || !!currentQuestion?.coding_challenge,
     [currentStageKey, currentQuestion]
   );
 
   const currentStageLabel = useMemo(() => {
     const stage = currentStageKey;
-    if (stage === 'introduction') return 'Introduction';
-    if (stage === 'technical') return 'Technical';
-    if (stage === 'behavioral') return 'Behavioral';
-    if (stage === 'cv_based') return 'CV-Based';
-    if (stage === 'coding') return 'Coding evaluation';
-    return 'Interview';
+    if (stage === 'introduction') return 'Introduction & Background';
+    if (stage === 'technical') return 'Core Technical Competency';
+    if (stage === 'behavioral') return 'Behavioral & STAR Scenario';
+    if (stage === 'deep_dive') return 'System Architecture & Deep Dive';
+    if (stage === 'coding') return 'Coding Sandbox Assessment';
+    if (stage === 'closing') return 'Engineering Practices & Wrap-up';
+    return 'Technical Interview';
   }, [currentStageKey]);
 
   const currentStageIndex = useMemo(
@@ -168,11 +200,22 @@ export default function InterviewPage() {
     );
   }, [currentQuestion]);
 
+  const displayTranscript = useMemo(() => {
+    if (finalTranscript && liveTranscript) {
+      return `${finalTranscript} ${liveTranscript}`;
+    }
+    return finalTranscript || liveTranscript || '';
+  }, [finalTranscript, liveTranscript]);
+
+  const clearTranscript = useCallback(() => {
+    setFinalTranscript('');
+    setLiveTranscript('');
+  }, []);
+
   const handleInputModeChange = useCallback(
     (newMode) => {
       if (newMode === inputMode) return;
       if (newMode === 'text') {
-        // Stop active speech recognition when entering text mode
         stopListening();
         const currentVoiceText = (
           finalTranscript + (liveTranscript ? ' ' + liveTranscript : '')
@@ -184,7 +227,7 @@ export default function InterviewPage() {
         if (textAnswer.trim() && !finalTranscript.trim()) {
           setFinalTranscript(textAnswer.trim());
         }
-        if (conversationState === 'listening' && !micMuted) {
+        if (conversationStateRef.current === 'listening' && !micMutedRef.current) {
           startListening();
         }
       }
@@ -195,8 +238,6 @@ export default function InterviewPage() {
       finalTranscript,
       liveTranscript,
       textAnswer,
-      conversationState,
-      micMuted,
     ]
   );
 
@@ -224,6 +265,10 @@ export default function InterviewPage() {
   }, [sessionId, currentIdx, currentQuestion?.question_id]);
 
   useEffect(() => {
+    finalTranscriptRef.current = finalTranscript;
+  }, [finalTranscript]);
+
+  useEffect(() => {
     conversationStateRef.current = conversationState;
   }, [conversationState]);
 
@@ -232,8 +277,17 @@ export default function InterviewPage() {
   }, [loading]);
 
   useEffect(() => {
-    micMutedRef.current = micMuted;
-  }, [micMuted]);
+    inputModeRef.current = inputMode;
+  }, [inputMode]);
+
+  useEffect(() => {
+    accumulatedFinalRef.current = '';
+    setSpeechNotice(null);
+    setLiveTranscript('');
+    setFinalTranscript('');
+    setTextAnswer('');
+    audioChunksRef.current = [];
+  }, [currentIdx, sessionId]);
 
   useEffect(() => {
     return () => {
@@ -251,6 +305,14 @@ export default function InterviewPage() {
   }, [isCodingPhase, currentIdx]);
 
   const cleanupMedia = () => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
@@ -278,18 +340,30 @@ export default function InterviewPage() {
     audio.onended = () => {
       setIsSpeakingQuestion(false);
       if (conversationStateRef.current === 'processing') return;
+      conversationStateRef.current = 'listening';
       setConversationState('listening');
       if (skipSpeechListenAfterRef.current) return;
-      if (!micMutedRef.current) startListening();
+      if (!micMutedRef.current && inputModeRef.current === 'voice') startListening();
     };
     audio.onerror = () => {
       setIsSpeakingQuestion(false);
       if (conversationStateRef.current === 'processing') return;
+      conversationStateRef.current = 'listening';
       setConversationState('listening');
       if (skipSpeechListenAfterRef.current) return;
-      if (!micMutedRef.current) startListening();
+      if (!micMutedRef.current && inputModeRef.current === 'voice') startListening();
     };
-    audio.play();
+    audio.play().catch((err) => {
+      console.warn('Audio autoplay prevented or failed:', err);
+      setIsSpeakingQuestion(false);
+      if (conversationStateRef.current !== 'processing') {
+        conversationStateRef.current = 'listening';
+        setConversationState('listening');
+        if (!skipSpeechListenAfterRef.current && !micMutedRef.current && inputModeRef.current === 'voice') {
+          startListening();
+        }
+      }
+    });
   };
 
   const speakQuestion = async (text, metaQuestion = null) => {
@@ -301,7 +375,9 @@ export default function InterviewPage() {
     skipSpeechListenAfterRef.current = !!isCodingQ;
 
     stopQuestionSpeech();
+    stopListening();
     setIsSpeakingQuestion(true);
+    conversationStateRef.current = 'asking';
     setConversationState('asking');
 
     try {
@@ -322,65 +398,143 @@ export default function InterviewPage() {
       utterance.onend = () => {
         setIsSpeakingQuestion(false);
         if (conversationStateRef.current === 'processing') return;
+        conversationStateRef.current = 'listening';
         setConversationState('listening');
         if (skipSpeechListenAfterRef.current) return;
-        if (!micMutedRef.current) startListening();
+        if (!micMutedRef.current && inputModeRef.current === 'voice') startListening();
       };
       utterance.onerror = () => {
         setIsSpeakingQuestion(false);
         if (conversationStateRef.current === 'processing') return;
+        conversationStateRef.current = 'listening';
         setConversationState('listening');
         if (skipSpeechListenAfterRef.current) return;
-        if (!micMutedRef.current) startListening();
+        if (!micMutedRef.current && inputModeRef.current === 'voice') startListening();
       };
       window.speechSynthesis.speak(utterance);
     } else {
       setIsSpeakingQuestion(false);
       if (conversationStateRef.current !== 'processing') {
-      setConversationState('listening');
-        if (!skipSpeechListenAfterRef.current && !micMutedRef.current) startListening();
+        conversationStateRef.current = 'listening';
+        setConversationState('listening');
+        if (!skipSpeechListenAfterRef.current && !micMutedRef.current && inputModeRef.current === 'voice') {
+          startListening();
+        }
       }
     }
   };
 
   const initializeMedia = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          sampleRate: 16000,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: 'user'
-        },
-      });
-
-      mediaStreamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        // Wait for video to be ready
-        await new Promise((resolve) => {
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current.play();
-            resolve();
-          };
+      let stream = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: 'user',
+          },
         });
+      } catch (combinedErr) {
+        console.warn('Combined media constraints failed, attempting fallback:', combinedErr);
+        // Fallback: try basic audio + video, or audio only
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          let videoStream = null;
+          try {
+            videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          } catch {
+            console.warn('Camera not available, proceeding with audio only');
+          }
+
+          if (videoStream) {
+            stream = new MediaStream([
+              ...audioStream.getAudioTracks(),
+              ...videoStream.getVideoTracks(),
+            ]);
+          } else {
+            stream = audioStream;
+          }
+        } catch (audioErr) {
+          throw new Error('Microphone access is required for live voice interview.');
+        }
       }
 
-      // Auto-register face on first frame
-      if (!faceRegistered && sessionId) {
+      mediaStreamRef.current = stream;
+      setError('');
+
+      if (videoRef.current && stream.getVideoTracks().length > 0) {
+        videoRef.current.srcObject = stream;
+        try {
+          await new Promise((resolve) => {
+            videoRef.current.onloadedmetadata = () => {
+              videoRef.current.play().catch(() => {});
+              resolve();
+            };
+            setTimeout(resolve, 1000);
+          });
+        } catch {}
+      }
+
+      // Initialize Live Audio Meter
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx && stream.getAudioTracks().length > 0) {
+          if (audioContextRef.current) {
+            audioContextRef.current.close().catch(() => {});
+          }
+          const audioCtx = new AudioCtx();
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 128;
+          analyser.smoothingTimeConstant = 0.5;
+          const source = audioCtx.createMediaStreamSource(stream);
+          source.connect(analyser);
+
+          audioContextRef.current = audioCtx;
+          analyserRef.current = analyser;
+
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          const updateMeter = () => {
+            if (analyserRef.current) {
+              analyserRef.current.getByteFrequencyData(dataArray);
+              let sum = 0;
+              for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+              }
+              const avg = sum / dataArray.length;
+              setAudioLevel(Math.min(100, Math.round(avg * 2.5)));
+            }
+            animFrameRef.current = requestAnimationFrame(updateMeter);
+          };
+          updateMeter();
+        }
+      } catch (audioErr) {
+        console.warn('Audio meter initialization warning:', audioErr);
+      }
+
+      // Auto-register face on first frame if video tracks exist
+      if (!faceRegistered && sessionId && stream.getVideoTracks().length > 0) {
         setTimeout(() => registerFaceAutomatically(), 1500);
+      }
+
+      // If already in listening phase, start voice capture immediately
+      if (
+        conversationStateRef.current === 'listening' &&
+        !micMutedRef.current &&
+        inputModeRef.current === 'voice'
+      ) {
+        startListening();
       }
 
       return true;
     } catch (err) {
       console.error('Media initialization error:', err);
-      setError('Camera/microphone access denied. Please allow access to continue.');
+      setError('Microphone access required. Please allow microphone permissions to speak your answer.');
       return false;
     }
   };
@@ -400,104 +554,218 @@ export default function InterviewPage() {
     }
   };
 
-  const startListening = () => {
-    if (micMutedRef.current) {
+  const startListening = async () => {
+    if (micMutedRef.current || inputModeRef.current !== 'voice') {
       setIsListening(false);
       return;
     }
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      setError('Speech recognition not supported in this browser. Please use Chrome.');
+
+    if (!mediaStreamRef.current) {
+      const ready = await initializeMedia();
+      if (!ready) return;
+    }
+
+    setIsListening(true);
+    conversationStateRef.current = 'listening';
+    setConversationState('listening');
+
+    if (restartListeningTimeoutRef.current) {
+      clearTimeout(restartListeningTimeoutRef.current);
+      restartListeningTimeoutRef.current = null;
+    }
+
+    // 1. Start continuous MediaRecorder to capture candidate voice
+    if (mediaStreamRef.current && mediaStreamRef.current.getAudioTracks().length > 0) {
+      try {
+        if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
+          const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav'];
+          const mimeType = types.find((t) => MediaRecorder.isTypeSupported(t)) || '';
+          const mr = mimeType ? new MediaRecorder(mediaStreamRef.current, { mimeType }) : new MediaRecorder(mediaStreamRef.current);
+
+          mr.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) {
+              audioChunksRef.current.push(e.data);
+            }
+          };
+          mr.start(250);
+          mediaRecorderRef.current = mr;
+        }
+      } catch (mrErr) {
+        console.warn('MediaRecorder init notice:', mrErr);
+      }
+    }
+
+    // 2. Start background live Whisper transcription interval
+    if (!liveTranscriptionIntervalRef.current) {
+      liveTranscriptionIntervalRef.current = setInterval(async () => {
+        if (
+          !loadingRef.current &&
+          !micMutedRef.current &&
+          inputModeRef.current === 'voice' &&
+          audioChunksRef.current &&
+          audioChunksRef.current.length > 0 &&
+          !isTranscribingChunkRef.current
+        ) {
+          try {
+            const mime = audioChunksRef.current[0]?.type || 'audio/webm';
+            const audioBlob = new Blob(audioChunksRef.current, { type: mime });
+            if (audioBlob.size > 800) {
+              isTranscribingChunkRef.current = true;
+              const b64 = await blobToBase64(audioBlob);
+              const fmt = mime.includes('mp4') ? 'mp4' : mime.includes('ogg') ? 'ogg' : 'webm';
+              const text = await interviewService.transcribeAudio(b64, fmt, 'en');
+              if (text && text !== '[Could not transcribe audio]' && text.trim().length > 0) {
+                setFinalTranscript(text.trim());
+                setSpeechNotice(null);
+              }
+            }
+          } catch (e) {
+            // ignore chunk error
+          } finally {
+            isTranscribingChunkRef.current = false;
+          }
+        }
+      }, 2000);
+    }
+
+    // 3. Start Browser Web Speech Recognition (for instant local text preview)
+    if (typeof window === 'undefined') return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setSpeechNotice(
+        'Speech captured directly via high-accuracy backend Whisper model.'
+      );
       return;
     }
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onstart = () => {
-      setIsListening(true);
-      setLiveTranscript('');
-      setFinalTranscript('');
-      audioChunksRef.current = [];
-      recordingStartTimeRef.current = Date.now();
-      resetSilenceTimer();
-    };
-
-    recognition.onresult = (event) => {
-      let interim = '';
-      let final = '';
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          final += transcript + ' ';
-        } else {
-          interim += transcript;
-        }
-      }
-
-      if (final) {
-        setFinalTranscript((prev) => prev + final);
-        setLiveTranscript('');
-        resetSilenceTimer();
-      } else {
-        setLiveTranscript(interim);
-      }
-    };
-
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      if (event.error !== 'no-speech') {
-        setIsListening(false);
-      }
-    };
-
-    recognition.onend = () => {
-      if (micMutedRef.current) {
-        setIsListening(false);
-        return;
-      }
-      if (
-        conversationStateRef.current === 'listening' &&
-        !loadingRef.current &&
-        recognitionRef.current
-      ) {
+    try {
+      if (recognitionRef.current) {
         try {
-          recognition.start();
-        } catch (err) {
-          console.error('Failed to restart recognition:', err);
-          setIsListening(false);
-        }
-      } else {
-        setIsListening(false);
+          recognitionRef.current.onend = null;
+          recognitionRef.current.onerror = null;
+          recognitionRef.current.stop();
+        } catch {}
+        recognitionRef.current = null;
       }
-    };
 
-    recognitionRef.current = recognition;
-    recognition.start();
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        resetSilenceTimer();
+      };
+
+      recognition.onresult = (event) => {
+        let interim = '';
+        let finalizedThisSession = '';
+
+        for (let i = 0; i < event.results.length; i++) {
+          const item = event.results[i];
+          if (item.isFinal) {
+            finalizedThisSession += item[0].transcript + ' ';
+          } else {
+            interim += item[0].transcript;
+          }
+        }
+
+        const base = accumulatedFinalRef.current ? accumulatedFinalRef.current + ' ' : '';
+        const fullFinal = (base + finalizedThisSession).trim();
+        if (fullFinal) {
+          setFinalTranscript(fullFinal);
+        }
+        setLiveTranscript(interim);
+        resetSilenceTimer();
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error === 'no-speech' || event.error === 'aborted') {
+          return;
+        }
+        console.warn('Speech recognition notice:', event.error);
+      };
+
+      recognition.onend = () => {
+        if (finalTranscriptRef.current) {
+          accumulatedFinalRef.current = finalTranscriptRef.current;
+        }
+        if (recognitionRef.current === recognition) {
+          recognitionRef.current = null;
+        }
+        if (
+          conversationStateRef.current === 'listening' &&
+          !loadingRef.current &&
+          !micMutedRef.current &&
+          inputModeRef.current === 'voice'
+        ) {
+          if (restartListeningTimeoutRef.current) {
+            clearTimeout(restartListeningTimeoutRef.current);
+          }
+          restartListeningTimeoutRef.current = setTimeout(() => {
+            if (conversationStateRef.current === 'listening' && !micMutedRef.current && inputModeRef.current === 'voice') {
+              try {
+                recognition.start();
+                recognitionRef.current = recognition;
+              } catch (e) {
+                // Whisper polling operates in parallel
+              }
+            }
+          }, 100);
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.warn('Speech recognition started in direct audio recording mode:', err);
+    }
   };
 
   const resetSilenceTimer = () => {
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
     }
-    // No auto-submit - user must click submit button
   };
 
   const stopListening = () => {
+    if (liveTranscriptionIntervalRef.current) {
+      clearInterval(liveTranscriptionIntervalRef.current);
+      liveTranscriptionIntervalRef.current = null;
+    }
+    if (restartListeningTimeoutRef.current) {
+      clearTimeout(restartListeningTimeoutRef.current);
+      restartListeningTimeoutRef.current = null;
+    }
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
 
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        // ignore
+      }
+      mediaRecorderRef.current = null;
+    }
+
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
       recognitionRef.current = null;
     }
     setIsListening(false);
+    setLiveTranscript('');
   };
 
   const captureFrame = () =>
@@ -572,28 +840,44 @@ export default function InterviewPage() {
           const finalReport = await interviewService.getReport(targetSessionId);
           setReport(finalReport);
         } catch {
-          // If report not yet generated
+          try {
+            const finalReport = await interviewService.endSession(targetSessionId);
+            setReport(finalReport);
+          } catch (endErr) {
+            console.warn('Could not generate final report:', endErr);
+          }
         }
         setLoading(false);
         return;
       }
 
-      // Restore questions from storage or state
+      // Restore full questions curriculum from backend session state
       let loadedQuestions = [];
-      const cached =
-        typeof window !== 'undefined'
-          ? sessionStorage.getItem('hiresight_questions_' + targetSessionId)
-          : null;
-      if (cached) {
-        try {
-          loadedQuestions = JSON.parse(cached);
-        } catch {
-          loadedQuestions = [];
+      if (Array.isArray(state.questions) && state.questions.length > 0) {
+        loadedQuestions = state.questions;
+      } else {
+        const cached =
+          typeof window !== 'undefined'
+            ? sessionStorage.getItem('hiresight_questions_' + targetSessionId)
+            : null;
+        if (cached) {
+          try {
+            loadedQuestions = JSON.parse(cached);
+          } catch {
+            loadedQuestions = [];
+          }
         }
       }
 
       if (loadedQuestions.length === 0 && state.current_question) {
         loadedQuestions = [state.current_question];
+      }
+
+      if (typeof window !== 'undefined' && loadedQuestions.length > 0) {
+        sessionStorage.setItem(
+          'hiresight_questions_' + targetSessionId,
+          JSON.stringify(loadedQuestions)
+        );
       }
 
       setQuestions(loadedQuestions);
@@ -681,26 +965,24 @@ export default function InterviewPage() {
     if (inputMode === 'text') {
       transcript = textAnswer.trim();
     } else {
-      transcript = finalTranscript.trim();
+      transcript = displayTranscript.trim();
     }
 
     if (!transcript && isCodingPhase) {
       transcript =
         '[Coding round] Candidate continued in the code editor; verbal/text walkthrough optional.';
     }
-    if (!transcript) {
-      setError(
-        inputMode === 'text'
-          ? 'Please enter your written response before submitting.'
-          : 'Please speak your answer before submitting.'
-      );
+
+    if (inputMode === 'text' && !transcript) {
+      setError('Please enter your written response before submitting.');
       return;
     }
+
     submitAnswer(transcript);
   };
 
   const submitAnswer = async (transcript) => {
-    if (!sessionId || !currentQuestion || !transcript) return;
+    if (!sessionId || !currentQuestion) return;
 
     stopListening();
     conversationStateRef.current = 'processing';
@@ -709,29 +991,36 @@ export default function InterviewPage() {
     setError('');
 
     try {
-      // Wait a moment for video to stabilize
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      const frame = await captureFrame();
-      if (!frame) {
-        setError('Could not capture video frame. Please ensure your camera is working.');
-        setLoading(false);
-        setConversationState('listening');
-        if (inputMode === 'voice') startListening();
-        return;
+      // Capture video frame snapshot gracefully
+      let frameBase64 = '';
+      try {
+        const frame = await captureFrame();
+        if (frame) {
+          frameBase64 = await blobToBase64(frame);
+        }
+      } catch (fErr) {
+        console.warn('Non-fatal frame capture note:', fErr);
       }
 
-      const frameBase64 = await blobToBase64(frame);
-
-      // Create a dummy audio blob (since we're using transcript from speech recognition/text input)
-      const dummyAudio = new Blob([new ArrayBuffer(44)], { type: 'audio/wav' });
-      const audioBase64 = await blobToBase64(dummyAudio);
+      // Package real recorded audio chunks if available, or fallback WAV
+      let audioBase64 = '';
+      let audioFormat = 'webm';
+      if (audioChunksRef.current && audioChunksRef.current.length > 0) {
+        const mime = audioChunksRef.current[0]?.type || 'audio/webm';
+        audioFormat = mime.includes('mp4') ? 'mp4' : mime.includes('ogg') ? 'ogg' : 'webm';
+        const recordedBlob = new Blob(audioChunksRef.current, { type: mime });
+        audioBase64 = await blobToBase64(recordedBlob);
+      } else {
+        const dummyAudio = new Blob([new ArrayBuffer(44)], { type: 'audio/wav' });
+        audioBase64 = await blobToBase64(dummyAudio);
+        audioFormat = 'wav';
+      }
 
       const payload = {
         question_index: currentIdx,
         audio_base64: audioBase64,
-        transcript_text: transcript,
-        audio_format: 'wav',
+        transcript_text: transcript || null,
+        audio_format: audioFormat,
         language: 'en',
         frame_base64_list: frameBase64 ? [frameBase64] : [],
       };
@@ -792,7 +1081,17 @@ export default function InterviewPage() {
       }
     } catch (err) {
       console.error('Error submitting answer:', err);
-      setError(formatApiDetail(err.response?.data?.detail) || 'Failed to evaluate answer');
+      const detailStr = formatApiDetail(err.response?.data?.detail) || '';
+      if (
+        detailStr.toLowerCase().includes('already been answered') ||
+        detailStr.toLowerCase().includes('out of order') ||
+        detailStr.toLowerCase().includes('invalid question index')
+      ) {
+        // Automatically sync and recover exact question position or display report
+        recoverSessionState(sessionId);
+        return;
+      }
+      setError(detailStr || 'Failed to evaluate answer');
       setConversationState('listening');
       if (inputMode === 'voice') startListening();
     } finally {
@@ -818,8 +1117,6 @@ export default function InterviewPage() {
     setFinalTranscript('');
     await submitAnswer(SKIP_QUESTION_TRANSCRIPT);
   };
-
-  const displayTranscript = finalTranscript + (liveTranscript ? ' ' + liveTranscript : '');
 
   const formatMmSs = (total) => {
     const m = Math.floor(total / 60);
@@ -892,21 +1189,6 @@ export default function InterviewPage() {
     });
     setCameraOff(nextOff);
   }, [cameraOff]);
-
-  const clearTranscript = () => {
-    setLiveTranscript('');
-    setFinalTranscript('');
-  };
-
-  const copyTranscript = async () => {
-    const t = displayTranscript.trim();
-    if (!t) return;
-    try {
-      await navigator.clipboard.writeText(t);
-    } catch {
-      /* ignore */
-    }
-  };
 
   const handleEndInterview = async () => {
     if (!window.confirm('End this interview session?')) return;
@@ -1286,7 +1568,34 @@ export default function InterviewPage() {
                         </>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {inputMode === 'voice' && (
+                        <div className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-[#0B1120] px-2.5 py-1 text-xs">
+                          <span className="flex items-end gap-0.5 h-3">
+                            <span
+                              className="w-1 bg-emerald-400 rounded-full transition-all duration-75"
+                              style={{ height: `${Math.max(3, Math.min(14, audioLevel * 0.14))}px` }}
+                            />
+                            <span
+                              className="w-1 bg-emerald-400 rounded-full transition-all duration-75"
+                              style={{ height: `${Math.max(3, Math.min(14, audioLevel * 0.28))}px` }}
+                            />
+                            <span
+                              className="w-1 bg-emerald-400 rounded-full transition-all duration-75"
+                              style={{ height: `${Math.max(3, Math.min(14, audioLevel * 0.2))}px` }}
+                            />
+                          </span>
+                          <span className={audioLevel > 5 ? 'text-emerald-300 font-medium' : 'text-slate-400'}>
+                            {micMuted
+                              ? 'Mic Muted'
+                              : audioLevel > 5
+                              ? 'Voice Active'
+                              : isListening
+                              ? 'Listening…'
+                              : 'Mic Ready'}
+                          </span>
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
@@ -1317,17 +1626,26 @@ export default function InterviewPage() {
                       >
                         Copy
                       </button>
-                      {inputMode === 'voice' && isCodingPhase ? (
+                      {inputMode === 'voice' ? (
                         <button
                           type="button"
                           onClick={() => {
                             if (micMuted) return;
-                            if (!isListening) startListening();
+                            if (isListening) {
+                              stopListening();
+                            } else {
+                              startListening();
+                            }
                           }}
-                          disabled={micMuted || isListening || loading}
-                          className="rounded-lg border border-emerald-500/35 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                          disabled={micMuted || loading || conversationState === 'asking' || conversationState === 'processing'}
+                          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                            isListening
+                              ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+                              : 'border-indigo-500/30 bg-indigo-500/15 text-indigo-200 hover:bg-indigo-500/25'
+                          } disabled:cursor-not-allowed disabled:opacity-40`}
                         >
-                          {isListening ? 'Listening…' : 'Resume microphone'}
+                          <span className={`h-2 w-2 rounded-full ${isListening ? 'bg-emerald-400 animate-ping' : 'bg-slate-400'}`} />
+                          <span>{isListening ? 'Listening… (pause)' : 'Start Speaking'}</span>
                         </button>
                       ) : null}
                     </div>
@@ -1337,29 +1655,56 @@ export default function InterviewPage() {
                 {/* Response Input Body (Voice Captions vs Text Editor) */}
                 {inputMode === 'voice' ? (
                   <div
-                    className={`flex-1 overflow-y-auto rounded-xl border border-white/10 bg-[#0B1120]/80 p-4 ${
+                    className={`flex flex-1 flex-col overflow-y-auto rounded-xl border border-white/10 bg-[#0B1120]/80 p-4 ${
                       isCodingPhase ? 'min-h-[200px]' : 'min-h-[260px]'
                     }`}
                   >
+                    {speechNotice && (
+                      <div className="mb-3 rounded-lg border border-indigo-500/30 bg-indigo-950/40 p-3 text-xs text-indigo-200 shadow-inner">
+                        <p className="leading-relaxed">{speechNotice}</p>
+                      </div>
+                    )}
                     {displayTranscript ? (
-                      <p className="text-sm leading-relaxed text-slate-200 whitespace-pre-wrap">
-                        {displayTranscript}
+                      <div className="flex flex-1 flex-col gap-2">
+                        <textarea
+                          value={displayTranscript}
+                          onChange={(e) => {
+                            setFinalTranscript(e.target.value);
+                          }}
+                          className="w-full flex-1 rounded-xl border border-white/10 bg-black/30 p-3.5 text-sm leading-relaxed text-slate-100 placeholder:text-slate-500 focus:border-indigo-400/50 focus:outline-none focus:ring-1 focus:ring-indigo-400/30 resize-none font-sans"
+                          rows={isCodingPhase ? 6 : 8}
+                          placeholder="Your spoken transcription appears here... You can edit or add notes anytime."
+                        />
                         {liveTranscript && (
-                          <span className="text-slate-500 italic"> (speaking…)</span>
+                          <p className="px-1 text-xs text-indigo-400 italic animate-pulse">
+                            Live voice stream: {liveTranscript}…
+                          </p>
                         )}
-                      </p>
+                      </div>
                     ) : (
                       <div className="flex h-full min-h-[200px] flex-col items-center justify-center text-center text-slate-500">
-                        <svg className="mb-3 h-10 w-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m12 0V9a3 3 0 00-3-3h-.75a3 3 0 00-3 3v.75m12 0h.008v.008H18V9z" />
-                        </svg>
-                        <p className="text-sm">
+                        <div className="relative mb-3 flex items-center justify-center">
+                          <div
+                            className={`h-16 w-16 rounded-full border transition-all duration-150 flex items-center justify-center ${
+                              audioLevel > 5
+                                ? 'border-emerald-500/60 bg-emerald-500/15 scale-110 shadow-lg shadow-emerald-500/20'
+                                : 'border-indigo-500/20 bg-indigo-500/5'
+                            }`}
+                          >
+                            <svg className={`h-8 w-8 transition ${audioLevel > 5 ? 'text-emerald-400' : 'text-indigo-400/60'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m12 0V9a3 3 0 00-3-3h-.75a3 3 0 00-3 3v.75m12 0h.008v.008H18V9z" />
+                            </svg>
+                          </div>
+                        </div>
+                        <p className="text-sm font-medium text-slate-300">
                           {isCodingPhase
-                            ? 'Tap Resume microphone to dictate your approach, or type in Monaco only and continue.'
-                            : 'Start speaking — your answer will appear here in real time'}
+                            ? 'Speak to dictate your solution approach, or type in Monaco editor.'
+                            : audioLevel > 5
+                            ? 'Audio detected — speaking into microphone'
+                            : 'Start speaking — your answer is being captured in real time'}
                         </p>
-                        <p className="mt-1 text-xs text-slate-600">
-                          Microphone not working? Switch to Text Input mode above.
+                        <p className="mt-1.5 text-xs text-slate-500">
+                          Prefer typing? Click <button type="button" onClick={() => handleInputModeChange('text')} className="text-indigo-400 underline hover:text-indigo-300">Text Input</button> mode anytime.
                         </p>
                       </div>
                     )}
@@ -1474,12 +1819,9 @@ export default function InterviewPage() {
                     disabled={
                       loading ||
                       conversationState === 'processing' ||
-                      (inputMode === 'voice'
-                        ? conversationState !== 'listening' ||
-                          (!isCodingPhase && !displayTranscript.trim())
-                        : !textAnswer.trim())
+                      (inputMode === 'text' && !textAnswer.trim())
                     }
-                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 shadow-lg shadow-white/10"
                   >
                     Next question
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>

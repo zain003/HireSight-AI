@@ -40,7 +40,7 @@ class InterviewSession(Document):
     coding_results: List[Dict[str, Any]] = Field(default_factory=list)
     recruiter_report: Optional[Dict[str, Any]] = None
 
-    aggregate_scores: Dict[str, float] = Field(default_factory=dict)
+    aggregate_scores: Dict[str, Any] = Field(default_factory=dict)
 
     started_at: datetime = Field(default_factory=datetime.utcnow)
     ended_at: Optional[datetime] = None

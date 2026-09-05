@@ -18,13 +18,58 @@ import CandidateHeader from '@/components/Candidate/CandidateHeader';
 import InterviewConfigCard from '@/components/Interview/InterviewConfigCard';
 import { formatApiDetail } from '@/utils/formatApiDetail';
 
+const DEFAULT_ROLES = [
+  {
+    role_id: 'frontend_engineer',
+    display_name: 'Frontend Engineer',
+    inferred_seniority: 'mid',
+    competency_areas: ['Core Web Technologies', 'Modern UI Frameworks (React)', 'State Management', 'Web Performance'],
+  },
+  {
+    role_id: 'backend_engineer',
+    display_name: 'Backend Engineer',
+    inferred_seniority: 'mid',
+    competency_areas: ['API & Microservices Design', 'Database Architecture & SQL', 'Concurrency & Distributed Systems'],
+  },
+  {
+    role_id: 'fullstack_engineer',
+    display_name: 'Full-Stack Engineer',
+    inferred_seniority: 'mid',
+    competency_areas: ['Frontend & Backend Architecture', 'REST & GraphQL APIs', 'Database Integration', 'End-to-End Testing'],
+  },
+  {
+    role_id: 'devops_engineer',
+    display_name: 'DevOps & Cloud Infrastructure',
+    inferred_seniority: 'mid',
+    competency_areas: ['CI/CD Pipelines & Automation', 'Containers & Kubernetes', 'Cloud Architecture (AWS/GCP/Azure)'],
+  },
+  {
+    role_id: 'data_engineer',
+    display_name: 'Data & Analytics Engineer',
+    inferred_seniority: 'mid',
+    competency_areas: ['Data Pipeline & ETL Engineering', 'Distributed Big Data (Spark/Flink)', 'Data Warehousing & SQL'],
+  },
+  {
+    role_id: 'ml_engineer',
+    display_name: 'Machine Learning / AI Engineer',
+    inferred_seniority: 'mid',
+    competency_areas: ['ML Algorithms & Math', 'Deep Learning & Neural Networks', 'MLOps & Model Deployment', 'LLMs & GenAI'],
+  },
+  {
+    role_id: 'qa_automation_engineer',
+    display_name: 'QA Automation Engineer',
+    inferred_seniority: 'mid',
+    competency_areas: ['Test Automation Frameworks', 'API & Integration Testing', 'Performance & Load Testing'],
+  },
+];
+
 export default function InterviewSetupPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [jobPost, setJobPost] = useState(null);
-  const [roles, setRoles] = useState([]);
-  const [selectedRoleId, setSelectedRoleId] = useState('');
+  const [roles, setRoles] = useState(DEFAULT_ROLES);
+  const [selectedRoleId, setSelectedRoleId] = useState('backend_engineer');
   const [seniority, setSeniority] = useState('mid');
   const [codingLanguage, setCodingLanguage] = useState('python');
   const [roleFit, setRoleFit] = useState(null);
@@ -173,6 +218,12 @@ export default function InterviewSetupPage() {
       // Launch live interview session
       const data = await interviewService.startSession(payload);
       if (data?.session_id) {
+        if (typeof window !== 'undefined' && Array.isArray(data.questions) && data.questions.length > 0) {
+          sessionStorage.setItem(
+            'hiresight_questions_' + data.session_id,
+            JSON.stringify(data.questions)
+          );
+        }
         // Route to interview room with session parameters
         router.push({
           pathname: '/interview',

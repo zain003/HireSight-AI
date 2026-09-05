@@ -23,6 +23,8 @@ from app.interview.schemas import (
     LiveInterviewStartRequest,
     LiveInterviewStartResponse,
     LiveInterviewQuestion,
+    LiveSTTRequest,
+    LiveSTTResponse,
     RecruiterReportExportPayload,
     RoleConfigResponse,
     RoleFitRequest,
@@ -93,7 +95,15 @@ async def start_live_interview(
 ):
     profile = await Profile.find_one({"user_id": str(current_user.id)})
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found. Upload resume first.")
+        profile = Profile(
+            user_id=str(current_user.id),
+            job_role=request.job_role or "Software Engineer",
+            difficulty_level="medium",
+            skills=request.candidate_skills or [],
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        await profile.insert()
 
     job_role = request.job_role or profile.job_role or "Software Engineer"
     job_description = request.job_description or ""
@@ -249,6 +259,26 @@ async def get_live_report(
     )
 
 
+@router.post("/live/transcribe", response_model=LiveSTTResponse)
+async def transcribe_live_audio(
+    request: LiveSTTRequest,
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Real-time speech-to-text transcription powered by backend Whisper STT service.
+    Transcribes audio slices or candidate speech streams reliably across any browser.
+    """
+    if not request.audio_base64:
+        return LiveSTTResponse(text="")
+
+    transcript = await interview_service.stt_service.transcribe(
+        audio_base64=request.audio_base64,
+        audio_format=request.audio_format,
+        language=request.language,
+    )
+    return LiveSTTResponse(text=transcript or "")
+
+
 @router.get("/admin/session/{session_id}/recruiter-report")
 async def get_recruiter_report_admin(
     session_id: str,
@@ -381,7 +411,7 @@ async def generate_tts(request: TTSRequest):
         text=request.text,
         voice=request.voice or "en-US-JennyNeural",
         rate=request.rate or "+0%",
-        pitch=request.pitch or "+0%",
+        pitch=request.pitch or "+0Hz",
     )
     audio_b64 = base64.b64encode(audio_bytes).decode("ascii") if audio_bytes else ""
     return TTSResponse(audio_base64=audio_b64, format="mp3")

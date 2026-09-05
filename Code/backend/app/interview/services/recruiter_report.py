@@ -720,7 +720,7 @@ class RecruiterReportGenerator:
         # Filter technical questions
         tech_evals = [
             e for e in evaluations 
-            if e.question_type.value in ["technical", "cv_based"]
+            if getattr(e.question_type, "value", str(e.question_type)) in ["technical", "core_technical", "deep_dive", "cv_based"]
         ]
         
         if not tech_evals:
