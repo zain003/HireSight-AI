@@ -584,6 +584,8 @@ export default function InterviewPage() {
         });
 
         if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
+          // Reset chunks for fresh WebM container header
+          audioChunksRef.current = [];
           // Isolate audio tracks to prevent MediaRecorder crashing on mixed video+audio streams
           const audioOnlyStream = new MediaStream(audioTracks);
           const types = [
@@ -612,7 +614,7 @@ export default function InterviewPage() {
       }
     }
 
-    // 2. Start background live Whisper transcription interval
+    // 2. Start background live Whisper transcription interval (3.5s cadence to stay safely within RPM quota)
     if (!liveTranscriptionIntervalRef.current) {
       liveTranscriptionIntervalRef.current = setInterval(async () => {
         if (
@@ -628,15 +630,32 @@ export default function InterviewPage() {
               } catch {}
             }
 
-            if (audioChunksRef.current && audioChunksRef.current.length > 0) {
+            if (audioChunksRef.current && audioChunksRef.current.length > 2) {
               const mime = audioChunksRef.current[0]?.type || 'audio/webm';
               const audioBlob = new Blob(audioChunksRef.current, { type: mime });
-              if (audioBlob.size > 400) {
+              // Only call Whisper if candidate has spoken at least ~1.5s of audio (avoids hallucinating on initial silence)
+              if (audioBlob.size > 2000) {
                 isTranscribingChunkRef.current = true;
                 const b64 = await blobToBase64(audioBlob);
                 const fmt = mime.includes('mp4') ? 'mp4' : mime.includes('ogg') ? 'ogg' : 'webm';
                 const text = await interviewService.transcribeAudio(b64, fmt, 'en');
-                if (text && text !== '[Could not transcribe audio]' && text.trim().length > 0) {
+                const isHallucination = (str) => {
+                  if (!str) return true;
+                  const s = str.trim().toLowerCase().replace(/[.,!?;:]/g, '');
+                  return [
+                    'thank you',
+                    'thank you very much',
+                    'thanks for watching',
+                    'thank you for watching',
+                    'you',
+                    'bye',
+                    'please subscribe',
+                    'subtitles by',
+                    'amara.org',
+                  ].includes(s);
+                };
+
+                if (text && text !== '[Could not transcribe audio]' && !isHallucination(text) && text.trim().length > 0) {
                   setFinalTranscript(text.trim());
                   accumulatedFinalRef.current = text.trim();
                   setLiveTranscript('');
@@ -650,7 +669,7 @@ export default function InterviewPage() {
             isTranscribingChunkRef.current = false;
           }
         }
-      }, 1500);
+      }, 3500);
     }
 
     // 3. Start Browser Web Speech Recognition (for instant local text preview)

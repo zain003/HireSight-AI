@@ -26,6 +26,43 @@ def _get_stt_client():
     return _groq_stt
 
 
+SILENCE_HALLUCINATIONS = {
+    "thank you.",
+    "thank you",
+    "thank you very much.",
+    "thanks for watching.",
+    "thanks for watching!",
+    "thank you for watching.",
+    "thank you for watching!",
+    "please subscribe.",
+    "subtitles by",
+    "you",
+    "bye.",
+    "bye",
+    ".",
+    "thank you!",
+}
+
+
+def _clean_transcript(text: Optional[str]) -> str:
+    if not text:
+        return ""
+    cleaned = text.strip()
+    norm = cleaned.lower()
+    if norm in SILENCE_HALLUCINATIONS or norm.rstrip(".!?,") in {
+        "thank you",
+        "thanks for watching",
+        "thank you for watching",
+        "you",
+        "bye",
+        "please subscribe",
+        "subtitles by",
+        "amara.org",
+    }:
+        return ""
+    return cleaned
+
+
 async def transcribe_groq_whisper(
     audio_base64: str,
     language: str = "en",
@@ -34,7 +71,7 @@ async def transcribe_groq_whisper(
     tmp_path = None
     try:
         audio_bytes = base64.b64decode(audio_base64)
-        if len(audio_bytes) < 100:
+        if len(audio_bytes) < 300:
             return ""
         suffix = f".{audio_format.lstrip('.')}"
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
@@ -56,18 +93,24 @@ async def transcribe_groq_whisper(
                             language=language,
                             response_format="text",
                             temperature=0.0,
+                            prompt="Candidate verbal interview response to technical questions.",
                         )
-                    text = result.text if hasattr(result, "text") else str(result)
-                    return text.strip()
+                    raw_text = result.text if hasattr(result, "text") else str(result)
+                    return _clean_transcript(raw_text)
                 except Exception as exc:
                     last_err = exc
+                    # If rate limited on turbo, try whisper-large-v3
                     continue
+            if last_err and "rate_limit" in str(last_err).lower():
+                print(f"[STT Groq Rate Limit] Backing off: {last_err}")
+                return ""
             raise last_err or RuntimeError("Groq whisper transcription failed")
 
         transcript = await loop.run_in_executor(None, _run)
-        return transcript
+        return _clean_transcript(transcript)
     except Exception as exc:
-        print(f"[STT Groq Error] {exc}")
+        if "rate_limit" not in str(exc).lower():
+            print(f"[STT Groq Error] {exc}")
         return None
     finally:
         if tmp_path and os.path.exists(tmp_path):
