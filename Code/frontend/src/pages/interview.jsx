@@ -641,23 +641,42 @@ export default function InterviewPage() {
                 const text = await interviewService.transcribeAudio(b64, fmt, 'en');
                 const isHallucination = (str) => {
                   if (!str) return true;
-                  const s = str.trim().toLowerCase().replace(/[.,!?;:]/g, '');
-                  return [
-                    'thank you',
-                    'thank you very much',
-                    'thanks for watching',
-                    'thank you for watching',
-                    'you',
-                    'bye',
-                    'please subscribe',
-                    'subtitles by',
-                    'amara.org',
-                  ].includes(s);
+                  const s = str.trim().toLowerCase();
+                  const cleaned = s.replace(/[^\w\s]/g, '').trim();
+                  if (!cleaned) return true;
+                  const words = cleaned.split(/\s+/);
+                  const hallucinationTokens = new Set([
+                    'thank', 'thanks', 'you', 'very', 'much', 'watching', 'for', 'please',
+                    'subscribe', 'subtitles', 'by', 'amara', 'org', 'bye', 'bell', 'icon',
+                    'like', 'share', 'comment', 'video', 'channel', 'next', 'time'
+                  ]);
+                  if (words.every((w) => hallucinationTokens.has(w))) return true;
+                  for (let n = 1; n <= 4; n++) {
+                    if (words.length >= n * 2) {
+                      const chunk = words.slice(0, n).join(' ');
+                      let isRepeating = true;
+                      for (let i = 0; i < words.length; i += n) {
+                        const slice = words.slice(i, i + n).join(' ');
+                        if (slice !== chunk && !chunk.startsWith(slice)) {
+                          isRepeating = false;
+                          break;
+                        }
+                      }
+                      if (isRepeating) return true;
+                    }
+                  }
+                  return false;
                 };
 
                 if (text && text !== '[Could not transcribe audio]' && !isHallucination(text) && text.trim().length > 0) {
-                  setFinalTranscript(text.trim());
-                  accumulatedFinalRef.current = text.trim();
+                  const cleanedText = text.trim();
+                  setFinalTranscript((prev) => {
+                    if (prev && prev.length > cleanedText.length && !webSpeechDisabledRef.current) {
+                      return prev;
+                    }
+                    return cleanedText;
+                  });
+                  accumulatedFinalRef.current = cleanedText;
                   setLiveTranscript('');
                   setSpeechNotice(null);
                 }
@@ -730,7 +749,12 @@ export default function InterviewPage() {
         if (event.error === 'no-speech' || event.error === 'aborted') {
           return;
         }
-        if (event.error === 'network') {
+        if (
+          event.error === 'network' ||
+          event.error === 'not-allowed' ||
+          event.error === 'service-not-allowed' ||
+          event.error === 'audio-capture'
+        ) {
           webSpeechDisabledRef.current = true;
           setSpeechNotice(
             'Live speech captured and transcribed via Groq Whisper AI.'

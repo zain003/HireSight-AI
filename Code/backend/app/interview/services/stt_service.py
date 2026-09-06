@@ -26,21 +26,12 @@ def _get_stt_client():
     return _groq_stt
 
 
-SILENCE_HALLUCINATIONS = {
-    "thank you.",
-    "thank you",
-    "thank you very much.",
-    "thanks for watching.",
-    "thanks for watching!",
-    "thank you for watching.",
-    "thank you for watching!",
-    "please subscribe.",
-    "subtitles by",
-    "you",
-    "bye.",
-    "bye",
-    ".",
-    "thank you!",
+import re
+
+HALLUCINATION_KEYWORDS = {
+    "thank", "thanks", "you", "very", "much", "watching", "for", "please",
+    "subscribe", "subtitles", "by", "amara", "org", "bye", "bell", "icon",
+    "like", "share", "comment", "video", "channel", "next", "time"
 }
 
 
@@ -49,17 +40,30 @@ def _clean_transcript(text: Optional[str]) -> str:
         return ""
     cleaned = text.strip()
     norm = cleaned.lower()
-    if norm in SILENCE_HALLUCINATIONS or norm.rstrip(".!?,") in {
-        "thank you",
-        "thanks for watching",
-        "thank you for watching",
-        "you",
-        "bye",
-        "please subscribe",
-        "subtitles by",
-        "amara.org",
-    }:
+    
+    # Strip punctuation for word analysis
+    words_only = re.sub(r"[^\w\s]", "", norm).strip()
+    if not words_only:
         return ""
+        
+    words = words_only.split()
+    
+    # Check 1: If all words in the output are silence/hallucination keywords
+    if all(w in HALLUCINATION_KEYWORDS for w in words):
+        return ""
+        
+    # Check 2: Check if a 1-4 word phrase repeats to constitute the full string (e.g. "Thank you. Thank you. Thank you.")
+    for n in range(1, 5):
+        if len(words) >= n * 2:
+            chunk = words[:n]
+            is_repeating = True
+            for i in range(0, len(words), n):
+                if words[i:i+n] != chunk[:len(words[i:i+n])]:
+                    is_repeating = False
+                    break
+            if is_repeating:
+                return ""
+                
     return cleaned
 
 
