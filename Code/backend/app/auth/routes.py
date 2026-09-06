@@ -3,13 +3,14 @@ API routes for authentication module.
 Follows Clean Architecture - API Layer.
 No business logic here, delegates to service layer.
 """
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from typing import Optional, List
+from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 
 from app.auth.schemas import (
     UserCreate, UserResponse, UserLogin, Token,
     ProfileCreate, ProfileResponse,
-    SessionCreate, SessionResponse
+    SessionCreate, SessionResponse,
+    CandidateRosterResponse,
 )
 from app.auth.service import AuthService
 from app.auth.admin_service import AdminAuthService
@@ -26,8 +27,13 @@ from app.auth.admin_dashboard_service import (
     count_interview_candidates_for_job,
     job_post_to_response_dict,
 )
+from app.auth.admin_candidates_service import (
+    get_candidate_roster,
+    get_candidate_session_report,
+)
 
 router = APIRouter()
+
 
 
 # ── Admin Routes ─────────────────────────────────────────────────────────────
@@ -255,7 +261,55 @@ async def get_candidate_report(job_post_id: str, session_id: str):
     }
 
 
+@router.get("/admin/candidates", response_model=CandidateRosterResponse)
+async def admin_get_candidate_roster(
+    search: Optional[str] = Query(None, description="Search query by candidate name, email, role, or skill"),
+    status: Optional[List[str]] = Query(None, description="Multi-select interview status filters (completed, in_progress, not_started)"),
+    role: Optional[str] = Query(None, description="Filter by candidate target role or job title"),
+    min_score: Optional[float] = Query(None, ge=0.0, le=100.0, description="Minimum overall score"),
+    max_score: Optional[float] = Query(None, ge=0.0, le=100.0, description="Maximum overall score"),
+    recommendation: Optional[List[str]] = Query(None, description="Multi-select hire recommendations (Strong Fit, Potential Fit, Needs Growth, Not a Fit)"),
+    start_date: Optional[str] = Query(None, description="Activity start date in ISO format"),
+    end_date: Optional[str] = Query(None, description="Activity end date in ISO format"),
+    sort_by: str = Query("date_desc", description="Sorting field (score_desc, score_asc, date_desc, date_asc, name_asc, name_desc, status)"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(10, ge=1, le=100, description="Items per page"),
+    job_post_id: Optional[str] = Query(None, description="Optional job post ID filter"),
+):
+    """
+    Retrieve paginated candidate assessment roster with multi-criteria filtering, search, and facets.
+    Supports recruiter hiring workflows (Issue 02).
+    """
+    return await get_candidate_roster(
+        search=search,
+        statuses=status,
+        role=role,
+        min_score=min_score,
+        max_score=max_score,
+        recommendations=recommendation,
+        start_date=start_date,
+        end_date=end_date,
+        sort_by=sort_by,
+        page=page,
+        page_size=page_size,
+        job_post_id=job_post_id,
+    )
+
+
+@router.get("/admin/candidates/{session_id}/report")
+async def admin_get_candidate_report_by_session(session_id: str):
+    """
+    Get full detailed candidate report dossier directly by session ID.
+    Handles both job-linked and standalone sessions gracefully (Issue 02).
+    """
+    try:
+        return await get_candidate_session_report(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 # ── User Auth Routes ────────────────────────────────────────────────────────
+
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(user_data: UserCreate):

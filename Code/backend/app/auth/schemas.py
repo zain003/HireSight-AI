@@ -92,3 +92,42 @@ class TokenData(BaseModel):
     """Token payload data"""
     user_id: Optional[str] = None  # Changed from int to str
     username: Optional[str] = None
+
+
+# ── Candidate Roster & Admin Report Schemas (Issue 02) ─────────────────────────
+
+class CandidateRosterItem(BaseModel):
+    """Candidate entry in the recruiter admin roster"""
+    user_id: str
+    candidate_name: str
+    email: Optional[str] = None
+    username: Optional[str] = None
+    job_role: Optional[str] = None
+    job_post_id: Optional[str] = None
+    job_post_title: Optional[str] = None
+    session_id: Optional[str] = None
+    status: str = "not_started"
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    overall_score: Optional[float] = None
+    five_dimension_scores: Optional[Dict[str, Any]] = None
+    hiring_recommendation: Optional[str] = None
+    fit_status: Optional[str] = None
+    duration_minutes: Optional[float] = None
+    has_report: bool = False
+    experience_years: Optional[int] = None
+    resume_score: Optional[float] = None
+    skills: List[str] = Field(default_factory=list)
+
+
+class CandidateRosterResponse(BaseModel):
+    """Paginated response for candidate roster with facet metadata"""
+    items: List[CandidateRosterItem]
+    total_count: int
+    page: int
+    page_size: int
+    total_pages: int
+    available_roles: List[str] = Field(default_factory=list)
+    available_recommendations: List[str] = Field(default_factory=list)
+    status_counts: Dict[str, int] = Field(default_factory=dict)
+

@@ -12,6 +12,41 @@ export const adminDashboardService = {
     const res = await api.get('/auth/admin/users');
     return res.data;
   },
+  getCandidateRoster: async (params = {}) => {
+    // Clean up empty params
+    const cleanParams = {};
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        if (Array.isArray(value)) {
+          if (value.length > 0) {
+            cleanParams[key] = value;
+          }
+        } else {
+          cleanParams[key] = value;
+        }
+      }
+    });
+
+    const res = await api.get('/auth/admin/candidates', {
+      params: cleanParams,
+      paramsSerializer: (paramsObj) => {
+        const searchParams = new URLSearchParams();
+        Object.entries(paramsObj).forEach(([k, v]) => {
+          if (Array.isArray(v)) {
+            v.forEach((item) => searchParams.append(k, item));
+          } else if (v !== undefined && v !== null && v !== '') {
+            searchParams.append(k, v);
+          }
+        });
+        return searchParams.toString();
+      },
+    });
+    return res.data;
+  },
+  getCandidateReport: async (sessionId) => {
+    const res = await api.get(`/auth/admin/candidates/${sessionId}/report`);
+    return res.data;
+  },
   getReportJson: async (sessionId) => {
     const res = await api.get(`/interview/admin/session/${sessionId}/export/json`);
     return res.data;

@@ -43,9 +43,10 @@ Establish the complete spec-driven blueprint in `context/feature-specs/` and pre
 - ✅ **FEAT-009-FE**: Recruiter Report Export & Download UI (`frontend/src/components/Interview/RecruiterReportViewer.jsx`, `frontend/src/services/adminDashboardService.js`, 5-dimensional composite scoring hero card, dynamic dimension meters, mathematical audit log modal, tailored remediation roadmap view, multimodal CV & acoustic metric tables, one-click PDF download stream integration with loading state, structured JSON export, Next.js production build cleanly compiled with 0 errors).
 
 - ✅ **FEAT-009-VERIFY**: Recruiter Report Export End-to-End Verification Suite (`backend/test_feat_009_verification.py`, `backend/tests/test_pdf_report_export.py`, 10/10 automated verification checks passing with 100% success rate, 78/78 backend pytest suite passing, Next.js production build verified, generated `feature-test-reports/FEAT-009-test-report.md`).
+- ✅ **FEAT-010 (Issue 02)**: Admin Dashboard Candidate Reports, Scoring & Filters (`backend/app/auth/admin_candidates_service.py`, `backend/app/auth/routes.py`, `backend/tests/test_admin_dashboard_candidates.py`, `frontend/src/components/Admin/CandidateAssessmentRoster.jsx`, `frontend/src/pages/admin/candidates/[id].jsx`, `frontend/src/pages/admin-dashboard.jsx`, `frontend/src/services/adminDashboardService.js`, server-side multi-criteria filtering, URL query state synchronization, dedicated `/admin/candidates/:id` report dossier page, 85/85 backend pytest suite passing, Next.js production build cleanly compiled with 0 errors).
 
 ### In Progress / Upcoming Specs
-- 🔄 **Core Specification Milestone Complete**: All feature specifications `FEAT-001` through `FEAT-009` (BE, FE, VERIFY) are fully implemented, verified, and passing across all acceptance criteria.
+- 🔄 **Core Specification Milestone Complete**: All feature specifications `FEAT-001` through `FEAT-010` (BE, FE, VERIFY) are fully implemented, verified, and passing across all acceptance criteria.
 
 ---
 

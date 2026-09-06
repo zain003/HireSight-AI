@@ -24,6 +24,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import JobCandidatesList from '@/components/Admin/JobCandidatesList';
+import CandidateAssessmentRoster from '@/components/Admin/CandidateAssessmentRoster';
 import RecruiterReportViewer from '@/components/Interview/RecruiterReportViewer';
 
 function normalizeRequiredSkills(raw) {
@@ -282,14 +283,13 @@ export default function AdminDashboard() {
   const handleViewReport = async (sessionId) => {
     try {
       setLoadingReport(true);
-      const response = await api.get(
-        `/auth/admin/job-posts/${selectedJobForCandidates.id}/candidates/${sessionId}/report`
-      );
-      setReportData(response.data);
+      setError('');
+      const response = await adminDashboardService.getCandidateReport(sessionId);
+      setReportData(response);
       setSelectedSessionForReport(sessionId);
       setViewMode('report');
     } catch (err) {
-      setError(formatApiDetail(err.response?.data?.detail) || 'Failed to load interview report');
+      setError(formatApiDetail(err.response?.data?.detail) || 'Failed to load candidate assessment report');
     } finally {
       setLoadingReport(false);
     }
@@ -301,7 +301,11 @@ export default function AdminDashboard() {
   };
 
   const handleBackFromReport = () => {
-    setViewMode('candidates');
+    if (selectedJobForCandidates) {
+      setViewMode('candidates');
+    } else {
+      setViewMode('list');
+    }
     setReportData(null);
     setSelectedSessionForReport(null);
   };
@@ -363,29 +367,37 @@ export default function AdminDashboard() {
       title: viewMode === 'candidates' 
         ? `Candidates - ${selectedJobForCandidates?.title || ''}`
         : viewMode === 'report'
-        ? 'Interview Report'
+        ? 'Candidate Assessment Dossier'
         : 'Admin Dashboard',
       subtitle: viewMode === 'candidates'
         ? 'Review candidates who completed interviews for this job'
         : viewMode === 'report'
-        ? 'Comprehensive hiring decision report'
-        : 'Manage job posts, candidates, and interview sessions',
+        ? 'Comprehensive hiring decision report & 5-dimensional scores'
+        : 'Manage job postings, candidate evaluations, and recruitment analytics',
+    },
+    candidates: {
+      title: viewMode === 'report'
+        ? 'Candidate Assessment Dossier'
+        : 'Candidate Assessments',
+      subtitle: viewMode === 'report'
+        ? 'Comprehensive hiring decision report & 5-dimensional scores'
+        : 'Search, filter, and inspect candidate interview performance',
     },
     users: {
       title: 'Users',
-      subtitle: 'Registered accounts and profile summary',
+      subtitle: 'Registered accounts and candidate profile summary',
     },
     jobs: {
       title: viewMode === 'candidates'
         ? `Candidates - ${selectedJobForCandidates?.title || ''}`
         : viewMode === 'report'
-        ? 'Interview Report'
-        : 'Job posts',
+        ? 'Candidate Assessment Dossier'
+        : 'Job Posts',
       subtitle: viewMode === 'candidates'
         ? 'Review candidates who completed interviews for this job'
         : viewMode === 'report'
-        ? 'Comprehensive hiring decision report'
-        : 'Create and manage listings',
+        ? 'Comprehensive hiring decision report & 5-dimensional scores'
+        : 'Create, update, and manage company job listings',
     },
     settings: {
       title: 'Settings',
@@ -438,8 +450,9 @@ export default function AdminDashboard() {
         </div>
         <nav className="flex flex-1 flex-col gap-1 p-2">
           {navItem('dashboard', LayoutDashboard, 'Dashboard')}
-          {navItem('users', Users, 'Users')}
+          {navItem('candidates', UserCheck, 'Candidates')}
           {navItem('jobs', Briefcase, 'Jobs')}
+          {navItem('users', Users, 'Users')}
           {navItem('settings', Settings, 'Settings')}
         </nav>
       </aside>
@@ -799,7 +812,12 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* Candidates View */}
+          {/* Candidates Tab View (Issue 02) */}
+          {activeSection === 'candidates' && viewMode === 'list' && (
+            <CandidateAssessmentRoster onViewReport={handleViewReport} />
+          )}
+
+          {/* Job-specific Candidates View */}
           {(activeSection === 'dashboard' || activeSection === 'jobs') && viewMode === 'candidates' && selectedJobForCandidates && (
             <JobCandidatesList
               jobPostId={selectedJobForCandidates.id}
@@ -807,16 +825,31 @@ export default function AdminDashboard() {
             />
           )}
 
-          {/* Report View */}
-          {(activeSection === 'dashboard' || activeSection === 'jobs') && viewMode === 'report' && reportData && (
+          {/* Full Report View (FEAT-009-FE / Issue 02) */}
+          {viewMode === 'report' && reportData && (
             <RecruiterReportViewer
               report={reportData.recruiter_report}
               sessionId={reportData.session_id}
             />
           )}
 
+          {/* Dashboard Tab: Candidate Roster Section */}
+          {activeSection === 'dashboard' && viewMode === 'list' && (
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-white">Candidate Assessment Roster</h2>
+                  <p className="text-xs text-slate-400">
+                    Real-time candidate evaluation list with multi-criteria filters and 5-dimensional scores
+                  </p>
+                </div>
+              </div>
+              <CandidateAssessmentRoster onViewReport={handleViewReport} />
+            </section>
+          )}
+
           {/* Job posts table */}
-          {(activeSection === 'dashboard' || activeSection === 'jobs') && viewMode === 'list' && (
+          {activeSection === 'jobs' && viewMode === 'list' && (
           <section className="rounded-2xl border border-white/10 bg-slate-900/40">
             <div className="flex flex-col gap-4 border-b border-white/10 p-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
