@@ -20,7 +20,7 @@ export default function ApplyPage() {
       return;
     }
     loadData();
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     if (!router.isReady || !jobs.length) return;

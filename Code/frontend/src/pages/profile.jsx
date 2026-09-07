@@ -24,7 +24,7 @@ export default function ProfilePage() {
       return;
     }
     loadData();
-  }, [router]);
+  }, []);
 
   const loadData = async () => {
     try {

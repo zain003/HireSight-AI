@@ -21,7 +21,7 @@ export default function Dashboard() {
     }
     loadUserData();
     loadJobPosts();
-  }, [router]);
+  }, []);
 
   const loadUserData = async () => {
     try {

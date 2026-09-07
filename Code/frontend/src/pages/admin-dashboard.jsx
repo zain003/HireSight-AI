@@ -95,7 +95,7 @@ export default function AdminDashboard() {
       return;
     }
     loadAllData();
-  }, [router]);
+  }, []);
 
   const loadJobPosts = async () => {
     const res = await api.get('/auth/admin/job-posts');

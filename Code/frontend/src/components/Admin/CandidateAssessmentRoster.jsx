@@ -100,7 +100,10 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
     if (!router.isReady || isInitialUrlSyncDone.current) return;
 
     const q = router.query;
-    if (q.search) setSearch(String(q.search));
+    if (q.search) {
+      setSearch(String(q.search));
+      setDebouncedSearch(String(q.search));
+    }
     if (q.status) {
       const statuses = Array.isArray(q.status) ? q.status : [q.status];
       setSelectedStatuses(statuses.filter((s) => s !== 'all'));
@@ -185,13 +188,12 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
 
   // Trigger fetch when dependencies change
   useEffect(() => {
-    if (isInitialUrlSyncDone.current || router.isReady) {
-      fetchRoster();
-    }
-  }, [fetchRoster, router.isReady]);
+    fetchRoster();
+  }, [fetchRoster]);
 
   // ── Sync State to URL Query ───────────────────────────────────────────────
   useEffect(() => {
+    if (jobPostId) return;
     if (!isInitialUrlSyncDone.current || !router.isReady) return;
 
     const query = { ...router.query };
@@ -231,14 +233,29 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
     if (pageSize !== 10) query.page_size = String(pageSize);
     else delete query.page_size;
 
-    router.push(
-      {
-        pathname: router.pathname,
-        query,
-      },
-      undefined,
-      { shallow: true }
-    );
+    // Check if query actually changed compared to current router.query
+    const keysBefore = Object.keys(router.query).sort();
+    const keysAfter = Object.keys(query).sort();
+    let isChanged = keysBefore.length !== keysAfter.length;
+    if (!isChanged) {
+      for (const k of keysAfter) {
+        if (String(router.query[k]) !== String(query[k])) {
+          isChanged = true;
+          break;
+        }
+      }
+    }
+
+    if (isChanged) {
+      router.replace(
+        {
+          pathname: router.pathname,
+          query,
+        },
+        undefined,
+        { shallow: true }
+      );
+    }
   }, [
     debouncedSearch,
     selectedStatuses,
@@ -252,6 +269,7 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
     page,
     pageSize,
     router.isReady,
+    jobPostId,
   ]);
 
   // ── Filter Handlers ───────────────────────────────────────────────────────

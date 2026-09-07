@@ -16,7 +16,7 @@ export default function JobsPage() {
       return;
     }
     loadData();
-  }, [router]);
+  }, []);
 
   const loadData = async () => {
     try {
