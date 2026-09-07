@@ -647,6 +647,71 @@ def _verbal_question_budget(total_questions: int, coding_n: int) -> int:
     return int(total_questions) - int(coding_n)
 
 
+def allocate_phase_counts(total_questions: int = 6) -> Dict[QuestionStage, int]:
+    """
+    Deterministically split total_questions across the structured interview phases:
+    ICEBREAKER -> CORE_TECHNICAL -> DEEP_DIVE -> CODING -> BEHAVIORAL -> CLOSING.
+    Guarantees that the sum of counts is exactly equal to total_questions for any total in [4, 30].
+    """
+    t = max(4, min(30, int(total_questions or 6)))
+    if t == 4:
+        return {
+            QuestionStage.ICEBREAKER: 1,
+            QuestionStage.CORE_TECHNICAL: 1,
+            QuestionStage.DEEP_DIVE: 0,
+            QuestionStage.CODING: 1,
+            QuestionStage.BEHAVIORAL: 0,
+            QuestionStage.CLOSING: 1,
+        }
+    if t == 5:
+        return {
+            QuestionStage.ICEBREAKER: 1,
+            QuestionStage.CORE_TECHNICAL: 1,
+            QuestionStage.DEEP_DIVE: 1,
+            QuestionStage.CODING: 1,
+            QuestionStage.BEHAVIORAL: 0,
+            QuestionStage.CLOSING: 1,
+        }
+    if t == 6:
+        return {
+            QuestionStage.ICEBREAKER: 1,
+            QuestionStage.CORE_TECHNICAL: 2,
+            QuestionStage.DEEP_DIVE: 1,
+            QuestionStage.CODING: 1,
+            QuestionStage.BEHAVIORAL: 0,
+            QuestionStage.CLOSING: 1,
+        }
+
+    # For t >= 7:
+    intro = 2 if t >= 15 else 1
+    closing = 2 if t >= 18 else 1
+    coding = 3 if t >= 20 else (2 if t >= 10 else 1)
+
+    remaining = t - (intro + closing + coding)
+
+    beh = max(1, round(remaining * 0.28))
+    deep = max(1, round(remaining * 0.25))
+    tech = remaining - beh - deep
+
+    if tech < 2:
+        tech = 2
+        if remaining - tech >= 2:
+            deep = 1
+            beh = remaining - tech - deep
+        else:
+            beh = max(0, remaining - tech)
+            deep = 0
+
+    return {
+        QuestionStage.ICEBREAKER: intro,
+        QuestionStage.CORE_TECHNICAL: tech,
+        QuestionStage.DEEP_DIVE: deep,
+        QuestionStage.CODING: coding,
+        QuestionStage.BEHAVIORAL: beh,
+        QuestionStage.CLOSING: closing,
+    }
+
+
 def _allocate_four_phase_counts(total_questions: int) -> tuple[int, int, int, int]:
     """
     Split total into: introduction, technical, behavioral, cv_based.
@@ -2646,6 +2711,70 @@ def _normalize_coding_challenge(coding_ch: Optional[Dict[str, Any]], role_value:
     return ch
 
 
+_COMMON_BEHAVIORAL_QUESTIONS: List[Dict[str, Any]] = [
+    {
+        "stage": QuestionStage.BEHAVIORAL,
+        "competency_area": "Technical Collaboration & Consensus",
+        "question_text": "Describe a situation where you had a significant architectural or technical disagreement with a teammate or technical lead. How did you present your reasoning, evaluate trade-offs, and reach a constructive resolution?",
+        "rubric": QuestionRubric(
+            reference_answer="Candidate uses the STAR framework to explain the technical dispute, objective trade-off evaluation (benchmarking, data, RFCs), and how collaborative consensus was achieved without damaging team dynamics.",
+            key_concepts_expected=["Technical Trade-off Analysis", "Constructive Conflict Resolution", "Collaborative Consensus", "STAR Framework Delivery"],
+            depth_criteria={
+                "basic": "Describes a simple disagreement resolved by someone else deciding.",
+                "intermediate": "Articulates objective data gathering, architectural discussion, and compromise.",
+                "advanced": "Demonstrates high emotional intelligence, data-driven prototyping (RFC / PoC), and long-term architectural alignment.",
+            },
+            scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+        ),
+    },
+    {
+        "stage": QuestionStage.BEHAVIORAL,
+        "competency_area": "Incident Response & Production Resilience",
+        "question_text": "Tell me about a high-severity production incident or unexpected outage you handled. What immediate triage actions did you take, how did you communicate with stakeholders, and what root cause fixes did you implement?",
+        "rubric": QuestionRubric(
+            reference_answer="Candidate details incident response process: rapid triage, mitigation (rollback/traffic drain), stakeholder updates, blameless post-mortem, and permanent preventative safeguards.",
+            key_concepts_expected=["Incident Triage & Mitigation", "Stakeholder Communication", "Blameless Post-Mortem", "Permanent Safeguards"],
+            depth_criteria={
+                "basic": "Mentions fixing a bug in code without describing incident response flow.",
+                "intermediate": "Explains triage, rollback, communication, and post-incident patch.",
+                "advanced": "Details systemic reliability engineering (SLOs, runbooks, automated alerting, chaos testing).",
+            },
+            scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+        ),
+    },
+    {
+        "stage": QuestionStage.BEHAVIORAL,
+        "competency_area": "Project Execution & Scope Management",
+        "question_text": "Describe a time when you were facing an aggressive delivery deadline with competing technical requirements. How did you prioritize critical path tasks, manage technical debt, and ensure quality standards were maintained?",
+        "rubric": QuestionRubric(
+            reference_answer="Candidate outlines critical path identification, scope negotiation with product managers, pragmatic technical debt tracking, and maintaining automated test coverage despite time pressure.",
+            key_concepts_expected=["Critical Path Prioritization", "Technical Debt Management", "Scope Negotiation", "Quality Assurance Discipline"],
+            depth_criteria={
+                "basic": "Mentions working overtime to finish all tasks.",
+                "intermediate": "Explains MVP scoping, trade-off communication, and tracking deferred debt.",
+                "advanced": "Demonstrates strategic engineering judgment, phased delivery milestones, and risk-mitigated architecture.",
+            },
+            scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+        ),
+    },
+    {
+        "stage": QuestionStage.BEHAVIORAL,
+        "competency_area": "Engineering Leadership & Ownership",
+        "question_text": "Can you share an example where you took end-to-end ownership of an engineering initiative, mentored a colleague, or improved team-wide engineering velocity and code quality standards?",
+        "rubric": QuestionRubric(
+            reference_answer="Candidate describes driving an initiative from inception to production, mentoring peers through constructive code reviews, and establishing lasting engineering best practices.",
+            key_concepts_expected=["End-to-End Ownership", "Mentorship & Knowledge Sharing", "Engineering Velocity Optimization", "Code Review Culture"],
+            depth_criteria={
+                "basic": "Mentions answering a colleague's question.",
+                "intermediate": "Describes guiding junior engineers and setting up linting/testing standards.",
+                "advanced": "Details organizational leverage, architectural roadmaps, and measurable team productivity gains.",
+            },
+            scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+        ),
+    },
+]
+
+
 def _generate_fallback_rubric_plan(
     job_role: StandardRole,
     seniority: SeniorityLevel,
@@ -2655,11 +2784,12 @@ def _generate_fallback_rubric_plan(
 ) -> List[InterviewQuestion]:
     """
     Generate deterministic, stage-paced interview questions with complete grading rubrics.
-    Guaranteed to execute in < 50ms (in-memory lookup) with ZERO repeated questions.
+    Guaranteed to execute in < 50ms (in-memory lookup) with ZERO repeated questions across all configured phases.
     """
-    role_bank = _OFFLINE_RUBRIC_QUESTION_BANK.get(
+    base_role_bank = _OFFLINE_RUBRIC_QUESTION_BANK.get(
         job_role, _OFFLINE_RUBRIC_QUESTION_BANK[StandardRole.BACKEND_ENGINEER]
     )
+    role_bank = list(base_role_bank) + _COMMON_BEHAVIORAL_QUESTIONS
 
     # Resolve candidate project context
     project_clause = ""
@@ -2669,49 +2799,143 @@ def _generate_fallback_rubric_plan(
         if p_name:
             project_clause = f" on '{p_name}'"
 
+    phase_counts = allocate_phase_counts(total_questions)
+
+    stage_templates: Dict[QuestionStage, List[Dict[str, Any]]] = {}
+    for tmpl in role_bank:
+        st = tmpl["stage"]
+        stage_templates.setdefault(st, []).append(tmpl)
+
+    ordered_stages = [
+        QuestionStage.ICEBREAKER,
+        QuestionStage.CORE_TECHNICAL,
+        QuestionStage.DEEP_DIVE,
+        QuestionStage.CODING,
+        QuestionStage.BEHAVIORAL,
+        QuestionStage.CLOSING,
+    ]
+
     allocated_questions: List[InterviewQuestion] = []
-    
-    # Strictly select unique templates from role_bank without repeating
-    target_count = min(len(role_bank), max(4, int(total_questions or 6)))
-    for idx in range(target_count):
-        tmpl = role_bank[idx]
-        
-        stage = tmpl["stage"]
-        comp_area = tmpl["competency_area"]
-        raw_text = tmpl["question_text"]
-        
-        # Format project clause if applicable
-        if "{project_clause}" in raw_text:
-            question_text = raw_text.replace("{project_clause}", project_clause)
-        else:
-            question_text = raw_text
+    seen_texts = set()
+    coding_idx = 0
 
-        # Base rubric
-        base_rubric: QuestionRubric = tmpl["rubric"]
-        rubric_copy = QuestionRubric(
-            reference_answer=base_rubric.reference_answer,
-            key_concepts_expected=list(base_rubric.key_concepts_expected),
-            depth_criteria=dict(base_rubric.depth_criteria),
-            scoring_guide=dict(base_rubric.scoring_guide),
-        )
+    for stage in ordered_stages:
+        needed = phase_counts.get(stage, 0)
+        if needed <= 0:
+            continue
 
-        q_id = f"q_{idx + 1}"
-        coding_ch = _normalize_coding_challenge(tmpl.get("coding_challenge"), job_role.value, idx) if stage == QuestionStage.CODING else None
-        coding_id = f"code_{job_role.value}_{idx + 1}" if stage == QuestionStage.CODING else None
+        available = stage_templates.get(stage, [])
+        for tmpl in available:
+            if len([q for q in allocated_questions if q.stage == stage]) >= needed:
+                break
 
-        allocated_questions.append(
-            InterviewQuestion(
-                question_id=q_id,
-                question_index=idx,
-                stage=stage,
-                competency_area=comp_area,
-                difficulty=seniority,
-                question_text=question_text,
-                rubric=rubric_copy,
-                coding_challenge_id=coding_id,
-                coding_challenge=coding_ch,
+            comp_area = tmpl["competency_area"]
+            raw_text = tmpl["question_text"]
+            question_text = (
+                raw_text.replace("{project_clause}", project_clause)
+                if "{project_clause}" in raw_text
+                else raw_text
             )
-        )
+
+            if question_text in seen_texts:
+                continue
+            seen_texts.add(question_text)
+
+            base_rubric: QuestionRubric = tmpl["rubric"]
+            rubric_copy = QuestionRubric(
+                reference_answer=base_rubric.reference_answer,
+                key_concepts_expected=list(base_rubric.key_concepts_expected),
+                depth_criteria=dict(base_rubric.depth_criteria),
+                scoring_guide=dict(base_rubric.scoring_guide),
+            )
+
+            q_out_idx = len(allocated_questions)
+            q_id = f"q_{q_out_idx + 1}"
+
+            coding_ch = None
+            coding_id = None
+            if stage == QuestionStage.CODING:
+                coding_ch = _normalize_coding_challenge(
+                    tmpl.get("coding_challenge"), job_role.value, coding_idx
+                )
+                coding_id = f"code_{job_role.value}_{coding_idx + 1}"
+                coding_idx += 1
+
+            allocated_questions.append(
+                InterviewQuestion(
+                    question_id=q_id,
+                    question_index=q_out_idx,
+                    stage=stage,
+                    competency_area=comp_area,
+                    difficulty=seniority,
+                    question_text=question_text,
+                    rubric=rubric_copy,
+                    coding_challenge_id=coding_id,
+                    coding_challenge=coding_ch,
+                )
+            )
+
+        # If more questions are needed for this stage than available templates, generate dynamic variants
+        current_stage_count = len([q for q in allocated_questions if q.stage == stage])
+        while current_stage_count < needed:
+            q_out_idx = len(allocated_questions)
+            q_id = f"q_{q_out_idx + 1}"
+            coding_ch = None
+            coding_id = None
+            if stage == QuestionStage.CODING:
+                coding_challenges_pool = _fallback_coding_challenges(
+                    job_role.value, coding_idx + 1
+                )
+                ch_dict = coding_challenges_pool[coding_idx % len(coding_challenges_pool)]
+                coding_ch = _normalize_coding_challenge(
+                    ch_dict, job_role.value, coding_idx
+                )
+                coding_id = f"code_{job_role.value}_{coding_idx + 1}"
+                coding_idx += 1
+                q_text = f"Coding Assessment: {coding_ch.get('title', 'Algorithmic Problem')}. {coding_ch.get('problem_statement', '')}"
+                comp = "Algorithmic Problem Solving"
+                ref_ans = "Candidate implements an optimal, bug-free solution satisfying all input constraints and passing all public and hidden test cases."
+                expected_c = [
+                    "Algorithm Complexity",
+                    "Edge Case Handling",
+                    f"{job_role.value} Programming",
+                ]
+            elif stage == QuestionStage.BEHAVIORAL:
+                comp = "Behavioral & STAR Scenario"
+                q_text = f"Describe a situation in your {job_role.value.replace('_', ' ').title()} work where you had to navigate ambiguous requirements or tight delivery deadlines using the STAR method."
+                ref_ans = "Candidate uses the STAR methodology to describe a realistic engineering scenario, articulating clear ownership, technical trade-offs, and measurable outcomes."
+                expected_c = ["STAR Methodology", "Ownership & Accountability", "Technical Trade-offs"]
+            else:
+                comp = f"{job_role.value.replace('_', ' ').title()} {stage.value.replace('_', ' ').title()}"
+                q_text = f"Explain your technical approach, architecture patterns, and best practices regarding {comp} in production environments."
+                ref_ans = f"Candidate articulates sound engineering principles, architecture trade-offs, and operational best practices for {comp}."
+                expected_c = [comp, "Production Reliability", "Architecture Best Practices"]
+
+            rubric_dyn = QuestionRubric(
+                reference_answer=ref_ans,
+                key_concepts_expected=expected_c,
+                depth_criteria={
+                    "basic": "Candidate demonstrates superficial understanding with partial concepts.",
+                    "intermediate": "Candidate explains standard working principles and typical use cases.",
+                    "advanced": "Candidate explains deep internal mechanics, performance trade-offs, and edge cases.",
+                },
+                scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+            )
+
+            allocated_questions.append(
+                InterviewQuestion(
+                    question_id=q_id,
+                    question_index=q_out_idx,
+                    stage=stage,
+                    competency_area=comp,
+                    difficulty=seniority,
+                    question_text=q_text,
+                    rubric=rubric_dyn,
+                    coding_challenge_id=coding_id,
+                    coding_challenge=coding_ch,
+                )
+            )
+            current_stage_count += 1
 
     return allocated_questions
 
@@ -2727,17 +2951,44 @@ async def generate_rubric_backed_plan(
 ) -> List[InterviewQuestion]:
     """
     Generate personalized, stage-paced interview questions with pre-computed reference
-    answers, expected concepts, and grading rubrics.
-    Guarantees strict deduplication and zero question repetition.
+    answers, expected concepts, and grading rubrics across all configured phases.
+    Guarantees strict deduplication, stage pacing, and zero question repetition.
     """
     norm_role, norm_seniority = _normalize_role_and_seniority(job_role, seniority)
     candidate_skills = list(candidate_skills or [])
     candidate_projects = list(candidate_projects or [])
     required_job_skills = list(required_job_skills or [])
-    total_q = min(6, max(4, int(total_questions or 6)))
+    total_q = max(4, min(30, int(total_questions or 6)))
 
+    phase_counts = allocate_phase_counts(total_q)
     project_summary = _project_summary(candidate_projects)
-    
+
+    stage_alloc_str = []
+    if phase_counts.get(QuestionStage.ICEBREAKER, 0) > 0:
+        stage_alloc_str.append(
+            f"- Stage 'icebreaker': exactly {phase_counts[QuestionStage.ICEBREAKER]} question(s) — Candidate intro, role motivations, stack background."
+        )
+    if phase_counts.get(QuestionStage.CORE_TECHNICAL, 0) > 0:
+        stage_alloc_str.append(
+            f"- Stage 'core_technical': exactly {phase_counts[QuestionStage.CORE_TECHNICAL]} question(s) — Core engineering concepts and fundamentals from role competency matrix."
+        )
+    if phase_counts.get(QuestionStage.DEEP_DIVE, 0) > 0:
+        stage_alloc_str.append(
+            f"- Stage 'deep_dive': exactly {phase_counts[QuestionStage.DEEP_DIVE]} question(s) — Project or complex architectural deep dive on trade-offs and bottlenecks."
+        )
+    if phase_counts.get(QuestionStage.CODING, 0) > 0:
+        stage_alloc_str.append(
+            f"- Stage 'coding': exactly {phase_counts[QuestionStage.CODING]} question(s) — Algorithmic problem with clear problem_statement and test_cases."
+        )
+    if phase_counts.get(QuestionStage.BEHAVIORAL, 0) > 0:
+        stage_alloc_str.append(
+            f"- Stage 'behavioral': exactly {phase_counts[QuestionStage.BEHAVIORAL]} question(s) — STAR framework situational and behavioral scenarios."
+        )
+    if phase_counts.get(QuestionStage.CLOSING, 0) > 0:
+        stage_alloc_str.append(
+            f"- Stage 'closing': exactly {phase_counts[QuestionStage.CLOSING]} question(s) — Web security, testing, reliability, and engineering leadership."
+        )
+
     prompt = (
         f"You are a technical interview committee lead at a top technology firm.\n"
         f"Generate a deterministic, stage-paced interview question plan for a candidate applying as:\n"
@@ -2747,12 +2998,9 @@ async def generate_rubric_backed_plan(
         f"REQUIRED JOB SKILLS: {', '.join(required_job_skills) if required_job_skills else 'Standard role skills'}\n"
         f"CANDIDATE SKILLS: {', '.join(candidate_skills) if candidate_skills else 'Standard tech skills'}\n"
         f"CANDIDATE PROJECTS:\n{project_summary}\n\n"
-        f"STAGE ALLOCATION (Must generate exactly {total_q} questions in this sequential order):\n"
-        f"1. Stage 'icebreaker' (Question 1): Candidate intro, role motivations, stack background.\n"
-        f"2. Stage 'core_technical' (Questions 2..{total_q - 3}): Core engineering concepts and fundamentals from role competency matrix.\n"
-        f"3. Stage 'deep_dive' (Question {total_q - 2}): Project or complex architectural deep dive on trade-offs and bottlenecks.\n"
-        f"4. Stage 'coding' (Question {total_q - 1}): Algorithmic problem with clear problem_statement and test_cases.\n"
-        f"5. Stage 'closing' (Question {total_q}): Web security, testing, reliability, and engineering leadership.\n\n"
+        f"STAGE ALLOCATION (Must generate exactly {total_q} questions in this sequential order across all required phases):\n"
+        + "\n".join(stage_alloc_str)
+        + "\n\n"
         "MANDATORY RUBRIC REQUIREMENTS FOR EVERY SINGLE QUESTION:\n"
         "- Every question MUST include a 'rubric' object.\n"
         "- 'reference_answer': A comprehensive 2-4 sentence explanation of an exemplary answer.\n"
@@ -2763,7 +3011,7 @@ async def generate_rubric_backed_plan(
         "[\n"
         "  {\n"
         "    \"question_text\": \"...\",\n"
-        "    \"stage\": \"icebreaker|core_technical|deep_dive|coding|closing\",\n"
+        "    \"stage\": \"icebreaker|core_technical|deep_dive|coding|behavioral|closing\",\n"
         "    \"competency_area\": \"...\",\n"
         "    \"difficulty\": \"entry|mid|senior|lead\",\n"
         "    \"rubric\": {\n"
@@ -2797,6 +3045,7 @@ async def generate_rubric_backed_plan(
 
         seen_normalized_texts = set()
         validated_questions: List[InterviewQuestion] = []
+        coding_counter = 0
         for idx, item in enumerate(parsed_items):
             if len(validated_questions) >= total_q:
                 break
@@ -2830,14 +3079,15 @@ async def generate_rubric_backed_plan(
             ref_ans = str(raw_rubric.get("reference_answer", "")).strip()
             expected_concepts = raw_rubric.get("key_concepts_expected", [])
             if not isinstance(expected_concepts, list) or len(expected_concepts) < 2:
-                # Fill default concepts if missing
                 expected_concepts = [comp_area, f"{norm_role.value} best practices"]
 
             if not ref_ans:
                 ref_ans = f"Candidate is expected to explain {comp_area} principles, implementation steps, and trade-offs."
 
             depth_crit = raw_rubric.get("depth_criteria")
-            if not isinstance(depth_crit, dict) or not all(k in depth_crit for k in ["basic", "intermediate", "advanced"]):
+            if not isinstance(depth_crit, dict) or not all(
+                k in depth_crit for k in ["basic", "intermediate", "advanced"]
+            ):
                 depth_crit = {
                     "basic": "Candidate demonstrates superficial understanding with partial concepts.",
                     "intermediate": "Candidate explains standard working principles and typical use cases.",
@@ -2846,18 +3096,30 @@ async def generate_rubric_backed_plan(
 
             scoring_guide = raw_rubric.get("scoring_guide")
             if not isinstance(scoring_guide, dict):
-                scoring_guide = {"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0}
+                scoring_guide = {
+                    "relevance_max": 30.0,
+                    "depth_max": 40.0,
+                    "accuracy_max": 30.0,
+                }
 
             rubric = QuestionRubric(
                 reference_answer=ref_ans,
-                key_concepts_expected=[str(c).strip() for c in expected_concepts if str(c).strip()],
+                key_concepts_expected=[
+                    str(c).strip() for c in expected_concepts if str(c).strip()
+                ],
                 depth_criteria={k: str(v) for k, v in depth_crit.items()},
                 scoring_guide={k: float(v) for k, v in scoring_guide.items()},
             )
 
             q_out_idx = len(validated_questions)
-            coding_ch = _normalize_coding_challenge(item.get("coding_challenge"), norm_role.value, q_out_idx) if stage_enum == QuestionStage.CODING else None
-            coding_id = f"code_{norm_role.value}_{q_out_idx + 1}" if stage_enum == QuestionStage.CODING else None
+            coding_ch = None
+            coding_id = None
+            if stage_enum == QuestionStage.CODING:
+                coding_ch = _normalize_coding_challenge(
+                    item.get("coding_challenge"), norm_role.value, coding_counter
+                )
+                coding_id = f"code_{norm_role.value}_{coding_counter + 1}"
+                coding_counter += 1
 
             validated_questions.append(
                 InterviewQuestion(

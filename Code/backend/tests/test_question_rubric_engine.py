@@ -167,3 +167,55 @@ def test_all_7_roles_and_seniorities_supported():
             for q in plan:
                 assert q.rubric.reference_answer != ""
                 assert len(q.rubric.key_concepts_expected) >= 2
+
+
+@pytest.mark.parametrize("total_q", [4, 6, 8, 12, 20])
+def test_variable_question_counts_and_phases(total_q: int):
+    """Fallback generator correctly constructs exact requested question counts across phases."""
+    for role in StandardRole:
+        plan = _generate_fallback_rubric_plan(
+            job_role=role,
+            seniority=SeniorityLevel.MID,
+            candidate_skills=["Engineering"],
+            candidate_projects=[{"name": "App"}],
+            total_questions=total_q,
+        )
+        assert len(plan) == total_q, f"Expected {total_q} questions for {role}, got {len(plan)}"
+        stages = [q.stage for q in plan]
+        assert QuestionStage.ICEBREAKER in stages
+        assert QuestionStage.CODING in stages
+        assert QuestionStage.CLOSING in stages
+        if total_q >= 7:
+            assert QuestionStage.BEHAVIORAL in stages
+        # Verify indices are strictly sequential from 0 to total_q - 1
+        indices = [q.question_index for q in plan]
+        assert indices == list(range(total_q))
+
+
+@pytest.mark.anyio
+async def test_full_20_question_plan_generation():
+    """Generating full 20-question interview plan contains all 6 phases in sequential order."""
+    plan = await generate_rubric_backed_plan(
+        job_role=StandardRole.BACKEND_ENGINEER,
+        seniority=SeniorityLevel.SENIOR,
+        candidate_skills=["Python", "PostgreSQL", "Kafka"],
+        candidate_projects=[{"name": "Distributed Ledger"}],
+        total_questions=20,
+    )
+    assert len(plan) == 20
+    stages = [q.stage for q in plan]
+    assert QuestionStage.ICEBREAKER in stages
+    assert QuestionStage.CORE_TECHNICAL in stages
+    assert QuestionStage.DEEP_DIVE in stages
+    assert QuestionStage.CODING in stages
+    assert QuestionStage.BEHAVIORAL in stages
+    assert QuestionStage.CLOSING in stages
+
+    # Coding question must be followed by subsequent behavioral and closing phases
+    coding_indices = [i for i, q in enumerate(plan) if q.stage == QuestionStage.CODING]
+    assert len(coding_indices) >= 1
+    last_coding_idx = max(coding_indices)
+    assert last_coding_idx < len(plan) - 1, "Coding challenge must not be forced as the final question"
+    assert any(q.stage == QuestionStage.BEHAVIORAL for q in plan[last_coding_idx + 1:])
+    assert any(q.stage == QuestionStage.CLOSING for q in plan[last_coding_idx + 1:])
+

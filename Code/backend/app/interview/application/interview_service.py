@@ -108,7 +108,7 @@ class InterviewService:
             seniority=target_seniority,
             candidate_skills=candidate_skills,
             candidate_projects=candidate_projects or [],
-            total_questions=total_questions or 6,
+            total_questions=total_questions or LIVE_INTERVIEW_TOTAL_QUESTIONS,
             job_description=job_description,
             required_job_skills=required_job_skills or [],
         )

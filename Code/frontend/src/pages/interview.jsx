@@ -78,9 +78,9 @@ export default function InterviewPage() {
     [questions, currentIdx]
   );
 
-  /** Phase order: introduction → technical → behavioral → deep_dive → coding → closing */
+  /** Phase order: introduction → technical → deep_dive → coding → behavioral → closing */
   const stageOrder = useMemo(
-    () => ['introduction', 'technical', 'behavioral', 'deep_dive', 'coding', 'closing'],
+    () => ['introduction', 'technical', 'deep_dive', 'coding', 'behavioral', 'closing'],
     []
   );
 

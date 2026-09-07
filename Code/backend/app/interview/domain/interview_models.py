@@ -17,6 +17,7 @@ class QuestionStage(str, Enum):
     CORE_TECHNICAL = "core_technical"
     DEEP_DIVE = "deep_dive"
     CODING = "coding"
+    BEHAVIORAL = "behavioral"
     CLOSING = "closing"
     FOLLOW_UP = "follow_up"
 

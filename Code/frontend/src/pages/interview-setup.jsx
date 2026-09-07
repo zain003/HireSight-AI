@@ -208,10 +208,14 @@ export default function InterviewSetupPage() {
     setError('');
 
     try {
+      const numQuestions = router.query.num_questions
+        ? Math.max(4, Math.min(30, parseInt(router.query.num_questions, 10) || 20))
+        : 20;
+
       const payload = {
         job_role: roleDisplayName,
         candidate_skills: profileSkills,
-        num_questions: 6,
+        num_questions: numQuestions,
         ...(jobPost?.id || router.query.jobPostId ? { job_post_id: jobPost?.id || router.query.jobPostId } : {}),
       };
 

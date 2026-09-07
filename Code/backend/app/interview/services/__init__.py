@@ -5,6 +5,7 @@ from .face_service import FaceService, analyze_emotions, verify_face_frame
 from .llm_service import (
     LLMService,
     LIVE_INTERVIEW_TOTAL_QUESTIONS,
+    allocate_phase_counts,
     evaluate_answer,
     evaluate_answer_interview,
     generate_followup_question,
@@ -51,6 +52,7 @@ __all__ = [
     "generate_question_plan",
     "generate_report_summary",
     "generate_rubric_backed_plan",
+    "allocate_phase_counts",
     "text_to_speech",
     "transcribe_audio",
     "verify_face_frame",
