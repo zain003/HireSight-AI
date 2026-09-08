@@ -980,6 +980,15 @@ def _build_fallback_question_bank(
     projects = candidate_projects or []
     exp_ctx = f"{experience_years} years of experience" if experience_years is not None else "your experience"
 
+    # Map job_role to StandardRole to extract rich concepts for remaining slots
+    norm_role, _ = _normalize_role_and_seniority(job_role, SeniorityLevel.MID)
+    role_competencies = get_role_competency_matrix(norm_role)
+    fallback_concept_pool = []
+    for cw in role_competencies:
+        for c in cw.required_concepts:
+            if c not in all_skills:
+                fallback_concept_pool.append((cw.competency_area, c))
+
     technical_questions = []
     for idx, skill in enumerate(top_skills):
         difficulty = "easy" if idx < 2 else ("medium" if idx < 5 else "hard")
@@ -991,10 +1000,26 @@ def _build_fallback_question_bank(
                 "difficulty": difficulty,
             }
         )
+
+    concept_idx = 0
     while len(technical_questions) < 7:
+        if concept_idx < len(fallback_concept_pool):
+            comp_area, concept = fallback_concept_pool[concept_idx]
+            concept_idx += 1
+            q_text = f"In a {job_role} architecture, how would you design and implement {concept} ({comp_area}) to guarantee high availability and fault tolerance?"
+        else:
+            design_topics = [
+                "data storage, caching layers, and database partitioning",
+                "distributed rate limiting, authentication, and API resilience",
+                "asynchronous task queues, background workers, and idempotency",
+                "observability, structured metrics collection, and alerting SLOs",
+                "CI/CD zero-downtime deployment pipelines and rollback strategies",
+            ]
+            topic = design_topics[len(technical_questions) % len(design_topics)]
+            q_text = f"Design an end-to-end {job_role} architecture focusing on {topic}, explaining your key technical trade-offs."
         technical_questions.append(
             {
-                "question_text": f"Design an end-to-end {job_role} solution using {', '.join(top_skills[:3]) if top_skills else 'your stack'} and explain reliability, scalability, and observability decisions.",
+                "question_text": q_text,
                 "question_type": "technical",
                 "stage": "technical",
                 "difficulty": "hard",
@@ -1523,7 +1548,8 @@ async def generate_question_plan(
     needs_skills = bool(candidate_skills) and not any(s.lower() in cv_text_blob for s in candidate_skills[:8])
     needs_experience = "experience" not in cv_text_blob and "years" not in cv_text_blob
 
-    if needs_projects:
+    injected_idx = 0
+    if needs_projects and injected_idx < cv_based_count:
         p_name = str(((candidate_projects or [])[0] or {}).get("name", "")).strip() or "a project from your CV"
         cv_q = {
             "question_text": f"In '{p_name}', what was your exact role, technical approach, and measurable impact?",
@@ -1533,10 +1559,11 @@ async def generate_question_plan(
         }
         if len(cv_based) < cv_based_count:
             cv_based.append(cv_q)
-        else:
-            cv_based[-1] = cv_q
+        elif injected_idx < len(cv_based):
+            cv_based[injected_idx] = cv_q
+        injected_idx += 1
 
-    if needs_skills:
+    if needs_skills and injected_idx < cv_based_count:
         top_cv_skill = (candidate_skills or ["your strongest skill"])[0]
         cv_q = {
             "question_text": f"Which CV skill best represents your strengths, and where did you apply {top_cv_skill} in real work?",
@@ -1546,10 +1573,11 @@ async def generate_question_plan(
         }
         if len(cv_based) < cv_based_count:
             cv_based.append(cv_q)
-        else:
-            cv_based[-1] = cv_q
+        elif injected_idx < len(cv_based):
+            cv_based[injected_idx] = cv_q
+        injected_idx += 1
 
-    if needs_experience:
+    if needs_experience and injected_idx < cv_based_count:
         cv_q = {
             "question_text": "Looking at your overall experience, what pattern of growth do you see and how has it changed your engineering decisions?",
             "question_type": "cv_based",
@@ -1558,8 +1586,9 @@ async def generate_question_plan(
         }
         if len(cv_based) < cv_based_count:
             cv_based.append(cv_q)
-        else:
-            cv_based[-1] = cv_q
+        elif injected_idx < len(cv_based):
+            cv_based[injected_idx] = cv_q
+        injected_idx += 1
 
     behavioral = behavioral[:behavioral_count]
     cv_based = cv_based[:cv_based_count]
@@ -1687,13 +1716,41 @@ async def generate_followup_question(
     norm = _normalize_question_text(text)
     asked_norm = {_normalize_question_text(q) for q in asked_questions if _normalize_question_text(q)}
 
+    FOLLOWUP_CANDIDATES = {
+        "introduction": [
+            "Could you add a bit more detail on your most relevant experience or education for this role?",
+            "What specific projects or engineering problems in your background best demonstrate your readiness for this role?",
+            "How has your previous technical work shaped your motivation and preparation for this position?",
+        ],
+        "behavioral": [
+            "Could you give a specific real example with measurable impact and explain exactly what your contribution was?",
+            "What was the most critical technical or organizational obstacle you faced during that situation, and how did you resolve it?",
+            "Looking back on that outcome, what key lesson did you learn, and what would you do differently today?",
+            "How did you evaluate technical trade-offs and communicate your decisions to team members and stakeholders?",
+        ],
+        "cv_based": [
+            "Could you walk through the architectural decisions and technical trade-offs you made on that project?",
+            "What quantifiable metrics, performance improvements, or business outcomes resulted from your contribution?",
+            "What were the most challenging edge cases or system bottlenecks you encountered, and how did you mitigate them?",
+        ],
+        "technical": [
+            "Please walk through your exact approach step by step, including tradeoffs and why you chose that design.",
+            "How would your proposed solution scale under significantly higher traffic volume or strict latency constraints?",
+            "What potential failure modes, data consistency risks, or edge cases could arise, and how would you handle them?",
+            "What alternative architectures or libraries did you evaluate before deciding on this particular approach?",
+        ],
+    }
+
     if not text or norm in asked_norm:
-        if stage == "introduction":
-            text = "Could you add a bit more detail on your most relevant experience or education for this role?"
-        elif stage in {"behavioral", "cv_based"}:
-            text = "Could you give a specific real example with measurable impact and explain exactly what your contribution was?"
-        else:
-            text = "Please walk through your exact approach step by step, including tradeoffs and why you chose that design."
+        candidates = FOLLOWUP_CANDIDATES.get(stage, FOLLOWUP_CANDIDATES["technical"])
+        chosen_text = None
+        for cand in candidates:
+            if _normalize_question_text(cand) not in asked_norm:
+                chosen_text = cand
+                break
+        if not chosen_text:
+            chosen_text = f"Could you provide additional technical depth and specific trade-offs regarding your approach for {job_role}?"
+        text = chosen_text
 
     return {
         "question_text": text,
@@ -2775,6 +2832,85 @@ _COMMON_BEHAVIORAL_QUESTIONS: List[Dict[str, Any]] = [
 ]
 
 
+_EXTENDED_BEHAVIORAL_TEMPLATES: List[Dict[str, Any]] = [
+    {
+        "stage": QuestionStage.BEHAVIORAL,
+        "competency_area": "Handling Ambiguity & Delivery Under Pressure",
+        "question_text": "Tell me about a situation where you had to work with ambiguous or rapidly shifting product requirements. How did you structure your engineering approach and deliver value incrementally?",
+        "rubric": QuestionRubric(
+            reference_answer="Candidate uses the STAR framework to explain how they clarified ambiguous requirements through prototyping, stakeholder alignment, and incremental milestone delivery.",
+            key_concepts_expected=["Ambiguity Management", "Incremental Delivery", "Stakeholder Alignment", "STAR Framework Delivery"],
+            depth_criteria={
+                "basic": "Mentions waiting for requirements to be clarified.",
+                "intermediate": "Explains asking clarifying questions and building an MVP.",
+                "advanced": "Demonstrates proactive risk mitigation, rapid prototyping, and phased rollouts under ambiguity.",
+            },
+            scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+        ),
+    },
+    {
+        "stage": QuestionStage.BEHAVIORAL,
+        "competency_area": "Technical Debt Prioritization & Remediation",
+        "question_text": "Describe a scenario where you identified critical technical debt or architectural bottlenecks slowing down the team. How did you build consensus with product stakeholders to prioritize and refactor it?",
+        "rubric": QuestionRubric(
+            reference_answer="Candidate describes framing technical debt in terms of business risk/velocity impact, creating a refactoring RFC, and executing improvements without halting feature development.",
+            key_concepts_expected=["Technical Debt Management", "Business Value Framing", "Refactoring Strategy", "Consensus Building"],
+            depth_criteria={
+                "basic": "Mentions refactoring code during free time.",
+                "intermediate": "Explains quantifying tech debt and getting approval for a dedicated sprint.",
+                "advanced": "Articulates systemic architectural improvements, automated regression safeguards, and long-term velocity gains.",
+            },
+            scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+        ),
+    },
+    {
+        "stage": QuestionStage.BEHAVIORAL,
+        "competency_area": "Mentorship & Knowledge Transfer",
+        "question_text": "Can you share an experience where you onboarded, mentored a colleague, or cross-trained teammates on a complex technology stack to improve team autonomy?",
+        "rubric": QuestionRubric(
+            reference_answer="Candidate outlines mentorship structure (pair programming, code reviews, documentation/runbooks) and measurable growth in the mentee's autonomy and team throughput.",
+            key_concepts_expected=["Technical Mentorship", "Knowledge Sharing & Documentation", "Pair Programming", "Engineering Velocity"],
+            depth_criteria={
+                "basic": "Mentions answering a colleague's questions occasionally.",
+                "intermediate": "Explains pairing on difficult tickets and creating onboarding guides.",
+                "advanced": "Demonstrates building scalable team knowledge systems, design review rituals, and fostering peer growth.",
+            },
+            scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+        ),
+    },
+    {
+        "stage": QuestionStage.BEHAVIORAL,
+        "competency_area": "Cross-Functional Collaboration & Dependency Management",
+        "question_text": "Describe a time when a critical project milestone was threatened by an external dependency or blocker from another team. How did you negotiate, escalate, or adjust your technical strategy to unblock the release?",
+        "rubric": QuestionRubric(
+            reference_answer="Candidate explains dependency mapping, proactive communication with dependent teams, contract-first mock interfaces, and escalation pathways to deliver on schedule.",
+            key_concepts_expected=["Dependency Management", "Contract-First Development", "Cross-Team Negotiation", "Risk Mitigation"],
+            depth_criteria={
+                "basic": "Mentions waiting for the other team to finish.",
+                "intermediate": "Explains setting up meetings and tracking status.",
+                "advanced": "Implements decoupled mock interfaces/feature flags and leads executive alignment to resolve blockages.",
+            },
+            scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+        ),
+    },
+    {
+        "stage": QuestionStage.BEHAVIORAL,
+        "competency_area": "Technical Feedback & Post-Mortem Learning",
+        "question_text": "Tell me about a time you received constructive feedback on your architecture or participated in a blameless post-mortem after an error. How did you adapt and elevate your engineering standards?",
+        "rubric": QuestionRubric(
+            reference_answer="Candidate demonstrates high emotional intelligence, objective reflection on technical critique, and implementing systemic safeguards to prevent recurring failures.",
+            key_concepts_expected=["Blameless Post-Mortem", "Growth Mindset", "Systemic Safeguards", "Continuous Improvement"],
+            depth_criteria={
+                "basic": "Describes changing code based on a PR comment.",
+                "intermediate": "Explains updating tests and documentation following feedback.",
+                "advanced": "Details driving organizational changes, new linter/CI checks, and architectural patterns based on retrospective learning.",
+            },
+            scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
+        ),
+    },
+]
+
+
 def _generate_fallback_rubric_plan(
     job_role: StandardRole,
     seniority: SeniorityLevel,
@@ -2789,7 +2925,7 @@ def _generate_fallback_rubric_plan(
     base_role_bank = _OFFLINE_RUBRIC_QUESTION_BANK.get(
         job_role, _OFFLINE_RUBRIC_QUESTION_BANK[StandardRole.BACKEND_ENGINEER]
     )
-    role_bank = list(base_role_bank) + _COMMON_BEHAVIORAL_QUESTIONS
+    role_bank = list(base_role_bank) + _COMMON_BEHAVIORAL_QUESTIONS + _EXTENDED_BEHAVIORAL_TEMPLATES
 
     # Resolve candidate project context
     project_clause = ""
@@ -2800,6 +2936,7 @@ def _generate_fallback_rubric_plan(
             project_clause = f" on '{p_name}'"
 
     phase_counts = allocate_phase_counts(total_questions)
+    role_title = job_role.value.replace("_", " ").title()
 
     stage_templates: Dict[QuestionStage, List[Dict[str, Any]]] = {}
     for tmpl in role_bank:
@@ -2815,9 +2952,17 @@ def _generate_fallback_rubric_plan(
         QuestionStage.CLOSING,
     ]
 
+    # Pre-extract competency matrix concepts for dynamic slots
+    role_competencies = get_role_competency_matrix(job_role)
+    competency_concept_pool = []
+    for cw in role_competencies:
+        for c in cw.required_concepts:
+            competency_concept_pool.append((cw.competency_area, c))
+
     allocated_questions: List[InterviewQuestion] = []
     seen_texts = set()
     coding_idx = 0
+    concept_slot_idx = 0
 
     for stage in ordered_stages:
         needed = phase_counts.get(stage, 0)
@@ -2875,13 +3020,16 @@ def _generate_fallback_rubric_plan(
                 )
             )
 
-        # If more questions are needed for this stage than available templates, generate dynamic variants
+        # If more questions are needed for this stage than available templates, generate dynamic concept-driven variants
         current_stage_count = len([q for q in allocated_questions if q.stage == stage])
+        dynamic_lens_idx = 0
+
         while current_stage_count < needed:
             q_out_idx = len(allocated_questions)
             q_id = f"q_{q_out_idx + 1}"
             coding_ch = None
             coding_id = None
+
             if stage == QuestionStage.CODING:
                 coding_challenges_pool = _fallback_coding_challenges(
                     job_role.value, coding_idx + 1
@@ -2900,24 +3048,86 @@ def _generate_fallback_rubric_plan(
                     "Edge Case Handling",
                     f"{job_role.value} Programming",
                 ]
+            elif stage == QuestionStage.ICEBREAKER:
+                intro_prompts = [
+                    f"Please introduce your background in {role_title}: what core frameworks, tools, and technical principles guide your engineering?",
+                    f"Walk us through your engineering trajectory: what pivotal technical project or system challenge shaped your specialization as a {role_title}?",
+                    f"What architectural principles or engineering best practices do you consider indispensable for a high-performing {role_title}?",
+                ]
+                comp = f"{role_title} Introduction"
+                q_text = intro_prompts[dynamic_lens_idx % len(intro_prompts)]
+                ref_ans = f"Candidate outlines their technical background, core competency in {role_title}, and fundamental software design principles."
+                expected_c = [f"{role_title} Background", "Software Design Principles", "Core Technologies"]
             elif stage == QuestionStage.BEHAVIORAL:
-                comp = "Behavioral & STAR Scenario"
-                q_text = f"Describe a situation in your {job_role.value.replace('_', ' ').title()} work where you had to navigate ambiguous requirements or tight delivery deadlines using the STAR method."
+                extra_beh = [
+                    f"Tell me about a situation in your {role_title} work where you had to navigate ambiguous or rapidly evolving requirements using the STAR method.",
+                    f"Describe a time when you identified critical technical debt or architectural flaws. How did you build consensus and lead the remediation effort?",
+                    f"Can you share an experience where you mentored a team member or established team-wide engineering best practices that elevated code quality?",
+                    f"Describe a situation where a cross-functional dependency or technical blocker threatened delivery. How did you communicate trade-offs and drive a resolution?",
+                    f"Tell me about a time you received critical feedback during a technical review or post-mortem. How did you adapt your approach and improve your engineering craft?",
+                ]
+                comp = "Behavioral & Situational Engineering"
+                q_text = extra_beh[dynamic_lens_idx % len(extra_beh)]
                 ref_ans = "Candidate uses the STAR methodology to describe a realistic engineering scenario, articulating clear ownership, technical trade-offs, and measurable outcomes."
                 expected_c = ["STAR Methodology", "Ownership & Accountability", "Technical Trade-offs"]
-            else:
-                comp = f"{job_role.value.replace('_', ' ').title()} {stage.value.replace('_', ' ').title()}"
-                q_text = f"Explain your technical approach, architecture patterns, and best practices regarding {comp} in production environments."
-                ref_ans = f"Candidate articulates sound engineering principles, architecture trade-offs, and operational best practices for {comp}."
-                expected_c = [comp, "Production Reliability", "Architecture Best Practices"]
+            elif stage == QuestionStage.CLOSING:
+                closing_prompts = [
+                    f"As a {role_title}, what comprehensive automated testing, application security (OWASP/auth), and observability strategies do you enforce before production release?",
+                    f"Looking at emerging technology trends in {role_title} architecture, what new tools or paradigms are you actively evaluating for future scalability?",
+                    f"How do you establish engineering excellence, blameless post-mortems, and continuous improvement standards within your engineering team?",
+                ]
+                comp = f"{role_title} Quality, Security & Engineering Excellence"
+                q_text = closing_prompts[dynamic_lens_idx % len(closing_prompts)]
+                ref_ans = f"Candidate articulates sound testing, reliability, security, and continuous delivery standards for {role_title}."
+                expected_c = ["Production Reliability", "Security Best Practices", "Engineering Velocity"]
+            elif stage == QuestionStage.DEEP_DIVE:
+                if competency_concept_pool:
+                    comp_area, concept = competency_concept_pool[concept_slot_idx % len(competency_concept_pool)]
+                    concept_slot_idx += 1
+                else:
+                    comp_area, concept = f"{role_title} Architecture", "High Concurrency & Resiliency"
+
+                deep_lenses = [
+                    f"In your engineering work{project_clause}, how have you architected and scaled {concept} ({comp_area}) under high concurrency or strict reliability constraints?",
+                    f"Describe an architectural deep-dive where you diagnosed, benchmarked, and resolved a complex latency bottleneck or failure involving {concept}.",
+                    f"How would you architect a zero-downtime migration or refactoring for a production service critically dependent on {concept} ({comp_area})?",
+                ]
+                comp = f"{comp_area} — {concept}"
+                q_text = deep_lenses[dynamic_lens_idx % len(deep_lenses)]
+                ref_ans = f"Candidate details advanced architectural patterns, trade-off evaluations, latency mitigations, and scalability safeguards for {concept} in {comp_area}."
+                expected_c = [concept, comp_area, "Scalability & Resiliency", "System Trade-offs"]
+            else:  # CORE_TECHNICAL
+                if competency_concept_pool:
+                    comp_area, concept = competency_concept_pool[concept_slot_idx % len(competency_concept_pool)]
+                    concept_slot_idx += 1
+                else:
+                    comp_area, concept = f"{role_title} Core Concepts", "Distributed Systems"
+
+                tech_lenses = [
+                    f"How do you design, optimize, and manage {concept} within {comp_area}, and what key performance metrics and trade-offs do you consider?",
+                    f"Explain the internal mechanics, core execution lifecycle, and common pitfalls of {concept} in production systems.",
+                    f"What are the major architectural trade-offs and alternative implementation patterns when working with {concept} ({comp_area})?",
+                    f"How do you ensure data consistency, fault tolerance, and edge-case resilience when implementing {concept}?",
+                ]
+                comp = f"{comp_area} — {concept}"
+                q_text = tech_lenses[dynamic_lens_idx % len(tech_lenses)]
+                ref_ans = f"Candidate provides a thorough technical explanation of {concept} within {comp_area}, detailing working principles, real-world implementation, and trade-offs."
+                expected_c = [concept, comp_area, f"{concept} Best Practices"]
+
+            dynamic_lens_idx += 1
+
+            if q_text in seen_texts:
+                # If text collision occurred, append unique slot discriminator
+                q_text = f"{q_text.rstrip('.')} (Focus Area {q_out_idx + 1})."
+            seen_texts.add(q_text)
 
             rubric_dyn = QuestionRubric(
                 reference_answer=ref_ans,
                 key_concepts_expected=expected_c,
                 depth_criteria={
-                    "basic": "Candidate demonstrates superficial understanding with partial concepts.",
-                    "intermediate": "Candidate explains standard working principles and typical use cases.",
-                    "advanced": "Candidate explains deep internal mechanics, performance trade-offs, and edge cases.",
+                    "basic": f"Candidate demonstrates superficial understanding with partial concepts for {comp}.",
+                    "intermediate": f"Candidate explains standard working principles, implementation patterns, and typical use cases for {comp}.",
+                    "advanced": f"Candidate explains deep internal mechanics, performance trade-offs, scalability limits, and edge cases for {comp}.",
                 },
                 scoring_guide={"relevance_max": 30.0, "depth_max": 40.0, "accuracy_max": 30.0},
             )
