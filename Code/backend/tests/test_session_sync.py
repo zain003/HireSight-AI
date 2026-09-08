@@ -341,3 +341,46 @@ async def test_session_state_recovery_after_reload():
     assert state["current_question"]["question_index"] == 2
     assert state["current_question"]["question_id"] == "q_3"
     assert state["status"] == InterviewStatus.IN_PROGRESS.value
+
+
+@pytest.mark.anyio
+async def test_follow_up_inherits_parent_core_technical_stage():
+    """Follow-up questions generated for core_technical questions maintain core_technical stage without jumping to behavioral."""
+    service = InterviewService()
+    session = _make_dummy_session(total_questions=4)
+    # Question at index 1 is CORE_TECHNICAL
+    assert session.questions[1]["stage"] == "core_technical"
+
+    mock_eval = AnswerEvaluation(
+        question_index=1,
+        question_text=session.questions[1]["question_text"],
+        follow_up_triggered=True,
+    )
+    # Simulate first question answered
+    session.evaluations.append(AnswerEvaluation(question_index=0, candidate_transcript="Intro ans"))
+    session.current_question_index = 1
+
+    with patch.object(service.stt_service, "transcribe", new_callable=AsyncMock, return_value="Tech answer"), \
+         patch.object(service.face_service, "analyze", new_callable=AsyncMock, return_value=MagicMock()), \
+         patch("app.interview.application.interview_service.evaluate_answer_interview", new_callable=AsyncMock, return_value=mock_eval), \
+         patch("app.interview.application.interview_service.generate_followup_question", new_callable=AsyncMock, return_value={
+             "question_text": "How do you handle race conditions in that design?",
+             "stage": "core_technical",
+             "difficulty": "mid",
+         }), \
+         patch("app.interview.models.InterviewSession.save", new_callable=AsyncMock):
+
+        result = await service.process_answer(
+            session=session,
+            question_index=1,
+            audio_base64=None,
+            transcript_text="Tech answer",
+            frame_base64_list=[],
+        )
+
+        assert result["follow_up_question"] is not None
+        fu = session.questions[2]
+        assert fu["question_type"] == QuestionType.FOLLOW_UP.value
+        assert fu["stage"] == "core_technical", f"Follow-up must inherit core_technical stage, got: {fu.get('stage')}"
+        assert fu["parent_question_id"] == "q_2"
+

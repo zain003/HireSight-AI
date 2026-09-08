@@ -243,7 +243,8 @@ class InterviewService:
         existing_followups = [
             q for q in session.questions if (q.get("question_type") or "").strip().lower() == QuestionType.FOLLOW_UP.value
         ]
-        current_stage = (question.get("stage") or question_type or "").strip().lower()
+        parent_stage = question.get("stage") or question_type or "core_technical"
+        current_stage = str(parent_stage).strip().lower()
         stage_followups = [
             q
             for q in existing_followups
@@ -263,7 +264,7 @@ class InterviewService:
                 original_question=question_text,
                 candidate_answer=transcript,
                 asked_questions=[q.get("question_text", "") for q in session.questions],
-                stage=question.get("stage") or question_type,
+                stage=current_stage,
                 conversation_history=[
                     {"role": "user", "content": question_text},
                     {"role": "assistant", "content": transcript},
@@ -276,7 +277,7 @@ class InterviewService:
                     "question_index": question_index + 1,
                     "question_text": follow_up.get("question_text", ""),
                     "question_type": QuestionType.FOLLOW_UP.value,
-                    "stage": follow_up.get("stage") or question.get("stage") or question_type,
+                    "stage": follow_up.get("stage") or current_stage,
                     "difficulty": follow_up.get("difficulty") or None,
                     "parent_question_id": question.get("question_id"),
                 }

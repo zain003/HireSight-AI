@@ -1677,6 +1677,23 @@ async def generate_question_plan(
     return ordered_verbal + coding_questions
 
 
+def _normalize_followup_stage(stage_raw: Optional[str]) -> str:
+    s = (stage_raw or "").strip().lower()
+    if s in {"icebreaker", "intro", "introduction"}:
+        return "icebreaker"
+    if s in {"core_technical", "technical", "tech"}:
+        return "core_technical"
+    if s in {"deep_dive", "cv_based", "architecture", "system_design"}:
+        return "deep_dive"
+    if s in {"coding", "code_sandbox"}:
+        return "coding"
+    if s in {"behavioral", "situational", "star"}:
+        return "behavioral"
+    if s in {"closing", "wrap_up", "conclusion"}:
+        return "closing"
+    return "core_technical"
+
+
 async def generate_followup_question(
     job_role: str,
     original_question: str,
@@ -1686,9 +1703,7 @@ async def generate_followup_question(
     stage: Optional[str] = None,
 ) -> dict:
     asked_questions = asked_questions or []
-    stage = (stage or "behavioral").strip().lower()
-    if stage not in {"introduction", "behavioral", "technical", "cv_based"}:
-        stage = "behavioral"
+    stage = _normalize_followup_stage(stage)
 
     prompt = (
         "The candidate gave a shallow answer. Generate ONE follow-up question.\n\n"
@@ -1700,10 +1715,11 @@ async def generate_followup_question(
         "Rules:\n"
         "- Keep it to one question only\n"
         "- Must be different from all asked questions\n"
-        "- Follow up directly on missing specifics from candidate answer\n\n"
+        "- Follow up directly on missing specifics from candidate answer\n"
+        "- Must match the context of the CURRENT STAGE\n\n"
         "Return ONLY this JSON:\n"
         "{\"question_text\": \"...\", \"question_type\": \"follow_up\", "
-        "\"stage\": \"introduction|behavioral|technical|cv_based\", \"difficulty\": \"easy|medium|hard\"}"
+        f"\"stage\": \"{stage}\", \"difficulty\": \"medium\"}}"
     )
 
     history = conversation_history[-6:]
@@ -1717,39 +1733,54 @@ async def generate_followup_question(
     asked_norm = {_normalize_question_text(q) for q in asked_questions if _normalize_question_text(q)}
 
     FOLLOWUP_CANDIDATES = {
-        "introduction": [
-            "Could you add a bit more detail on your most relevant experience or education for this role?",
-            "What specific projects or engineering problems in your background best demonstrate your readiness for this role?",
-            "How has your previous technical work shaped your motivation and preparation for this position?",
+        "icebreaker": [
+            "Could you highlight which specific project or experience in your background best demonstrates your readiness for this role?",
+            "What motivated your specialization in this technology stack, and what is your primary engineering focus?",
+            "How have your previous engineering responsibilities prepared you for the technical expectations of this position?",
+        ],
+        "core_technical": [
+            "Please walk through your exact technical approach step by step, detailing key trade-offs and performance characteristics.",
+            "How would your proposed solution scale under significantly higher concurrency or strict latency constraints?",
+            "What specific failure modes, edge cases, or data consistency risks might arise, and how would you mitigate them?",
+            "What alternative architectures or libraries did you evaluate before deciding on this particular design?",
+        ],
+        "deep_dive": [
+            "Could you walk through the architectural trade-offs, database indexing, and caching strategy you chose for that system?",
+            "What were the most challenging edge cases or system bottlenecks you encountered, and what profiling tools did you use?",
+            "How did you guarantee data integrity, distributed state synchronization, or idempotency in that implementation?",
+            "If you were redesigning that architecture from scratch today with 10x traffic, what fundamental changes would you make?",
+        ],
+        "coding": [
+            "What is the precise time and space complexity of your algorithm, and where does the primary asymptotic bottleneck lie?",
+            "How does your implementation handle boundary conditions such as empty inputs, negative values, or large-scale arrays?",
+            "Could this solution be optimized further using an auxiliary data structure or dynamic programming approach?",
         ],
         "behavioral": [
-            "Could you give a specific real example with measurable impact and explain exactly what your contribution was?",
+            "Could you give a specific real-world example with measurable impact and explain exactly what your contribution was using the STAR method?",
             "What was the most critical technical or organizational obstacle you faced during that situation, and how did you resolve it?",
             "Looking back on that outcome, what key lesson did you learn, and what would you do differently today?",
             "How did you evaluate technical trade-offs and communicate your decisions to team members and stakeholders?",
         ],
-        "cv_based": [
-            "Could you walk through the architectural decisions and technical trade-offs you made on that project?",
-            "What quantifiable metrics, performance improvements, or business outcomes resulted from your contribution?",
-            "What were the most challenging edge cases or system bottlenecks you encountered, and how did you mitigate them?",
-        ],
-        "technical": [
-            "Please walk through your exact approach step by step, including tradeoffs and why you chose that design.",
-            "How would your proposed solution scale under significantly higher traffic volume or strict latency constraints?",
-            "What potential failure modes, data consistency risks, or edge cases could arise, and how would you handle them?",
-            "What alternative architectures or libraries did you evaluate before deciding on this particular approach?",
+        "closing": [
+            "How do you ensure automated test coverage, CI/CD safety, and observability (metrics/logging/alerting) in production deployments?",
+            "How do you approach technical debt management, refactoring, and code review standards within an engineering team?",
+            "What emerging technologies or architectural practices are you currently exploring to enhance system reliability?",
         ],
     }
+    # Backward compatibility aliases
+    FOLLOWUP_CANDIDATES["introduction"] = FOLLOWUP_CANDIDATES["icebreaker"]
+    FOLLOWUP_CANDIDATES["technical"] = FOLLOWUP_CANDIDATES["core_technical"]
+    FOLLOWUP_CANDIDATES["cv_based"] = FOLLOWUP_CANDIDATES["deep_dive"]
 
-    if not text or norm in asked_norm:
-        candidates = FOLLOWUP_CANDIDATES.get(stage, FOLLOWUP_CANDIDATES["technical"])
+    if not text or norm in asked_norm or len(text) < 15:
+        candidates = FOLLOWUP_CANDIDATES.get(stage, FOLLOWUP_CANDIDATES["core_technical"])
         chosen_text = None
         for cand in candidates:
             if _normalize_question_text(cand) not in asked_norm:
                 chosen_text = cand
                 break
         if not chosen_text:
-            chosen_text = f"Could you provide additional technical depth and specific trade-offs regarding your approach for {job_role}?"
+            chosen_text = f"Could you provide additional technical depth and specific trade-offs regarding your approach for {job_role} ({stage})?"
         text = chosen_text
 
     return {
@@ -3253,12 +3284,30 @@ async def generate_rubric_backed_plan(
                 norm_role, norm_seniority, candidate_skills, candidate_projects, total_q
             )
 
+        # Strict Stage Ordering: Icebreaker -> Core Technical -> Deep Dive -> Coding -> Behavioral -> Closing
+        STAGES_IN_ORDER = [
+            QuestionStage.ICEBREAKER,
+            QuestionStage.CORE_TECHNICAL,
+            QuestionStage.DEEP_DIVE,
+            QuestionStage.CODING,
+            QuestionStage.BEHAVIORAL,
+            QuestionStage.CLOSING,
+        ]
+
+        # Generate fallback plan to draw from whenever LLM has missing slots or incomplete stages
+        fallback_plan = _generate_fallback_rubric_plan(
+            norm_role, norm_seniority, candidate_skills, candidate_projects, total_q
+        )
+        fallback_by_stage: Dict[QuestionStage, List[InterviewQuestion]] = {s: [] for s in STAGES_IN_ORDER}
+        for fq in fallback_plan:
+            if fq.stage in fallback_by_stage:
+                fallback_by_stage[fq.stage].append(fq)
+
+        stage_buckets: Dict[QuestionStage, List[InterviewQuestion]] = {s: [] for s in STAGES_IN_ORDER}
         seen_normalized_texts = set()
-        validated_questions: List[InterviewQuestion] = []
         coding_counter = 0
-        for idx, item in enumerate(parsed_items):
-            if len(validated_questions) >= total_q:
-                break
+
+        for item in parsed_items:
             if not isinstance(item, dict):
                 continue
             text = str(item.get("question_text", "")).strip()
@@ -3269,13 +3318,30 @@ async def generate_rubric_backed_plan(
             norm_key = re.sub(r"[^\w\s]", "", text.lower())[:80]
             if norm_key in seen_normalized_texts:
                 continue
-            seen_normalized_texts.add(norm_key)
 
             stage_str = str(item.get("stage", "core_technical")).strip().lower()
-            try:
-                stage_enum = QuestionStage(stage_str)
-            except ValueError:
+            if stage_str in {"icebreaker", "intro", "introduction"}:
+                stage_enum = QuestionStage.ICEBREAKER
+            elif stage_str in {"core_technical", "technical", "tech", "cv_based"}:
                 stage_enum = QuestionStage.CORE_TECHNICAL
+            elif stage_str in {"deep_dive", "architecture", "system_design"}:
+                stage_enum = QuestionStage.DEEP_DIVE
+            elif stage_str in {"coding", "code_sandbox"}:
+                stage_enum = QuestionStage.CODING
+            elif stage_str in {"behavioral", "situational", "star"}:
+                stage_enum = QuestionStage.BEHAVIORAL
+            elif stage_str in {"closing", "wrap_up", "conclusion"}:
+                stage_enum = QuestionStage.CLOSING
+            else:
+                try:
+                    stage_enum = QuestionStage(stage_str)
+                except ValueError:
+                    stage_enum = QuestionStage.CORE_TECHNICAL
+
+            # Check if this stage bucket still needs questions
+            needed_for_stage = phase_counts.get(stage_enum, 0)
+            if len(stage_buckets[stage_enum]) >= needed_for_stage:
+                continue
 
             diff_str = str(item.get("difficulty", norm_seniority.value)).strip().lower()
             try:
@@ -3321,7 +3387,6 @@ async def generate_rubric_backed_plan(
                 scoring_guide={k: float(v) for k, v in scoring_guide.items()},
             )
 
-            q_out_idx = len(validated_questions)
             coding_ch = None
             coding_id = None
             if stage_enum == QuestionStage.CODING:
@@ -3331,10 +3396,11 @@ async def generate_rubric_backed_plan(
                 coding_id = f"code_{norm_role.value}_{coding_counter + 1}"
                 coding_counter += 1
 
-            validated_questions.append(
+            seen_normalized_texts.add(norm_key)
+            stage_buckets[stage_enum].append(
                 InterviewQuestion(
-                    question_id=f"q_{q_out_idx + 1}",
-                    question_index=q_out_idx,
+                    question_id="temp",
+                    question_index=0,
                     stage=stage_enum,
                     competency_area=comp_area,
                     difficulty=diff_enum,
@@ -3345,13 +3411,64 @@ async def generate_rubric_backed_plan(
                 )
             )
 
-        if len(validated_questions) < total_q:
-            # Fallback if insufficient valid questions generated
-            return _generate_fallback_rubric_plan(
-                norm_role, norm_seniority, candidate_skills, candidate_projects, total_q
+        # Assemble strictly in canonical phase order, backfilling any stage that didn't get enough questions from LLM
+        final_ordered_questions: List[InterviewQuestion] = []
+        for st in STAGES_IN_ORDER:
+            needed = phase_counts.get(st, 0)
+            cur_list = stage_buckets.get(st, [])
+            if len(cur_list) < needed:
+                # Backfill from fallback plan
+                for fq in fallback_by_stage.get(st, []):
+                    if len(cur_list) >= needed:
+                        break
+                    fq_norm = re.sub(r"[^\w\s]", "", fq.question_text.lower())[:80]
+                    if fq_norm not in seen_normalized_texts:
+                        seen_normalized_texts.add(fq_norm)
+                        cur_list.append(fq)
+                # If still under needed, append whatever remains in fallback
+                for fq in fallback_by_stage.get(st, []):
+                    if len(cur_list) >= needed:
+                        break
+                    cur_list.append(fq)
+            final_ordered_questions.extend(cur_list[:needed])
+
+        # If total questions assembled is still less than total_q, take remaining from fallback_plan
+        if len(final_ordered_questions) < total_q:
+            for fq in fallback_plan:
+                if len(final_ordered_questions) >= total_q:
+                    break
+                if fq not in final_ordered_questions:
+                    final_ordered_questions.append(fq)
+
+        # Final pass: assign strictly sequential question_index and question_id (q_1, q_2, ...)
+        assigned_questions: List[InterviewQuestion] = []
+        coding_assign_idx = 0
+        for idx, q in enumerate(final_ordered_questions[:total_q]):
+            c_id = q.coding_challenge_id
+            c_ch = q.coding_challenge
+            if q.stage == QuestionStage.CODING:
+                c_id = f"code_{norm_role.value}_{coding_assign_idx + 1}"
+                if c_ch is None:
+                    pool = _fallback_coding_challenges(norm_role.value, coding_assign_idx + 1)
+                    raw_ch = pool[coding_assign_idx % len(pool)]
+                    c_ch = _normalize_coding_challenge(raw_ch, norm_role.value, coding_assign_idx)
+                coding_assign_idx += 1
+
+            assigned_questions.append(
+                InterviewQuestion(
+                    question_id=f"q_{idx + 1}",
+                    question_index=idx,
+                    stage=q.stage,
+                    competency_area=q.competency_area,
+                    difficulty=q.difficulty,
+                    question_text=q.question_text,
+                    rubric=q.rubric,
+                    coding_challenge_id=c_id,
+                    coding_challenge=c_ch,
+                )
             )
 
-        return validated_questions
+        return assigned_questions
 
     except Exception:
         return _generate_fallback_rubric_plan(

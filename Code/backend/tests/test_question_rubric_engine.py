@@ -280,3 +280,44 @@ async def test_followup_question_zero_duplicates():
             asked.append(q_text)
 
 
+@pytest.mark.parametrize("total_q", [6, 10, 15, 20])
+def test_strict_stage_ordering_invariance_all_roles(total_q: int):
+    """All plans across all 7 roles strictly follow canonical stage sequence without phase jumping."""
+    stage_rank = {
+        QuestionStage.ICEBREAKER: 0,
+        QuestionStage.CORE_TECHNICAL: 1,
+        QuestionStage.DEEP_DIVE: 2,
+        QuestionStage.CODING: 3,
+        QuestionStage.BEHAVIORAL: 4,
+        QuestionStage.CLOSING: 5,
+    }
+
+    for role in StandardRole:
+        plan = _generate_fallback_rubric_plan(
+            job_role=role,
+            seniority=SeniorityLevel.MID,
+            candidate_skills=["Python", "System Design"],
+            candidate_projects=[{"name": "Production App"}],
+            total_questions=total_q,
+        )
+        ranks = [stage_rank[q.stage] for q in plan]
+        assert ranks == sorted(ranks), f"Stage order scrambled in {role.value} for total_q={total_q}: {[q.stage.value for q in plan]}"
+
+
+def test_followup_stage_normalization_preserves_canonical_stages():
+    """_normalize_followup_stage maps aliases correctly and preserves all 6 canonical stages."""
+    from app.interview.services.llm_service import _normalize_followup_stage
+
+    assert _normalize_followup_stage("icebreaker") == "icebreaker"
+    assert _normalize_followup_stage("intro") == "icebreaker"
+    assert _normalize_followup_stage("core_technical") == "core_technical"
+    assert _normalize_followup_stage("technical") == "core_technical"
+    assert _normalize_followup_stage("deep_dive") == "deep_dive"
+    assert _normalize_followup_stage("cv_based") == "deep_dive"
+    assert _normalize_followup_stage("coding") == "coding"
+    assert _normalize_followup_stage("behavioral") == "behavioral"
+    assert _normalize_followup_stage("closing") == "closing"
+    assert _normalize_followup_stage("unknown_stage") == "core_technical"
+
+
+

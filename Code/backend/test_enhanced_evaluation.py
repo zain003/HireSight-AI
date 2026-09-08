@@ -5,6 +5,7 @@ Tests behavioral analysis, vocal analysis, and report generation.
 import asyncio
 import base64
 import numpy as np
+import pytest
 try:
     import cv2
 except ImportError:
@@ -67,6 +68,7 @@ def create_dummy_audio() -> str:
     return base64.b64encode(wav_buffer.getvalue()).decode('utf-8')
 
 
+@pytest.mark.anyio
 async def test_behavioral_analysis():
     """Test behavioral analysis service."""
     print("\n" + "="*60)
@@ -93,9 +95,12 @@ async def test_behavioral_analysis():
     for flag in metrics.red_flags:
         print(f"  - {flag}")
     
+    assert metrics is not None
+    assert metrics.frame_count == 5
     return metrics
 
 
+@pytest.mark.anyio
 async def test_vocal_analysis():
     """Test vocal analysis service."""
     print("\n" + "="*60)
@@ -127,6 +132,7 @@ async def test_vocal_analysis():
     for flag in metrics.red_flags:
         print(f"  - {flag}")
     
+    assert metrics is not None
     return metrics
 
 
@@ -335,6 +341,8 @@ def test_recruiter_report():
     print(f"{'='*60}")
     print(report.next_steps)
     
+    assert report is not None
+    assert report.candidate_name == "John Doe"
     return report
 
 

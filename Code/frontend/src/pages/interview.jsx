@@ -101,6 +101,15 @@ export default function InterviewPage() {
         return '';
       };
 
+      // If it's a follow-up with parent_question_id, look up parent question stage
+      if (question.parent_question_id && Array.isArray(questions)) {
+        const parent = questions.find((q) => q?.question_id === question.parent_question_id);
+        if (parent) {
+          const parentNorm = normalize(parent?.stage) || normalize(parent?.question_type);
+          if (parentNorm) return parentNorm;
+        }
+      }
+
       const fromExplicit = normalize(explicit);
       if (fromExplicit) return fromExplicit;
 
@@ -1412,8 +1421,10 @@ export default function InterviewPage() {
                     {micMuted ? 'Mic off' : 'Mic on'}
                   </span>
                   <span className="rounded-lg border border-white/10 bg-black/50 px-2.5 py-1 text-xs font-medium text-slate-200 backdrop-blur-sm">
-                    Q{overallBaseNumber}/{overallBaseTotal || 1}
-                    </span>
+                    {isFollowUpQuestion
+                      ? `Q${overallBaseNumber}/${overallBaseTotal || 1} · Follow-up (${currentIdx + 1}/${questions.length})`
+                      : `Q${overallBaseNumber}/${overallBaseTotal || 1} (${currentIdx + 1}/${questions.length})`}
+                  </span>
                 </div>
 
                 <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
@@ -1520,9 +1531,14 @@ export default function InterviewPage() {
                     </span>
                   </div>
                 </div>
-                <p className="mb-4 text-[11px] font-medium uppercase tracking-wider text-slate-500">
-                  Phase {currentStageIndex}/{stageOrder.length} — {currentStageLabel.toUpperCase()}
-                </p>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                    Phase {currentStageIndex}/{stageOrder.length} — {currentStageLabel.toUpperCase()}
+                  </p>
+                  <span className="text-xs text-slate-400 font-medium">
+                    Question {currentIdx + 1} of {questions.length}
+                  </span>
+                </div>
                 <div className="mb-4 flex flex-wrap gap-2">
                   <span className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-medium text-indigo-200">
                     {currentStageLabel}
