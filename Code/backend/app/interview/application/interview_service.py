@@ -23,6 +23,12 @@ from app.interview.services import (
     generate_rubric_backed_plan,
     evaluate_answer_interview,
 )
+from app.interview.domain.role_taxonomy import (
+    SeniorityLevel,
+    StandardRole,
+    parse_seniority_level,
+    parse_standard_role,
+)
 from app.interview.services.role_mapping_service import infer_seniority_level
 from app.interview.services.behavioral_analysis import BehavioralAnalysisService
 from app.interview.services.vocal_analysis import VocalAnalysisService
@@ -94,6 +100,8 @@ class InterviewService:
         job_description: str,
         candidate_skills: List[str],
         total_questions: int,
+        difficulty: Optional[str] = None,
+        seniority: Optional[str] = None,
         required_job_skills: Optional[List[str]] = None,
         candidate_projects: Optional[List[Dict]] = None,
         candidate_job_titles: Optional[List[str]] = None,
@@ -102,7 +110,7 @@ class InterviewService:
         experience_years: Optional[int] = None,
         job_post_id: Optional[str] = None,
     ) -> InterviewSession:
-        target_seniority = infer_seniority_level(experience_years)
+        target_seniority = parse_seniority_level(difficulty or seniority, experience_years)
         rubric_plan = await generate_rubric_backed_plan(
             job_role=job_role,
             seniority=target_seniority,
@@ -306,28 +314,14 @@ class InterviewService:
 
     async def end_interview(self, session: InterviewSession) -> Dict:
         # Determine role fit data from profile skills
-        from app.interview.domain.role_taxonomy import StandardRole
+        from app.interview.domain.role_taxonomy import parse_standard_role
         from app.interview.services.role_mapping_service import map_profile_to_role_fit
 
-        role_enum = None
-        try:
-            if session.job_role:
-                role_enum = StandardRole(session.job_role)
-        except Exception:
-            role_enum = None
-
-        role_fit_data = {}
-        if role_enum:
-            role_fit_data = map_profile_to_role_fit(
-                profile_skills=session.candidate_skills or [],
-                role=role_enum,
-            )
-        elif session.job_role:
-            role_fit_data = {
-                "role": session.job_role,
-                "overall_fit_score": 75.0 if session.candidate_skills else 50.0,
-                "matched_skills": session.candidate_skills or [],
-            }
+        role_enum = parse_standard_role(session.job_role)
+        role_fit_data = map_profile_to_role_fit(
+            profile_skills=session.candidate_skills or [],
+            role=role_enum,
+        )
 
         # Calculate scores
         behavioral_metrics = getattr(session, "behavioral_metrics", [])

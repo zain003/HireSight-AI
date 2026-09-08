@@ -272,6 +272,7 @@ class ResumeService:
         # Extract structured information using AI
         extracted_data = self.extraction_service.extract_all(text)
         extracted_data["raw_text"] = text
+        extracted_data["raw_text_length"] = len(text)
 
         # ✅ VALIDATE: Ensure resume is computing-related
         is_valid, error_message = self._validate_computing_resume(text, extracted_data)
@@ -328,6 +329,7 @@ class ResumeService:
 
         extracted_data["debug_file_path"] = debug_file_path
         extracted_data["raw_text"] = text
+        extracted_data["raw_text_length"] = len(text)
         extracted_data["ner_entities"] = extracted_data.get("debug", {}).get("ner_entities", {})
         return extracted_data
 

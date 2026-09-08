@@ -216,6 +216,8 @@ export default function InterviewSetupPage() {
         job_role: roleDisplayName,
         candidate_skills: profileSkills,
         num_questions: numQuestions,
+        difficulty: chosenSeniority,
+        seniority: chosenSeniority,
         ...(jobPost?.id || router.query.jobPostId ? { job_post_id: jobPost?.id || router.query.jobPostId } : {}),
       };
 

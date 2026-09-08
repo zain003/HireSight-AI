@@ -25,6 +25,8 @@ class LiveInterviewStartRequest(BaseModel):
     candidate_skills: List[str] = Field(default_factory=list)
     candidate_name: Optional[str] = None
     num_questions: int = Field(default=20, ge=4, le=30)
+    difficulty: Optional[str] = None
+    seniority: Optional[str] = None
 
 
 class LiveInterviewQuestion(BaseModel):

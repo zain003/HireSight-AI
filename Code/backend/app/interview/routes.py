@@ -11,7 +11,12 @@ from app.auth.job_post_model import JobPost
 from app.auth.models import Profile, User
 from bson import ObjectId
 from app.interview.application.interview_service import InterviewService
-from app.interview.domain.role_taxonomy import SeniorityLevel, StandardRole
+from app.interview.domain.role_taxonomy import (
+    SeniorityLevel,
+    StandardRole,
+    parse_seniority_level,
+    parse_standard_role,
+)
 from app.interview.models import InterviewSession
 from app.interview.schemas import (
     CodingChallengeEvaluation,
@@ -77,13 +82,7 @@ async def analyze_candidate_role_fit(
     request: RoleFitRequest,
 ):
     """Analyze candidate skill overlap and coverage against a target role's competency matrix."""
-    try:
-        role_enum = StandardRole(request.role)
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid role '{request.role}'. Supported roles: {[r.value for r in StandardRole]}",
-        )
+    role_enum = parse_standard_role(request.role)
     fit_data = map_profile_to_role_fit(profile_skills=request.skills, role=role_enum)
     return RoleFitResponse(**fit_data)
 
@@ -99,7 +98,7 @@ async def start_live_interview(
         profile = Profile(
             user_id=str(current_user.id),
             job_role=request.job_role or "Software Engineer",
-            difficulty_level="medium",
+            difficulty_level=request.difficulty or "medium",
             skills=request.candidate_skills or [],
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
@@ -139,6 +138,7 @@ async def start_live_interview(
         candidate_skills=candidate_skills,
         required_job_skills=required_job_skills,
         total_questions=request.num_questions,
+        difficulty=request.difficulty or request.seniority or profile.difficulty_level,
         candidate_projects=profile.projects or [],
         candidate_job_titles=profile.job_titles or [],
         candidate_certifications=profile.certifications or [],

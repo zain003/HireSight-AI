@@ -456,3 +456,70 @@ def get_role_competency_matrix(role: StandardRole) -> List[CompetencyWeight]:
 def get_all_standard_roles() -> List[StandardRole]:
     """Return all supported standardized roles."""
     return list(StandardRole)
+
+
+def parse_standard_role(role_str: Optional[str]) -> StandardRole:
+    """Robustly parse and normalize any role string, display title, or synonym into a StandardRole enum."""
+    if not role_str:
+        return StandardRole.BACKEND_ENGINEER
+
+    if isinstance(role_str, StandardRole):
+        return role_str
+
+    raw = str(role_str).strip()
+    norm = raw.lower().replace("-", "_").replace(" ", "_")
+
+    # 1. Exact value match
+    for role in StandardRole:
+        if role.value == norm or role.value == raw.lower():
+            return role
+
+    # 2. Key phrase / synonym matching
+    norm_text = raw.lower()
+    if any(k in norm_text for k in ["front", "react", "vue", "angular", "ui", "web dev"]):
+        return StandardRole.FRONTEND_ENGINEER
+    if any(k in norm_text for k in ["full", "stack", "fullstack", "full-stack"]):
+        return StandardRole.FULLSTACK_ENGINEER
+    if any(k in norm_text for k in ["devops", "cloud", "sre", "infra", "kubernetes", "platform"]):
+        return StandardRole.DEVOPS_ENGINEER
+    if any(k in norm_text for k in ["data", "analytics", "etl", "spark", "warehouse"]):
+        return StandardRole.DATA_ENGINEER
+    if any(k in norm_text for k in ["ml", "machine", "ai", "deep learning", "nlp", "llm"]):
+        return StandardRole.ML_ENGINEER
+    if any(k in norm_text for k in ["qa", "test", "quality", "sdet", "automation"]):
+        return StandardRole.QA_AUTOMATION_ENGINEER
+    if any(k in norm_text for k in ["back", "server", "api", "backend", "python", "django", "fastapi", "golang", "java", "node"]):
+        return StandardRole.BACKEND_ENGINEER
+
+    return StandardRole.BACKEND_ENGINEER
+
+
+def parse_seniority_level(
+    difficulty_or_seniority: Optional[str],
+    experience_years: Optional[int] = None,
+) -> SeniorityLevel:
+    """Parse candidate-selected difficulty or seniority level string with fallback to experience inference."""
+    if isinstance(difficulty_or_seniority, SeniorityLevel):
+        return difficulty_or_seniority
+
+    if difficulty_or_seniority and isinstance(difficulty_or_seniority, str):
+        val = difficulty_or_seniority.strip().lower()
+        if any(k in val for k in ["lead", "principal", "staff", "expert"]):
+            return SeniorityLevel.LEAD
+        if any(k in val for k in ["senior", "advanced", "hard", "sr"]):
+            return SeniorityLevel.SENIOR
+        if any(k in val for k in ["entry", "junior", "beginner", "easy", "intern", "assoc"]):
+            return SeniorityLevel.ENTRY
+        if any(k in val for k in ["mid", "intermediate", "medium", "middle"]):
+            return SeniorityLevel.MID
+
+    # Experience-based inference fallback
+    if experience_years is None or experience_years <= 2:
+        return SeniorityLevel.ENTRY
+    elif experience_years <= 5:
+        return SeniorityLevel.MID
+    elif experience_years <= 8:
+        return SeniorityLevel.SENIOR
+    else:
+        return SeniorityLevel.LEAD
+

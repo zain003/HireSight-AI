@@ -147,7 +147,7 @@ async def parse_resume(
             projects=[ProjectInfo(**p) for p in extracted_data["projects"]],
             certifications=extracted_data["certifications"],
             domain=extracted_data["domain"],
-            raw_text_length=extracted_data["raw_text_length"],
+            raw_text_length=extracted_data.get("raw_text_length", len(extracted_data.get("raw_text", ""))),
             extraction_json_path=extracted_data.get("extraction_json_path", ""),
         )
     
@@ -207,7 +207,7 @@ async def parse_resume_debug(
             projects=[ProjectInfo(**p) for p in extracted_data["projects"]],
             certifications=extracted_data["certifications"],
             domain=extracted_data["domain"],
-            raw_text_length=extracted_data["raw_text_length"],
+            raw_text_length=extracted_data.get("raw_text_length", len(extracted_data.get("raw_text", ""))),
             ner_entities=extracted_data.get("ner_entities", {}),
             raw_text=extracted_data.get("raw_text", ""),
             debug_file_path=extracted_data.get("debug_file_path", ""),
@@ -271,6 +271,13 @@ async def match_resume_to_job(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File type not allowed. Allowed types: {', '.join(settings.ALLOWED_EXTENSIONS)}"
+        )
+
+    from bson import ObjectId
+    if not ObjectId.is_valid(job_post_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job post ID format",
         )
 
     # Save file temporarily

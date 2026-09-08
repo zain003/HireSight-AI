@@ -264,11 +264,12 @@ class PDFReportGenerator:
             try:
                 feedback = TailoredFeedback(**session.recruiter_report["tailored_feedback"])
             except Exception:
-                from app.interview.domain.role_taxonomy import StandardRole, get_role_competency_matrix
-                try:
-                    role_comps = get_role_competency_matrix(StandardRole(session.job_role))
-                except Exception:
-                    role_comps = []
+                from app.interview.domain.role_taxonomy import (
+                    StandardRole,
+                    get_role_competency_matrix,
+                    parse_standard_role,
+                )
+                role_comps = get_role_competency_matrix(parse_standard_role(session.job_role))
                 feedback = generate_tailored_feedback(
                     evaluations=session.evaluations,
                     coding_evaluation=session.coding_results[0] if session.coding_results else None,
@@ -277,11 +278,12 @@ class PDFReportGenerator:
                     cv_metrics=session.behavioral_metrics,
                 )
         else:
-            from app.interview.domain.role_taxonomy import StandardRole, get_role_competency_matrix
-            try:
-                role_comps = get_role_competency_matrix(StandardRole(session.job_role))
-            except Exception:
-                role_comps = []
+            from app.interview.domain.role_taxonomy import (
+                StandardRole,
+                get_role_competency_matrix,
+                parse_standard_role,
+            )
+            role_comps = get_role_competency_matrix(parse_standard_role(session.job_role))
             feedback = generate_tailored_feedback(
                 evaluations=session.evaluations,
                 coding_evaluation=session.coding_results[0] if session.coding_results else None,

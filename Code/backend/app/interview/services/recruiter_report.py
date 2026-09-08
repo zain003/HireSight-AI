@@ -448,13 +448,13 @@ class RecruiterReportGenerator:
         fit_status_str = five_dim.fit_status.value
 
         # Generate Evidence-Anchored Tailored Feedback
-        from app.interview.domain.role_taxonomy import StandardRole, get_role_competency_matrix
-        role_comps = []
-        try:
-            standard_role = StandardRole(job_role)
-            role_comps = get_role_competency_matrix(standard_role)
-        except Exception:
-            role_comps = []
+        from app.interview.domain.role_taxonomy import (
+            StandardRole,
+            get_role_competency_matrix,
+            parse_standard_role,
+        )
+        standard_role = parse_standard_role(job_role)
+        role_comps = get_role_competency_matrix(standard_role)
 
         coding_eval_target = None
         if coding_results:

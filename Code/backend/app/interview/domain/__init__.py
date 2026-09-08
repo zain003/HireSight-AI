@@ -11,6 +11,15 @@ from .interview_models import (
     ObservableVocalMetrics,
     QuestionType,
 )
+from .role_taxonomy import (
+    CompetencyWeight,
+    RoleMetadata,
+    SeniorityLevel,
+    StandardRole,
+    get_role_competency_matrix,
+    parse_seniority_level,
+    parse_standard_role,
+)
 from .scoring_models import (
     CandidateFitStatus,
     FiveDimensionScores,
@@ -20,6 +29,7 @@ from .scoring_models import (
 __all__ = [
     "AnswerEvaluation",
     "CandidateFitStatus",
+    "CompetencyWeight",
     "EmotionLabel",
     "FiveDimensionScores",
     "FrameAnalysisResult",
@@ -29,6 +39,12 @@ __all__ = [
     "ObservableCVMetrics",
     "ObservableVocalMetrics",
     "QuestionType",
+    "RoleMetadata",
     "ScoringWeights",
+    "SeniorityLevel",
+    "StandardRole",
+    "get_role_competency_matrix",
+    "parse_seniority_level",
+    "parse_standard_role",
 ]
 
