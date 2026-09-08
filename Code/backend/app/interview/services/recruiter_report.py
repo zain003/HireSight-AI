@@ -253,6 +253,16 @@ def calculate_five_dimension_scores(
             else:
                 gaze, head, presence, dynamics = 70.0, 70.0, 80.0, 70.0
 
+            # Normalize ratios in (0.0, 1.0] to 0-100 percentage scale
+            if 0.0 < gaze <= 1.0:
+                gaze = gaze * 100.0
+            if 0.0 < head <= 1.0:
+                head = head * 100.0
+            if 0.0 < presence <= 1.0:
+                presence = presence * 100.0
+            if 0.0 < dynamics <= 1.0:
+                dynamics = dynamics * 100.0
+
             b_score = gaze * 0.35 + head * 0.25 + presence * 0.25 + dynamics * 0.15
             beh_scores.append(b_score)
             beh_details.append({"gaze": gaze, "head_pose": head, "presence": presence, "dynamics": dynamics, "score": round(b_score, 2)})

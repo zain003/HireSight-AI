@@ -119,8 +119,8 @@ async def start_live_interview(
 
     job_post_id = request.job_post_id
     required_job_skills = []
-    if job_post_id:
-        job_post = await JobPost.get(job_post_id)
+    if job_post_id and ObjectId.is_valid(job_post_id):
+        job_post = await JobPost.get(ObjectId(job_post_id))
         if job_post:
             job_role = job_post.title or job_role
             job_description = job_post.description or job_description
@@ -249,6 +249,15 @@ async def get_live_report(
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
     if not session.report:
+        if session.current_question_index >= len(session.questions) or session.status == "completed":
+            result = await interview_service.end_interview(session)
+            return InterviewReportResponse(
+                session_id=session.session_id,
+                status=session.status,
+                aggregate_scores=result["scores"],
+                report=result["report"],
+                recruiter_report=None,
+            )
         raise HTTPException(status_code=404, detail="Interview report not generated yet")
 
     return InterviewReportResponse(

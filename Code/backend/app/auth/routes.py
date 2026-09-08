@@ -70,11 +70,12 @@ async def skill_match(
     Match skills between a job post and a candidate profile.
     Returns matched, missing, and extra skills.
     """
-    from app.auth.job_post_model import JobPost
-    job_post = await JobPost.get(job_post_id)
+    job_post = await JobPostService.get_job_post_by_id(job_post_id)
     if not job_post:
         raise HTTPException(status_code=404, detail="Job post not found")
-    candidate_profile = await Profile.get(candidate_profile_id)
+    if not ObjectId.is_valid(candidate_profile_id):
+        raise HTTPException(status_code=400, detail="Invalid candidate profile ID")
+    candidate_profile = await Profile.get(ObjectId(candidate_profile_id))
     if not candidate_profile:
         raise HTTPException(status_code=404, detail="Candidate profile not found")
     candidate_skills = SkillMatcher.flatten_candidate_skill_lists(
@@ -171,11 +172,8 @@ async def get_job_candidates(
     Get all candidates who applied and completed interviews for a specific job.
     Returns list of candidates with their interview status and reports (admin only).
     """
-    from app.auth.job_post_model import JobPost
-    from app.interview.models import InterviewSession
-    
     # Verify job post exists
-    job_post = await JobPost.get(job_post_id)
+    job_post = await JobPostService.get_job_post_by_id(job_post_id)
     if not job_post:
         raise HTTPException(status_code=404, detail="Job post not found")
     
@@ -237,11 +235,8 @@ async def get_candidate_report(
     Get comprehensive interview report for a specific candidate (admin only).
     This endpoint is private - only admin who posted the job can access.
     """
-    from app.auth.job_post_model import JobPost
-    from app.interview.models import InterviewSession
-    
     # Verify job post exists
-    job_post = await JobPost.get(job_post_id)
+    job_post = await JobPostService.get_job_post_by_id(job_post_id)
     if not job_post:
         raise HTTPException(status_code=404, detail="Job post not found")
     

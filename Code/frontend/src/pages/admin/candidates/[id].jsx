@@ -36,7 +36,7 @@ export default function CandidateReportPage() {
 
   useEffect(() => {
     if (!router.isReady) return;
-    if (!authService.isAuthenticated()) {
+    if (!authService.isAuthenticated() || !authService.isAdminAuthenticated()) {
       router.push('/admin-login');
       return;
     }

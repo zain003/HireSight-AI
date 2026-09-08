@@ -90,7 +90,7 @@ export default function AdminDashboard() {
   });
 
   useEffect(() => {
-    if (!authService.isAuthenticated()) {
+    if (!authService.isAuthenticated() || !authService.isAdminAuthenticated()) {
       router.push('/admin-login');
       return;
     }
