@@ -14,7 +14,7 @@ from app.auth.schemas import (
 )
 from app.auth.service import AuthService
 from app.auth.admin_service import AdminAuthService
-from app.auth.dependencies import get_current_active_user
+from app.auth.dependencies import get_current_active_user, get_current_admin_user
 from app.auth.models import User, Profile
 from app.core.security import create_access_token
 from app.core.exceptions import ValidationError, AuthenticationError
@@ -31,6 +31,7 @@ from app.auth.admin_candidates_service import (
     get_candidate_roster,
     get_candidate_session_report,
 )
+from bson import ObjectId
 
 router = APIRouter()
 
@@ -60,7 +61,11 @@ async def admin_login(login_data: UserLogin):
 
 
 @router.post("/admin/skill-match")
-async def skill_match(job_post_id: str = Body(...), candidate_profile_id: str = Body(...)):
+async def skill_match(
+    job_post_id: str = Body(...),
+    candidate_profile_id: str = Body(...),
+    _admin: User = Depends(get_current_admin_user),
+):
     """
     Match skills between a job post and a candidate profile.
     Returns matched, missing, and extra skills.
@@ -82,29 +87,32 @@ async def skill_match(job_post_id: str = Body(...), candidate_profile_id: str = 
 
 
 @router.post("/admin/job-post", response_model=JobPostResponse)
-async def create_job_post(job_post_data: JobPostCreate):
+async def create_job_post(
+    job_post_data: JobPostCreate,
+    _admin: User = Depends(get_current_admin_user),
+):
     """
     Create a new job post (admin only).
-    Requires admin authentication (handled externally).
+    Requires admin authentication.
     """
     job_post = await JobPostService.create_job_post(job_post_data)
     return job_post_to_response_dict(job_post, 0)
 
 
 @router.get("/admin/dashboard-stats")
-async def admin_dashboard_stats():
+async def admin_dashboard_stats(_admin: User = Depends(get_current_admin_user)):
     """Real metrics for the admin dashboard (users, jobs, interviews, skills)."""
     return await get_dashboard_stats()
 
 
 @router.get("/admin/users")
-async def admin_list_users():
+async def admin_list_users(_admin: User = Depends(get_current_admin_user)):
     """Registered candidates with optional profile / resume flags."""
     return await list_users_for_admin()
 
 
 @router.get("/admin/job-posts", response_model=list[JobPostResponse])
-async def get_all_job_posts():
+async def get_all_job_posts(_admin: User = Depends(get_current_admin_user)):
     """
     Get all job posts (admin only).
     """
@@ -117,7 +125,10 @@ async def get_all_job_posts():
 
 
 @router.get("/admin/job-posts/{job_post_id}", response_model=JobPostResponse)
-async def get_job_post(job_post_id: str):
+async def get_job_post(
+    job_post_id: str,
+    _admin: User = Depends(get_current_admin_user),
+):
     """Get a single job post by id (admin)."""
     jp = await JobPostService.get_job_post_by_id(job_post_id)
     if not jp:
@@ -127,7 +138,11 @@ async def get_job_post(job_post_id: str):
 
 
 @router.put("/admin/job-posts/{job_post_id}", response_model=JobPostResponse)
-async def update_job_post(job_post_id: str, job_post_data: JobPostUpdate):
+async def update_job_post(
+    job_post_id: str,
+    job_post_data: JobPostUpdate,
+    _admin: User = Depends(get_current_admin_user),
+):
     """Update a job post (admin)."""
     jp = await JobPostService.update_job_post(job_post_id, job_post_data)
     if not jp:
@@ -137,7 +152,10 @@ async def update_job_post(job_post_id: str, job_post_data: JobPostUpdate):
 
 
 @router.delete("/admin/job-posts/{job_post_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_job_post(job_post_id: str):
+async def delete_job_post(
+    job_post_id: str,
+    _admin: User = Depends(get_current_admin_user),
+):
     """Delete a job post (admin)."""
     deleted = await JobPostService.delete_job_post(job_post_id)
     if not deleted:
@@ -145,7 +163,10 @@ async def delete_job_post(job_post_id: str):
 
 
 @router.get("/admin/job-posts/{job_post_id}/candidates")
-async def get_job_candidates(job_post_id: str):
+async def get_job_candidates(
+    job_post_id: str,
+    _admin: User = Depends(get_current_admin_user),
+):
     """
     Get all candidates who applied and completed interviews for a specific job.
     Returns list of candidates with their interview status and reports (admin only).
@@ -167,7 +188,9 @@ async def get_job_candidates(job_post_id: str):
     for session in sessions:
         # Get candidate profile
         profile = await Profile.find_one({"user_id": session.user_id})
-        user = await User.get(session.user_id)
+        user = None
+        if session.user_id and ObjectId.is_valid(session.user_id):
+            user = await User.get(session.user_id)
         
         candidate_data = {
             "session_id": session.session_id,
@@ -205,7 +228,11 @@ async def get_job_candidates(job_post_id: str):
 
 
 @router.get("/admin/job-posts/{job_post_id}/candidates/{session_id}/report")
-async def get_candidate_report(job_post_id: str, session_id: str):
+async def get_candidate_report(
+    job_post_id: str,
+    session_id: str,
+    _admin: User = Depends(get_current_admin_user),
+):
     """
     Get comprehensive interview report for a specific candidate (admin only).
     This endpoint is private - only admin who posted the job can access.
@@ -234,7 +261,9 @@ async def get_candidate_report(job_post_id: str, session_id: str):
         )
     
     # Get candidate info
-    user = await User.get(session.user_id)
+    user = None
+    if session.user_id and ObjectId.is_valid(session.user_id):
+        user = await User.get(session.user_id)
     profile = await Profile.find_one({"user_id": session.user_id})
     
     return {
@@ -275,6 +304,7 @@ async def admin_get_candidate_roster(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(10, ge=1, le=100, description="Items per page"),
     job_post_id: Optional[str] = Query(None, description="Optional job post ID filter"),
+    _admin: User = Depends(get_current_admin_user),
 ):
     """
     Retrieve paginated candidate assessment roster with multi-criteria filtering, search, and facets.
@@ -297,7 +327,10 @@ async def admin_get_candidate_roster(
 
 
 @router.get("/admin/candidates/{session_id}/report")
-async def admin_get_candidate_report_by_session(session_id: str):
+async def admin_get_candidate_report_by_session(
+    session_id: str,
+    _admin: User = Depends(get_current_admin_user),
+):
     """
     Get full detailed candidate report dossier directly by session ID.
     Handles both job-linked and standalone sessions gracefully (Issue 02).

@@ -4,6 +4,15 @@ Tests all components and features of the Enhanced Evaluation System
 """
 import sys
 import os
+import io
+
+# Ensure UTF-8 output encoding on Windows console
+if sys.platform == "win32":
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 
 def print_header(title):
@@ -251,7 +260,7 @@ def test_recruiter_report():
         from app.interview.services.behavioral_analysis import BehavioralMetrics
         from app.interview.services.vocal_analysis import VocalMetrics
         from app.interview.domain.interview_models import AnswerEvaluation, QuestionType
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
         
         generator = RecruiterReportGenerator()
         print_status("Generator initialized", "success")
@@ -307,12 +316,13 @@ def test_recruiter_report():
         
         coding_results = [{"compile_success": True, "all_passed": True}]
         
+        now = datetime.now(timezone.utc)
         # Generate report
         report = generator.generate_report(
             candidate_name="Test Candidate",
             job_role="Software Engineer",
-            session_start=datetime.utcnow() - timedelta(minutes=30),
-            session_end=datetime.utcnow(),
+            session_start=now - timedelta(minutes=30),
+            session_end=now,
             evaluations=evaluations,
             behavioral_metrics=behavioral_metrics,
             vocal_metrics=vocal_metrics,

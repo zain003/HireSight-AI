@@ -12,6 +12,7 @@ from app.auth.job_post_model import JobPost
 from app.auth.models import Profile, User
 from app.auth.schemas import CandidateRosterItem, CandidateRosterResponse
 from app.interview.models import InterviewSession
+from bson import ObjectId
 
 
 def _parse_iso_date(date_str: Optional[str]) -> Optional[datetime]:
@@ -350,9 +351,9 @@ async def get_candidate_session_report(session_id: str) -> Dict[str, Any]:
     if not session:
         raise ValueError("Interview session not found")
 
-    user = await User.get(session.user_id) if session.user_id else None
+    user = await User.get(session.user_id) if session.user_id and ObjectId.is_valid(session.user_id) else None
     profile = await Profile.find_one({"user_id": session.user_id}) if session.user_id else None
-    job_post = await JobPost.get(session.job_post_id) if session.job_post_id else None
+    job_post = await JobPost.get(session.job_post_id) if session.job_post_id and ObjectId.is_valid(session.job_post_id) else None
 
     c_name = session.candidate_name or (user.full_name if user else None) or "Candidate"
     email = user.email if user else None

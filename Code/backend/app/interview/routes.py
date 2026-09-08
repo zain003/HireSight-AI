@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from app.auth.dependencies import get_current_active_user, get_current_admin_user
 from app.auth.job_post_model import JobPost
 from app.auth.models import Profile, User
+from bson import ObjectId
 from app.interview.application.interview_service import InterviewService
 from app.interview.domain.role_taxonomy import SeniorityLevel, StandardRole
 from app.interview.models import InterviewSession
@@ -255,7 +256,7 @@ async def get_live_report(
         status=session.status,
         aggregate_scores=session.aggregate_scores or {},
         report=session.report,
-        recruiter_report=session.recruiter_report
+        recruiter_report=None,  # Invariant #6: Candidate endpoints must NEVER expose recruiter evaluation/report
     )
 
 
@@ -321,7 +322,7 @@ async def export_recruiter_report_json(
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
 
-    user = await User.get(session.user_id) if session.user_id else None
+    user = await User.get(session.user_id) if session.user_id and ObjectId.is_valid(session.user_id) else None
     profile = await Profile.find_one({"user_id": session.user_id}) if session.user_id else None
 
     return pdf_generator_service.build_export_payload(session, user=user, profile=profile)
@@ -340,7 +341,7 @@ async def export_recruiter_report_pdf(
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
 
-    user = await User.get(session.user_id) if session.user_id else None
+    user = await User.get(session.user_id) if session.user_id and ObjectId.is_valid(session.user_id) else None
     profile = await Profile.find_one({"user_id": session.user_id}) if session.user_id else None
 
     payload = pdf_generator_service.build_export_payload(session, user=user, profile=profile)

@@ -33,8 +33,20 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       // Token expired or invalid
-      localStorage.removeItem('access_token');
-      window.location.href = '/login';
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('access_token');
+        const pathname = window.location.pathname || '';
+        if (pathname.startsWith('/admin') && pathname !== '/admin-login') {
+          window.location.href = '/admin-login';
+        } else if (
+          pathname !== '/login' &&
+          pathname !== '/admin-login' &&
+          pathname !== '/register' &&
+          pathname !== '/'
+        ) {
+          window.location.href = '/login';
+        }
+      }
     }
     return Promise.reject(error);
   }
