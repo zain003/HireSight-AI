@@ -336,6 +336,33 @@ async def admin_get_candidate_report_by_session(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+# ── Candidate & Public Job Post Routes ────────────────────────────────────────
+
+@router.get("/jobs", response_model=list[JobPostResponse])
+async def get_active_jobs():
+    """
+    Get all active job posts (accessible to candidates and public).
+    """
+    job_posts = await JobPostService.get_active_job_posts()
+    out = []
+    for jp in job_posts:
+        ac = await count_interview_candidates_for_job(str(jp.id))
+        out.append(job_post_to_response_dict(jp, ac))
+    return out
+
+
+@router.get("/jobs/{job_post_id}", response_model=JobPostResponse)
+async def get_active_job(job_post_id: str):
+    """
+    Get a single active job post by ID (accessible to candidates and public).
+    """
+    jp = await JobPostService.get_active_job_post_by_id(job_post_id)
+    if not jp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job post not found or not active")
+    ac = await count_interview_candidates_for_job(str(jp.id))
+    return job_post_to_response_dict(jp, ac)
+
+
 # ── User Auth Routes ────────────────────────────────────────────────────────
 
 

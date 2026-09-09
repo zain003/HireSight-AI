@@ -9,6 +9,7 @@ export default function JobsPage() {
   const [user, setUser] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!authService.isAuthenticated()) {
@@ -19,15 +20,29 @@ export default function JobsPage() {
   }, []);
 
   const loadData = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const [userData, jobsData] = await Promise.all([
-        authService.getCurrentUser(),
-        jobService.getAllJobPosts(),
-      ]);
-      setUser(userData);
+      try {
+        const userData = await authService.getCurrentUser();
+        setUser(userData);
+      } catch (userErr) {
+        if (userErr?.response?.status === 401) {
+          authService.logout();
+          return;
+        }
+      }
+
+      const jobsData = await jobService.getAllJobPosts();
       setJobs(jobsData || []);
     } catch (err) {
-      authService.logout();
+      console.error('Failed to load active jobs:', err);
+      if (err?.response?.status === 401) {
+        authService.logout();
+        return;
+      }
+      setError('Unable to load jobs at this moment. Please check your connection and try again.');
+      setJobs([]);
     } finally {
       setLoading(false);
     }
@@ -50,7 +65,19 @@ export default function JobsPage() {
           <p className="mt-1 text-sm text-slate-300">Browse available positions and review role requirements.</p>
         </div>
 
-        {jobs.length === 0 ? (
+        {error && (
+          <div className="mb-6 flex items-center justify-between rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+            <span>{error}</span>
+            <button
+              onClick={loadData}
+              className="rounded-lg bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-200 hover:bg-red-500/30 transition"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {jobs.length === 0 && !error ? (
           <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-8 text-center text-sm text-slate-300 shadow-sm">
             No active jobs right now.
           </div>

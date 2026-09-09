@@ -167,6 +167,90 @@ export default function Dashboard() {
           </div>
         </section>
 
+        {/* Active Job Openings Section */}
+        <section className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Open Job Positions</h3>
+              <p className="mt-1 text-sm text-slate-300">
+                Explore currently open roles and apply with your profile or resume.
+              </p>
+            </div>
+            {jobPosts.length > 0 && (
+              <button
+                type="button"
+                onClick={() => router.push('/jobs')}
+                className="text-xs font-semibold text-indigo-300 hover:text-indigo-200 transition"
+              >
+                View all ({jobPosts.length}) →
+              </button>
+            )}
+          </div>
+
+          {jobPosts.length === 0 ? (
+            <div className="rounded-xl border border-white/10 bg-slate-950/40 p-6 text-center text-sm text-slate-300">
+              No active job posts available at this moment. Check back soon!
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {jobPosts.slice(0, 4).map((job) => (
+                <div
+                  key={job.id}
+                  className="flex flex-col justify-between rounded-xl border border-white/10 bg-slate-950/40 p-5 transition hover:border-indigo-500/40"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <h4 className="text-base font-semibold text-white">{job.title}</h4>
+                      {job.domain && (
+                        <span className="shrink-0 rounded-full border border-indigo-400/30 bg-indigo-500/10 px-2.5 py-0.5 text-[11px] font-medium text-indigo-300">
+                          {job.domain}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-2 text-xs leading-relaxed text-slate-300 line-clamp-2">
+                      {job.description || 'No description provided.'}
+                    </p>
+                    {job.required_skills && job.required_skills.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {job.required_skills.slice(0, 5).map((skill, idx) => (
+                          <span
+                            key={`${skill}-${idx}`}
+                            className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-slate-300"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                        {job.required_skills.length > 5 && (
+                          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-slate-400">
+                            +{job.required_skills.length - 5} more
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-end gap-2 border-t border-white/10 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => router.push('/jobs')}
+                      className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/10 transition"
+                    >
+                      Details
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/apply?jobId=${encodeURIComponent(job.id)}`)}
+                      className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition shadow-sm"
+                    >
+                      Apply & Match
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
         <section className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 shadow-sm">
             <h3 className="text-lg font-semibold text-white">Interview preparation guide</h3>
             <p className="mt-1 text-sm text-slate-300">

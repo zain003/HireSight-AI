@@ -32,12 +32,27 @@ class JobPostService:
         return posts
 
     @staticmethod
+    async def get_active_job_posts() -> List[JobPost]:
+        posts = await JobPost.find(
+            {"$or": [{"status": "active"}, {"status": {"$exists": False}}, {"status": None}]}
+        ).to_list()
+        posts.sort(key=lambda p: p.created_at or datetime.min, reverse=True)
+        return posts
+
+    @staticmethod
     async def get_job_post_by_id(job_post_id: str) -> Optional[JobPost]:
         try:
             oid = PydanticObjectId(job_post_id)
         except Exception:
             return None
         return await JobPost.get(oid)
+
+    @staticmethod
+    async def get_active_job_post_by_id(job_post_id: str) -> Optional[JobPost]:
+        job_post = await JobPostService.get_job_post_by_id(job_post_id)
+        if job_post and getattr(job_post, "status", "active") in ("active", None):
+            return job_post
+        return None
 
     @staticmethod
     async def update_job_post(job_post_id: str, data: JobPostUpdate) -> Optional[JobPost]:

@@ -1420,11 +1420,16 @@ export default function InterviewPage() {
                     </svg>
                     {micMuted ? 'Mic off' : 'Mic on'}
                   </span>
-                  <span className="rounded-lg border border-white/10 bg-black/50 px-2.5 py-1 text-xs font-medium text-slate-200 backdrop-blur-sm">
-                    {isFollowUpQuestion
-                      ? `Q${overallBaseNumber}/${overallBaseTotal || 1} · Follow-up (${currentIdx + 1}/${questions.length})`
-                      : `Q${overallBaseNumber}/${overallBaseTotal || 1} (${currentIdx + 1}/${questions.length})`}
-                  </span>
+                  {isFollowUpQuestion ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-violet-400/40 bg-violet-950/80 px-2.5 py-1 text-xs font-semibold text-violet-200 backdrop-blur-sm shadow-sm">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-violet-400 animate-pulse" />
+                      Follow-up · Q{overallBaseNumber}
+                    </span>
+                  ) : (
+                    <span className="rounded-lg border border-white/10 bg-black/60 px-2.5 py-1 text-xs font-medium text-slate-200 backdrop-blur-sm">
+                      Question {overallBaseNumber} of {overallBaseTotal || 1}
+                    </span>
+                  )}
                 </div>
 
                 <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
@@ -1536,7 +1541,9 @@ export default function InterviewPage() {
                     Phase {currentStageIndex}/{stageOrder.length} — {currentStageLabel.toUpperCase()}
                   </p>
                   <span className="text-xs text-slate-400 font-medium">
-                    Question {currentIdx + 1} of {questions.length}
+                    {isFollowUpQuestion
+                      ? `Follow-up to Q${overallBaseNumber} (${currentIdx + 1} of ${questions.length})`
+                      : `Question ${overallBaseNumber} of ${overallBaseTotal || 1}`}
                   </span>
                 </div>
                 <div className="mb-4 flex flex-wrap gap-2">
@@ -1975,32 +1982,62 @@ export default function InterviewPage() {
         )}
 
         {report && (
-          <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-6 space-y-6">
-            <h2 className="text-xl font-semibold text-white">Interview complete</h2>
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-              {[
-                ['Overall', report.aggregate_scores?.overall_score],
-                ['Technical', report.aggregate_scores?.technical_score],
-                ['Behavioral', report.aggregate_scores?.behavioral_score],
-                ['Communication', report.aggregate_scores?.communication_score],
-                ['Video integrity', report.aggregate_scores?.video_integrity_score],
-              ].map(([label, val]) => (
-                <div key={label} className="rounded-xl border border-white/10 bg-[#0B1120]/60 p-4">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-500">{label}</p>
-                  <p className="text-2xl font-bold text-indigo-300">{val ?? '—'}</p>
+          <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-8 space-y-6 shadow-xl backdrop-blur-md">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-6">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300 mb-3">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                  Assessment Completed & Submitted
+                </div>
+                <h2 className="text-2xl font-bold text-white tracking-tight">Interview Completed Successfully</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Your verbal responses, code solutions, and interview metrics have been securely submitted for evaluation.
+                </p>
               </div>
-              ))}
-              </div>
-            <div className="rounded-xl border border-indigo-400/20 bg-indigo-500/10 p-4">
-              <p className="text-xs text-slate-400 mb-1">Recommendation</p>
-              <p className="text-base font-medium text-white">{report.report?.recommendation}</p>
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-indigo-500 hover:shadow-indigo-500/25"
+              >
+                Back to Dashboard
+              </button>
             </div>
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="rounded-xl bg-indigo-500 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-600"
-            >
-              Back to dashboard
-            </button>
+
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div className="rounded-xl border border-white/10 bg-[#0B1120]/70 p-4">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">Questions Completed</p>
+                <p className="mt-1 text-2xl font-bold text-white">{questions.length || '—'}</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-[#0B1120]/70 p-4">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">Total Duration</p>
+                <p className="mt-1 text-2xl font-bold text-indigo-300">{formatMmSs(elapsedSec)}</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-[#0B1120]/70 p-4">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">Audio / Speech</p>
+                <p className="mt-1 text-sm font-semibold text-emerald-400 flex items-center gap-1.5">
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
+                  Processed
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-[#0B1120]/70 p-4">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">Video Integrity</p>
+                <p className="mt-1 text-sm font-semibold text-emerald-400 flex items-center gap-1.5">
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
+                  Verified
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-5">
+              <div className="flex items-start gap-3">
+                <Sparkles className="h-5 w-5 text-indigo-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-white">What happens next?</p>
+                  <p className="text-xs leading-relaxed text-slate-300">
+                    The recruiting team will review your comprehensive evaluation, code submission, and technical breakdown. You will be notified via email regarding status updates and subsequent interview rounds.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </main>

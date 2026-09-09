@@ -9,34 +9,57 @@ export default function JobDetailsPage() {
   const { id } = router.query;
 
   const [user, setUser] = useState(null);
-  const [jobs, setJobs] = useState([]);
+  const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!router.isReady) return;
+    if (!router.isReady || !id) return;
     if (!authService.isAuthenticated()) {
       router.push('/login');
       return;
     }
     loadData();
-  }, [router.isReady]);
+  }, [router.isReady, id]);
 
   const loadData = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const [userData, jobsData] = await Promise.all([
-        authService.getCurrentUser(),
-        jobService.getAllJobPosts(),
-      ]);
-      setUser(userData);
-      setJobs(jobsData || []);
+      try {
+        const userData = await authService.getCurrentUser();
+        setUser(userData);
+      } catch (userErr) {
+        if (userErr?.response?.status === 401) {
+          authService.logout();
+          return;
+        }
+      }
+
+      // Try fetching single job first, with fallback to all jobs list
+      try {
+        const singleJob = await jobService.getJobPost(id);
+        if (singleJob) {
+          setJob(singleJob);
+          return;
+        }
+      } catch {
+        // Fallback to all jobs list
+        const allJobs = await jobService.getAllJobPosts();
+        const found = (allJobs || []).find((j) => j.id === id);
+        setJob(found || null);
+      }
     } catch (err) {
-      authService.logout();
+      console.error('Failed to load job details:', err);
+      if (err?.response?.status === 401) {
+        authService.logout();
+        return;
+      }
+      setError('Unable to load job details.');
     } finally {
       setLoading(false);
     }
   };
-
-  const job = useMemo(() => jobs.find((j) => j.id === id), [jobs, id]);
 
   if (loading) {
     return (
@@ -52,13 +75,23 @@ export default function JobDetailsPage() {
       <main className="container mx-auto space-y-6 px-6 py-8">
         {!job ? (
           <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-8 text-center text-slate-300">
-            <p>Job not found.</p>
-            <button
-              onClick={() => router.push('/jobs')}
-              className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
-            >
-              Back to Jobs
-            </button>
+            <p className="text-white font-medium">{error || 'Job not found.'}</p>
+            <div className="mt-4 flex justify-center gap-3">
+              {error && (
+                <button
+                  onClick={loadData}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition"
+                >
+                  Retry
+                </button>
+              )}
+              <button
+                onClick={() => router.push('/jobs')}
+                className="rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10 transition"
+              >
+                Back to Jobs
+              </button>
+            </div>
           </div>
         ) : (
           <>

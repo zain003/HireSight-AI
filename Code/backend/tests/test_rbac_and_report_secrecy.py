@@ -136,5 +136,19 @@ def test_candidate_report_endpoint_never_exposes_recruiter_report():
             assert data["report"] is not None
             # Core Invariant #6 verification: recruiter_report MUST be None
             assert data.get("recruiter_report") is None, "Violation: recruiter_report was leaked to candidate endpoint!"
+            # Report recommendation must not leak recruiter decisions
+            report_data = data.get("report") or {}
+            assert report_data.get("recommendation") == "Submitted for Recruiter Review"
+            assert report_data.get("red_flags") == []
+            assert report_data.get("hiring_decision_notes") == ""
     finally:
         app.dependency_overrides.clear()
+
+
+def test_candidate_public_jobs_endpoint_accessible():
+    """Verify that GET /auth/jobs is accessible to candidates without admin privileges."""
+    client = TestClient(app)
+    with patch("app.auth.routes.JobPostService.get_active_job_posts", AsyncMock(return_value=[])):
+        res = client.get("/auth/jobs")
+        assert res.status_code == status.HTTP_200_OK
+        assert res.json() == []

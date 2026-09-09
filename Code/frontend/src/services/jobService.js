@@ -2,11 +2,11 @@ import api from './api';
 
 const jobService = {
   getAllJobPosts: async () => {
-    const res = await api.get('/auth/admin/job-posts');
+    const res = await api.get('/auth/jobs');
     return res.data;
   },
   getJobPost: async (id) => {
-    const res = await api.get(`/auth/admin/job-posts/${id}`);
+    const res = await api.get(`/auth/jobs/${id}`);
     return res.data;
   },
 };

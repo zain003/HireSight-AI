@@ -2,7 +2,7 @@ import asyncio
 import base64
 import io
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
@@ -218,6 +218,28 @@ async def submit_live_answer(
     )
 
 
+def sanitize_candidate_report(report_data: Any) -> Any:
+    """
+    Sanitizes report for candidate-facing endpoints per Invariant #6 (Report Secrecy).
+    Candidate sessions must NEVER receive internal hiring recommendations, red flags, or recruiter notes.
+    """
+    if not report_data:
+        return report_data
+    if isinstance(report_data, dict):
+        clean = dict(report_data)
+        clean["recommendation"] = "Submitted for Recruiter Review"
+        clean["red_flags"] = []
+        clean["hiring_decision_notes"] = ""
+        return clean
+    if hasattr(report_data, "model_copy"):
+        return report_data.model_copy(update={
+            "recommendation": "Submitted for Recruiter Review",
+            "red_flags": [],
+            "hiring_decision_notes": "",
+        })
+    return report_data
+
+
 @router.post("/live/{session_id}/end", response_model=InterviewReportResponse)
 async def end_live_interview(
     session_id: str,
@@ -230,11 +252,13 @@ async def end_live_interview(
         raise HTTPException(status_code=404, detail="Interview session not found")
 
     result = await interview_service.end_interview(session)
+    sanitized_report = sanitize_candidate_report(result["report"])
     return InterviewReportResponse(
         session_id=session.session_id,
         status=session.status,
         aggregate_scores=result["scores"],
-        report=result["report"],
+        report=sanitized_report,
+        recruiter_report=None,  # Invariant #6: Candidate endpoints must NEVER expose recruiter evaluation/report
     )
 
 
@@ -251,20 +275,22 @@ async def get_live_report(
     if not session.report:
         if session.current_question_index >= len(session.questions) or session.status == "completed":
             result = await interview_service.end_interview(session)
+            sanitized_report = sanitize_candidate_report(result["report"])
             return InterviewReportResponse(
                 session_id=session.session_id,
                 status=session.status,
                 aggregate_scores=result["scores"],
-                report=result["report"],
+                report=sanitized_report,
                 recruiter_report=None,
             )
         raise HTTPException(status_code=404, detail="Interview report not generated yet")
 
+    sanitized_report = sanitize_candidate_report(session.report)
     return InterviewReportResponse(
         session_id=session.session_id,
         status=session.status,
         aggregate_scores=session.aggregate_scores or {},
-        report=session.report,
+        report=sanitized_report,
         recruiter_report=None,  # Invariant #6: Candidate endpoints must NEVER expose recruiter evaluation/report
     )
 

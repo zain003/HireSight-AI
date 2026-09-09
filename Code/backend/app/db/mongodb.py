@@ -31,6 +31,13 @@ class MongoDB:
             document_models=[User, Profile, Session, JobPost, InterviewSession]
         )
         
+        # Backfill status="active" on legacy JobPost documents missing status
+        try:
+            coll = JobPost.get_pymongo_collection()
+            await coll.update_many({"status": {"$exists": False}}, {"$set": {"status": "active"}})
+        except Exception as e:
+            print(f"[WARN] JobPost status backfill notice: {e}")
+        
         print(f"[OK] Connected to MongoDB: {database_name}")
     
     @classmethod

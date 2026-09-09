@@ -49,7 +49,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
         raise credentials_exception
 
     if user_id == "admin":
-        return User(
+        return User.model_construct(
             id="admin",
             email="admin@fyp.com",
             username="admin",
