@@ -1,52 +1,117 @@
 /**
- * Login Page
+ * Candidate Login Page
+ * Luxury Executive Split Screen for HireSIGHT AI Candidate Authentication
  */
+import Head from 'next/head';
+import Link from 'next/link';
+import { Sparkles, CheckCircle2, ShieldCheck, Code2, BrainCircuit, ArrowLeft } from 'lucide-react';
 import LoginForm from '@/components/Auth/LoginForm';
 
 export default function LoginPage() {
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-100 px-4 py-10">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(37,99,235,0.15),_transparent_40%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,_rgba(79,70,229,0.12),_transparent_45%)]" />
-      <div className="relative z-10 w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
-        <div className="grid md:grid-cols-2">
-          <div className="hidden h-full flex-col justify-between bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-900 p-10 text-white md:flex">
-            <div>
-              <a href="/" className="inline-block text-2xl font-extrabold">
-                Hire<span className="text-indigo-300">SIGHT</span>
-              </a>
-              <h1 className="mt-8 text-3xl font-bold leading-tight">
-                Welcome back to your interview workspace
-              </h1>
-              <p className="mt-4 text-sm leading-relaxed text-slate-300">
-                Continue candidate screening, role matching, and interview sessions from one platform.
-              </p>
-            </div>
-            <div className="space-y-3">
-              <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.15em] text-slate-400">Live role match</p>
-                <p className="mt-1 text-sm font-semibold text-emerald-300">82% profile fit for AI Engineer</p>
+    <>
+      <Head>
+        <title>Candidate Sign In — HireSIGHT AI</title>
+      </Head>
+
+      <div className="relative flex min-h-screen items-center justify-center bg-[#F8FAFC] px-4 py-8 sm:px-6 lg:px-8">
+        {/* Background Ambient Glows */}
+        <div className="pointer-events-none absolute top-0 left-1/4 h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-indigo-100/60 blur-3xl" />
+        <div className="pointer-events-none absolute bottom-0 right-1/4 h-[400px] w-[400px] rounded-full bg-violet-100/50 blur-3xl" />
+
+        <div className="relative z-10 w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-2xl">
+          <div className="grid lg:grid-cols-12">
+            {/* Left Column: Hero Brand Showcase */}
+            <div className="hidden flex-col justify-between bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 p-10 text-white lg:col-span-5 lg:flex">
+              <div>
+                {/* Brand Logo */}
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 font-black text-white shadow-md shadow-indigo-600/30">
+                    H
+                  </div>
+                  <div>
+                    <span className="text-xl font-extrabold tracking-tight text-white">
+                      Hire<span className="text-indigo-400">SIGHT</span>
+                    </span>
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      Candidate Workspace
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-12 space-y-4">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-400/30 bg-indigo-500/15 px-3 py-1 text-xs font-bold uppercase tracking-wider text-indigo-300">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>Objective Evaluation</span>
+                  </span>
+                  <h1 className="text-2xl font-black leading-tight sm:text-3xl">
+                    Your Gateway to Fair, AI-Driven Technical Screening.
+                  </h1>
+                  <p className="text-xs leading-relaxed text-slate-300">
+                    Access real-time interview sessions, sandboxed coding challenges, and comprehensive 5-dimensional skill reports.
+                  </p>
+                </div>
               </div>
-              <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.15em] text-slate-400">Interview status</p>
-                <p className="mt-1 text-sm font-semibold text-amber-300">Question set ready</p>
+
+              {/* Feature Value Props */}
+              <div className="space-y-3 pt-8 border-t border-white/10">
+                <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3.5">
+                  <BrainCircuit className="h-5 w-5 text-indigo-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-bold text-white">5-Dimensional Feedback</p>
+                    <p className="text-[11px] text-slate-400">Get granular breakdowns of technical depth, coding logic, and communication.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3.5">
+                  <Code2 className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-bold text-white">Sandboxed Code Sandbox</p>
+                    <p className="text-[11px] text-slate-400">Solve real-world algorithm challenges with instant unit test verification.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 text-[11px] text-slate-400">
+                  <span>Protected by Secure Auth</span>
+                  <Link href="/admin-login" className="text-indigo-400 hover:text-indigo-300 font-semibold underline">
+                    Admin Console →
+                  </Link>
+                </div>
               </div>
-              <p className="pt-2 text-xs text-slate-400">Built for consistent, skill-based candidate evaluation.</p>
             </div>
-          </div>
-          <div className="p-6 md:p-10">
-            <div className="mb-7 flex items-center justify-between text-center md:text-left">
-              <a href="/" className="inline-block text-2xl font-extrabold text-slate-900 md:hidden">
-                Hire<span className="text-indigo-600">SIGHT</span>
-              </a>
-              <a href="/" className="text-sm font-medium text-slate-600 hover:text-slate-900">
-                Back to Home
-              </a>
+
+            {/* Right Column: Form Area */}
+            <div className="flex flex-col justify-between p-6 sm:p-10 lg:col-span-7">
+              {/* Top Navigation */}
+              <div className="mb-6 flex items-center justify-between">
+                <Link
+                  href="/"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-slate-900"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  <span>Back to Home</span>
+                </Link>
+
+                <div className="flex items-center gap-2 lg:hidden">
+                  <span className="text-base font-extrabold text-slate-900">
+                    Hire<span className="text-indigo-600">SIGHT</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* LoginForm Component */}
+              <div className="my-auto">
+                <LoginForm />
+              </div>
+
+              {/* Footer text */}
+              <div className="mt-6 text-center text-[11px] text-slate-400">
+                By signing in, you agree to HireSIGHT&apos;s Terms of Service and Privacy Policy.
+              </div>
             </div>
-            <LoginForm />
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

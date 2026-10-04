@@ -2,6 +2,7 @@
  * Candidate Assessment Roster Component
  * Implements Issue 02 (Part 1, 2, 4) for HireSIGHT Admin Dashboard.
  * Features:
+ * - Ultra-clean executive White & Professional theme with Dark Mode support
  * - Server-side search & multi-criteria filtering (Status, Score Range, Role, Recommendation, Date Range)
  * - URL query synchronization (bookmarkable/shareable filtered views)
  * - Column sorting (Score, Date, Name, Status) & Server-side pagination
@@ -34,7 +35,7 @@ import {
 import adminDashboardService from '@/services/adminDashboardService';
 
 const STATUS_OPTIONS = [
-  { id: 'all', label: 'All Statuses' },
+  { id: 'all', label: 'All Statuses', color: 'slate' },
   { id: 'completed', label: 'Completed', color: 'emerald' },
   { id: 'in_progress', label: 'In Progress', color: 'sky' },
   { id: 'not_started', label: 'Not Started', color: 'slate' },
@@ -58,8 +59,9 @@ const SORT_OPTIONS = [
   { id: 'status', label: 'Status' },
 ];
 
-export default function CandidateAssessmentRoster({ onViewReport, jobPostId = null }) {
+export default function CandidateAssessmentRoster({ onViewReport, jobPostId = null, theme = 'light' }) {
   const router = useRouter();
+  const isLight = theme === 'light';
 
   // ── State ─────────────────────────────────────────────────────────────────
   const [data, setData] = useState({
@@ -233,7 +235,6 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
     if (pageSize !== 10) query.page_size = String(pageSize);
     else delete query.page_size;
 
-    // Check if query actually changed compared to current router.query
     const keysBefore = Object.keys(router.query).sort();
     const keysAfter = Object.keys(query).sort();
     let isChanged = keysBefore.length !== keysAfter.length;
@@ -318,21 +319,27 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
     switch (s) {
       case 'completed':
         return (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-300">
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+            isLight ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+          }`}>
             <CheckCircle2 className="h-3.5 w-3.5" />
             Completed
           </span>
         );
       case 'in_progress':
         return (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-xs font-semibold text-sky-300">
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+            isLight ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+          }`}>
             <Clock className="h-3.5 w-3.5 animate-spin" />
             In Progress
           </span>
         );
       case 'abandoned':
         return (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-300">
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+            isLight ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+          }`}>
             <AlertCircle className="h-3.5 w-3.5" />
             Abandoned
           </span>
@@ -340,7 +347,9 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
       case 'not_started':
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-800/80 px-2.5 py-0.5 text-xs font-medium text-slate-400">
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+            isLight ? 'border-slate-200 bg-slate-100 text-slate-600' : 'border-slate-700 bg-slate-800/80 text-slate-400'
+          }`}>
             <UserX className="h-3.5 w-3.5" />
             Not Started
           </span>
@@ -353,31 +362,39 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
     const rec = recommendation.trim();
     if (rec === 'Strong Fit' || rec === 'Strong Hire') {
       return (
-        <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-200">
-          <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
+        <span className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold ${
+          isLight ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-emerald-500/30 bg-emerald-500/15 text-emerald-200'
+        }`}>
+          <Sparkles className="h-3.5 w-3.5 text-emerald-500" />
           {rec}
         </span>
       );
     }
     if (rec === 'Potential Fit' || rec === 'Hire') {
       return (
-        <span className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-indigo-500/15 px-2.5 py-1 text-xs font-semibold text-indigo-200">
-          <Award className="h-3.5 w-3.5 text-indigo-400" />
+        <span className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold ${
+          isLight ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-indigo-500/30 bg-indigo-500/15 text-indigo-200'
+        }`}>
+          <Award className="h-3.5 w-3.5 text-indigo-500" />
           {rec}
         </span>
       );
     }
     if (rec === 'Needs Growth' || rec === 'Maybe') {
       return (
-        <span className="inline-flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-200">
-          <AlertCircle className="h-3.5 w-3.5 text-amber-400" />
+        <span className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold ${
+          isLight ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-amber-500/30 bg-amber-500/15 text-amber-200'
+        }`}>
+          <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
           {rec}
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/15 px-2.5 py-1 text-xs font-semibold text-red-200">
-        <UserX className="h-3.5 w-3.5 text-red-400" />
+      <span className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold ${
+        isLight ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-red-500/30 bg-red-500/15 text-red-200'
+      }`}>
+        <UserX className="h-3.5 w-3.5 text-rose-500" />
         {rec}
       </span>
     );
@@ -385,12 +402,22 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
 
   const getScoreDisplay = (score) => {
     if (score === null || score === undefined) {
-      return <span className="text-xs text-slate-500 font-mono">—</span>;
+      return <span className="text-xs text-slate-400 font-mono">—</span>;
     }
     const val = Math.round(Number(score));
-    let colorClass = 'text-red-400 border-red-500/30 bg-red-500/10';
-    if (val >= 80) colorClass = 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10';
-    else if (val >= 60) colorClass = 'text-amber-400 border-amber-500/30 bg-amber-500/10';
+    let colorClass = isLight
+      ? 'text-rose-700 border-rose-200 bg-rose-50'
+      : 'text-red-400 border-red-500/30 bg-red-500/10';
+
+    if (val >= 80) {
+      colorClass = isLight
+        ? 'text-emerald-700 border-emerald-200 bg-emerald-50'
+        : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10';
+    } else if (val >= 60) {
+      colorClass = isLight
+        ? 'text-amber-700 border-amber-200 bg-amber-50'
+        : 'text-amber-400 border-amber-500/30 bg-amber-500/10';
+    }
 
     return (
       <div className="flex items-center gap-2">
@@ -399,7 +426,7 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
         >
           {val}
         </div>
-        <span className="text-[11px] text-slate-500 font-mono">/100</span>
+        <span className="text-[11px] text-slate-400 font-mono">/100</span>
       </div>
     );
   };
@@ -424,65 +451,99 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
     <div className="space-y-6">
       {/* ── KPI Stat Cards ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4 sm:p-5 backdrop-blur-sm transition hover:border-white/20">
+        <div className={`rounded-2xl border p-4 sm:p-5 transition-all ${
+          isLight
+            ? 'bg-white border-slate-200 shadow-xs hover:shadow-md hover:border-slate-300'
+            : 'bg-slate-900/50 border-white/10 hover:border-white/20'
+        }`}>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               Total Roster
             </span>
-            <Users className="h-4 w-4 text-indigo-400" />
+            <div className={`rounded-lg p-1.5 ${isLight ? 'bg-indigo-50 text-indigo-600' : 'text-indigo-400'}`}>
+              <Users className="h-4 w-4" />
+            </div>
           </div>
-          <p className="mt-2 text-2xl sm:text-3xl font-bold text-white">{counts.total}</p>
+          <p className={`mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+            {counts.total}
+          </p>
           <span className="mt-1 block text-[11px] text-slate-500">Candidates evaluated</span>
         </div>
 
-        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 sm:p-5 backdrop-blur-sm transition hover:border-emerald-500/30">
+        <div className={`rounded-2xl border p-4 sm:p-5 transition-all ${
+          isLight
+            ? 'bg-white border-emerald-200/80 shadow-xs hover:shadow-md'
+            : 'bg-emerald-500/5 border-emerald-500/20 hover:border-emerald-500/30'
+        }`}>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wider text-emerald-300">
+            <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-emerald-700' : 'text-emerald-300'}`}>
               Completed
             </span>
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+            <div className={`rounded-lg p-1.5 ${isLight ? 'bg-emerald-50 text-emerald-600' : 'text-emerald-400'}`}>
+              <CheckCircle2 className="h-4 w-4" />
+            </div>
           </div>
-          <p className="mt-2 text-2xl sm:text-3xl font-bold text-emerald-400">
+          <p className={`mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
             {counts.completed}
           </p>
-          <span className="mt-1 block text-[11px] text-emerald-400/70">
+          <span className={`mt-1 block text-[11px] ${isLight ? 'text-emerald-600/80' : 'text-emerald-400/70'}`}>
             Full reports available
           </span>
         </div>
 
-        <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 sm:p-5 backdrop-blur-sm transition hover:border-sky-500/30">
+        <div className={`rounded-2xl border p-4 sm:p-5 transition-all ${
+          isLight
+            ? 'bg-white border-sky-200/80 shadow-xs hover:shadow-md'
+            : 'bg-sky-500/5 border-sky-500/20 hover:border-sky-500/30'
+        }`}>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wider text-sky-300">
+            <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-sky-700' : 'text-sky-300'}`}>
               In Progress
             </span>
-            <Clock className="h-4 w-4 text-sky-400" />
+            <div className={`rounded-lg p-1.5 ${isLight ? 'bg-sky-50 text-sky-600' : 'text-sky-400'}`}>
+              <Clock className="h-4 w-4" />
+            </div>
           </div>
-          <p className="mt-2 text-2xl sm:text-3xl font-bold text-sky-400">{counts.in_progress}</p>
-          <span className="mt-1 block text-[11px] text-sky-400/70">Active assessments</span>
+          <p className={`mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight ${isLight ? 'text-sky-700' : 'text-sky-400'}`}>
+            {counts.in_progress}
+          </p>
+          <span className={`mt-1 block text-[11px] ${isLight ? 'text-sky-600/80' : 'text-sky-400/70'}`}>
+            Active assessments
+          </span>
         </div>
 
-        <div className="rounded-2xl border border-slate-700/60 bg-slate-900/40 p-4 sm:p-5 backdrop-blur-sm transition hover:border-slate-600">
+        <div className={`rounded-2xl border p-4 sm:p-5 transition-all ${
+          isLight
+            ? 'bg-white border-slate-200 shadow-xs hover:shadow-md'
+            : 'bg-slate-900/40 border-slate-700/60 hover:border-slate-600'
+        }`}>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               Not Started
             </span>
-            <UserX className="h-4 w-4 text-slate-500" />
+            <div className={`rounded-lg p-1.5 ${isLight ? 'bg-slate-100 text-slate-600' : 'text-slate-500'}`}>
+              <UserX className="h-4 w-4" />
+            </div>
           </div>
-          <p className="mt-2 text-2xl sm:text-3xl font-bold text-slate-300">
+          <p className={`mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
             {counts.not_started}
           </p>
           <span className="mt-1 block text-[11px] text-slate-500">Registered applicants</span>
         </div>
       </div>
 
-      {/* ── Search and Filter Panel (Issue 02 - Part 2) ─────────────────── */}
-      <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-5 backdrop-blur-md space-y-4">
+      {/* ── Search and Filter Panel ─────────────────── */}
+      <div className={`rounded-2xl border p-5 shadow-xs space-y-4 ${
+        isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-white/10'
+      }`}>
         {/* Top Filter Row: Search & Status Pills & Filter Toggle */}
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           {/* Search Box */}
           <div className="relative flex-1 max-w-xl">
             <Search
-              className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+              className={`pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 ${
+                isLight ? 'text-slate-400' : 'text-slate-400'
+              }`}
               strokeWidth={2}
             />
             <input
@@ -490,13 +551,17 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
               value={search}
               onChange={handleSearchChange}
               placeholder="Search candidates by name, email, role, or skills…"
-              className="w-full rounded-xl border border-white/10 bg-slate-950/70 py-2.5 pl-10 pr-10 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500/50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              className={`w-full rounded-xl border py-2.5 pl-10 pr-10 text-sm transition focus:outline-none focus:ring-2 ${
+                isLight
+                  ? 'border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-indigo-100'
+                  : 'border-white/10 bg-slate-950/70 text-slate-100 placeholder:text-slate-500 focus:border-indigo-500/50 focus:ring-indigo-500/20'
+              }`}
             />
             {search && (
               <button
                 type="button"
                 onClick={handleClearSearch}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -517,7 +582,9 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                   onClick={() => handleToggleStatus(opt.id)}
                   className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                     isSelected
-                      ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/20'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : isLight
+                      ? 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
                       : 'border border-white/10 bg-slate-950/40 text-slate-400 hover:bg-white/5 hover:text-slate-200'
                   }`}
                 >
@@ -532,14 +599,18 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
               onClick={() => setShowAdvancedFilters((prev) => !prev)}
               className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
                 showAdvancedFilters || activeFiltersCount > 0
-                  ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-300'
+                  ? isLight
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                    : 'border-indigo-500/40 bg-indigo-500/15 text-indigo-300'
+                  : isLight
+                  ? 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
                   : 'border-white/10 bg-slate-950/40 text-slate-400 hover:bg-white/5 hover:text-slate-200'
               }`}
             >
               <SlidersHorizontal className="h-3.5 w-3.5" />
               <span>Filters</span>
               {activeFiltersCount > 0 && (
-                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-indigo-500 text-[10px] font-bold text-white">
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">
                   {activeFiltersCount}
                 </span>
               )}
@@ -549,10 +620,14 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
 
         {/* Expandable Advanced Filters Panel */}
         {showAdvancedFilters && (
-          <div className="border-t border-white/10 pt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className={`border-t pt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 ${
+            isLight ? 'border-slate-100' : 'border-white/10'
+          }`}>
             {/* Target Role Selector */}
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${
+                isLight ? 'text-slate-600' : 'text-slate-400'
+              }`}>
                 Role / Position
               </label>
               <select
@@ -561,7 +636,11 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                   setSelectedRole(e.target.value);
                   setPage(1);
                 }}
-                className="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none"
+                className={`w-full rounded-lg border px-3 py-2 text-xs transition focus:outline-none ${
+                  isLight
+                    ? 'border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:border-indigo-600'
+                    : 'border-white/10 bg-slate-950/70 text-slate-200 focus:border-indigo-500'
+                }`}
               >
                 <option value="all">All Target Roles</option>
                 {(data.available_roles || []).map((r) => (
@@ -574,7 +653,9 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
 
             {/* Hire Recommendation Selector */}
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${
+                isLight ? 'text-slate-600' : 'text-slate-400'
+              }`}>
                 Recommendation
               </label>
               <select
@@ -583,7 +664,11 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                   setSelectedRecommendation(e.target.value);
                   setPage(1);
                 }}
-                className="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none"
+                className={`w-full rounded-lg border px-3 py-2 text-xs transition focus:outline-none ${
+                  isLight
+                    ? 'border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:border-indigo-600'
+                    : 'border-white/10 bg-slate-950/70 text-slate-200 focus:border-indigo-500'
+                }`}
               >
                 {RECOMMENDATION_OPTIONS.map((rec) => (
                   <option key={rec.id} value={rec.id}>
@@ -595,7 +680,9 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
 
             {/* Score Range Inputs */}
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${
+                isLight ? 'text-slate-600' : 'text-slate-400'
+              }`}>
                 Score Range (0–100)
               </label>
               <div className="flex items-center gap-2">
@@ -609,9 +696,13 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                     setMinScore(e.target.value);
                     setPage(1);
                   }}
-                  className="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
+                  className={`w-full rounded-lg border px-3 py-2 text-xs transition focus:outline-none ${
+                    isLight
+                      ? 'border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600'
+                      : 'border-white/10 bg-slate-950/70 text-slate-200 placeholder:text-slate-600 focus:border-indigo-500'
+                  }`}
                 />
-                <span className="text-slate-600">—</span>
+                <span className="text-slate-400">—</span>
                 <input
                   type="number"
                   min="0"
@@ -622,14 +713,20 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                     setMaxScore(e.target.value);
                     setPage(1);
                   }}
-                  className="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
+                  className={`w-full rounded-lg border px-3 py-2 text-xs transition focus:outline-none ${
+                    isLight
+                      ? 'border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600'
+                      : 'border-white/10 bg-slate-950/70 text-slate-200 placeholder:text-slate-600 focus:border-indigo-500'
+                  }`}
                 />
               </div>
             </div>
 
             {/* Date Range Inputs */}
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${
+                isLight ? 'text-slate-600' : 'text-slate-400'
+              }`}>
                 Activity Date Range
               </label>
               <div className="flex items-center gap-2">
@@ -640,9 +737,13 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                     setStartDate(e.target.value);
                     setPage(1);
                   }}
-                  className="w-full rounded-lg border border-white/10 bg-slate-950/70 px-2.5 py-2 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none"
+                  className={`w-full rounded-lg border px-2.5 py-2 text-xs transition focus:outline-none ${
+                    isLight
+                      ? 'border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:border-indigo-600'
+                      : 'border-white/10 bg-slate-950/70 text-slate-200 focus:border-indigo-500'
+                  }`}
                 />
-                <span className="text-slate-600">—</span>
+                <span className="text-slate-400">—</span>
                 <input
                   type="date"
                   value={endDate}
@@ -650,7 +751,11 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                     setEndDate(e.target.value);
                     setPage(1);
                   }}
-                  className="w-full rounded-lg border border-white/10 bg-slate-950/70 px-2.5 py-2 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none"
+                  className={`w-full rounded-lg border px-2.5 py-2 text-xs transition focus:outline-none ${
+                    isLight
+                      ? 'border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:border-indigo-600'
+                      : 'border-white/10 bg-slate-950/70 text-slate-200 focus:border-indigo-500'
+                  }`}
                 />
               </div>
             </div>
@@ -658,17 +763,23 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
         )}
 
         {/* Filter Summary & Sorting Bar */}
-        <div className="flex flex-col gap-2 border-t border-white/5 pt-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className={`flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between ${
+          isLight ? 'border-slate-100' : 'border-white/5'
+        }`}>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-slate-400">
-              Showing <strong className="text-white">{data.items.length}</strong> of{' '}
-              <strong className="text-white">{data.total_count}</strong> matching candidates
+            <span className={`text-xs font-medium ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+              Showing <strong className={isLight ? 'text-slate-900' : 'text-white'}>{data.items.length}</strong> of{' '}
+              <strong className={isLight ? 'text-slate-900' : 'text-white'}>{data.total_count}</strong> matching candidates
             </span>
             {activeFiltersCount > 0 && (
               <button
                 type="button"
                 onClick={handleClearAllFilters}
-                className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-0.5 text-[11px] font-medium text-indigo-300 hover:bg-white/5 hover:text-white"
+                className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold transition ${
+                  isLight
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                    : 'border-white/10 text-indigo-300 hover:bg-white/5 hover:text-white'
+                }`}
               >
                 <RotateCcw className="h-3 w-3" />
                 Clear Filters
@@ -677,14 +788,18 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">Sort by:</span>
+            <span className={`text-xs font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Sort by:</span>
             <select
               value={sortBy}
               onChange={(e) => {
                 setSortBy(e.target.value);
                 setPage(1);
               }}
-              className="rounded-lg border border-white/10 bg-slate-950/70 px-3 py-1.5 text-xs font-medium text-slate-200 focus:border-indigo-500 focus:outline-none"
+              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition focus:outline-none ${
+                isLight
+                  ? 'border-slate-200 bg-slate-50 text-slate-800 focus:bg-white focus:border-indigo-600'
+                  : 'border-white/10 bg-slate-950/70 text-slate-200 focus:border-indigo-500'
+              }`}
             >
               {SORT_OPTIONS.map((opt) => (
                 <option key={opt.id} value={opt.id}>
@@ -698,40 +813,46 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
 
       {/* ── Error Banner ────────────────────────────────────────────────── */}
       {error && (
-        <div className="flex items-center justify-between rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+        <div className={`flex items-center justify-between rounded-xl border p-4 text-sm font-medium ${
+          isLight
+            ? 'border-rose-200 bg-rose-50 text-rose-800'
+            : 'border-red-500/30 bg-red-500/10 text-red-200'
+        }`}>
           <div className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-red-400 shrink-0" />
+            <AlertCircle className="h-5 w-5 text-rose-500 shrink-0" />
             <span>{error}</span>
           </div>
           <button
             type="button"
             onClick={fetchRoster}
-            className="rounded-lg bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-200 hover:bg-red-500/30"
+            className="rounded-lg bg-rose-600 px-3 py-1 text-xs font-semibold text-white hover:bg-rose-700"
           >
             Retry
           </button>
         </div>
       )}
 
-      {/* ── Candidate Table / List View (Issue 02 - Part 1) ──────────────── */}
-      <div className="rounded-2xl border border-white/10 bg-slate-900/60 shadow-xl overflow-hidden backdrop-blur-md">
+      {/* ── Candidate Table / List View ──────────────── */}
+      <div className={`rounded-2xl border shadow-xs overflow-hidden ${
+        isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-white/10 shadow-xl backdrop-blur-md'
+      }`}>
         {loading ? (
           <div className="flex flex-col items-center justify-center p-16 gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-400/30 border-t-indigo-400" />
-            <p className="text-sm text-slate-400">Loading candidate records…</p>
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+            <p className={`text-sm font-medium ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Loading candidate records…</p>
           </div>
         ) : data.items.length === 0 ? (
           <div className="p-16 text-center">
-            <Users className="mx-auto mb-3 h-12 w-12 text-slate-600" strokeWidth={1.2} />
-            <h3 className="text-base font-semibold text-white">No candidates match criteria</h3>
-            <p className="mt-1 text-sm text-slate-400">
+            <Users className="mx-auto mb-3 h-12 w-12 text-slate-400" strokeWidth={1.2} />
+            <h3 className={`text-base font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>No candidates match criteria</h3>
+            <p className={`mt-1 text-sm ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               Try adjusting search terms, clearing status filters, or widening score bounds.
             </p>
             {activeFiltersCount > 0 && (
               <button
                 type="button"
                 onClick={handleClearAllFilters}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+                className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 Reset All Filters
@@ -742,7 +863,9 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
           <div className="overflow-x-auto">
             <table className="w-full min-w-[920px] text-left text-sm">
               <thead>
-                <tr className="border-b border-white/10 bg-slate-950/40 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                <tr className={`border-b text-[11px] font-semibold uppercase tracking-wider ${
+                  isLight ? 'bg-slate-50 border-slate-200 text-slate-600' : 'bg-slate-950/40 border-white/10 text-slate-400'
+                }`}>
                   <th className="px-5 py-4">Candidate</th>
                   <th className="px-5 py-4">Role / Applied Job</th>
                   <th className="px-5 py-4">Status</th>
@@ -752,29 +875,39 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                   <th className="px-5 py-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className={isLight ? 'divide-y divide-slate-100' : 'divide-y divide-white/5'}>
                 {data.items.map((item) => {
                   const isCompleted = (item.status || '').toLowerCase() === 'completed';
                   return (
                     <tr
                       key={item.session_id || item.user_id}
-                      className="transition hover:bg-white/[0.03] group"
+                      className={`transition group ${
+                        isLight ? 'hover:bg-slate-50/80' : 'hover:bg-white/[0.03]'
+                      }`}
                     >
                       {/* Candidate Name & Email */}
                       <td className="px-5 py-4 align-top">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-300 font-bold text-sm border border-indigo-400/20">
+                          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-bold text-sm ${
+                            isLight
+                              ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                              : 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/20'
+                          }`}>
                             {(item.candidate_name || 'C').charAt(0).toUpperCase()}
                           </div>
                           <div className="min-w-0">
-                            <p className="font-semibold text-white truncate group-hover:text-indigo-300 transition">
+                            <p className={`font-semibold truncate transition ${
+                              isLight
+                                ? 'text-slate-900 group-hover:text-indigo-600'
+                                : 'text-white group-hover:text-indigo-300'
+                            }`}>
                               {item.candidate_name}
                             </p>
-                            <p className="text-xs text-slate-400 truncate">
+                            <p className={`text-xs truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                               {item.email || (item.username ? `@${item.username}` : 'No email')}
                             </p>
                             {item.experience_years != null && (
-                              <span className="mt-1 inline-block text-[10px] text-slate-500">
+                              <span className={`mt-1 inline-block text-[10px] font-medium ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>
                                 {item.experience_years} yrs exp
                               </span>
                             )}
@@ -784,7 +917,7 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
 
                       {/* Target Role / Position */}
                       <td className="px-5 py-4 align-top">
-                        <p className="font-medium text-slate-200">
+                        <p className={`font-medium ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
                           {item.job_post_title || item.job_role || 'Software Engineer'}
                         </p>
                         {item.skills && item.skills.length > 0 && (
@@ -792,7 +925,11 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                             {item.skills.slice(0, 3).map((sk, idx) => (
                               <span
                                 key={idx}
-                                className="rounded bg-slate-800/80 px-1.5 py-0.5 text-[10px] text-slate-300"
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                  isLight
+                                    ? 'bg-slate-100 text-slate-700 border border-slate-200/60'
+                                    : 'bg-slate-800/80 text-slate-300'
+                                }`}
                               >
                                 {sk}
                               </span>
@@ -810,8 +947,8 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                       <td className="px-5 py-4 align-top">{getStatusBadge(item.status)}</td>
 
                       {/* Activity Date & Duration */}
-                      <td className="px-5 py-4 align-top text-xs text-slate-400">
-                        <p className="font-medium text-slate-300">
+                      <td className={`px-5 py-4 align-top text-xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                        <p className={`font-medium ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
                           {formatDate(item.ended_at || item.started_at)}
                         </p>
                         {item.duration_minutes != null && (
@@ -829,7 +966,7 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                         {item.hiring_recommendation ? (
                           getFitBadge(item.hiring_recommendation)
                         ) : (
-                          <span className="text-xs text-slate-600 font-mono">—</span>
+                          <span className="text-xs text-slate-400 font-mono">—</span>
                         )}
                       </td>
 
@@ -840,7 +977,7 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                             <button
                               type="button"
                               onClick={() => onViewReport(item.session_id)}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-500"
+                              className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-indigo-700"
                               title="Open Full 5-Dimensional Recruiter Dossier"
                             >
                               <FileText className="h-3.5 w-3.5" />
@@ -850,18 +987,22 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                               href={`/admin/candidates/${item.session_id}`}
                               target="_blank"
                               rel="noreferrer"
-                              className="rounded-xl border border-white/10 p-2 text-slate-400 transition hover:bg-white/5 hover:text-white"
+                              className={`rounded-xl border p-2 transition ${
+                                isLight
+                                  ? 'border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                                  : 'border-white/10 text-slate-400 hover:bg-white/5 hover:text-white'
+                              }`}
                               title="Open in new tab"
                             >
                               <ExternalLink className="h-3.5 w-3.5" />
                             </a>
                           </div>
                         ) : item.status === 'in_progress' ? (
-                          <span className="inline-block text-xs italic text-sky-400/80">
+                          <span className={`inline-block text-xs italic ${isLight ? 'text-sky-700 font-medium' : 'text-sky-400/80'}`}>
                             Interview active…
                           </span>
                         ) : (
-                          <span className="inline-block text-xs italic text-slate-500">
+                          <span className="inline-block text-xs italic text-slate-400">
                             Not yet taken
                           </span>
                         )}
@@ -876,16 +1017,22 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
 
         {/* ── Pagination Controls ────────────────────────────────────────── */}
         {!loading && data.total_count > 0 && (
-          <div className="flex flex-col gap-3 border-t border-white/10 bg-slate-950/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className={`flex flex-col gap-3 border-t px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${
+            isLight ? 'bg-slate-50/70 border-slate-200' : 'bg-slate-950/40 border-white/10'
+          }`}>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">Rows per page:</span>
+              <span className={`text-xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Rows per page:</span>
               <select
                 value={pageSize}
                 onChange={(e) => {
                   setPageSize(parseInt(e.target.value, 10));
                   setPage(1);
                 }}
-                className="rounded-lg border border-white/10 bg-slate-900 px-2 py-1 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none"
+                className={`rounded-lg border px-2 py-1 text-xs transition focus:outline-none ${
+                  isLight
+                    ? 'border-slate-200 bg-white text-slate-800 focus:border-indigo-600'
+                    : 'border-white/10 bg-slate-900 text-slate-200 focus:border-indigo-500'
+                }`}
               >
                 <option value="10">10</option>
                 <option value="25">25</option>
@@ -901,7 +1048,11 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                 type="button"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed ${
+                  isLight
+                    ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 shadow-xs'
+                    : 'border-white/10 bg-slate-900 text-slate-300 hover:bg-white/5'
+                }`}
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
                 Previous
@@ -916,7 +1067,9 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                     onClick={() => setPage(pageNum)}
                     className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                       page === pageNum
-                        ? 'bg-indigo-600 text-white'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : isLight
+                        ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
                         : 'border border-white/10 bg-slate-900 text-slate-400 hover:bg-white/5 hover:text-white'
                     }`}
                   >
@@ -929,7 +1082,11 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                 type="button"
                 disabled={page >= data.total_pages}
                 onClick={() => setPage((p) => Math.min(data.total_pages, p + 1))}
-                className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed ${
+                  isLight
+                    ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 shadow-xs'
+                    : 'border-white/10 bg-slate-900 text-slate-300 hover:bg-white/5'
+                }`}
               >
                 Next
                 <ChevronRight className="h-3.5 w-3.5" />

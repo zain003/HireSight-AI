@@ -147,11 +147,7 @@ async def transcribe_local_whisper(
             return text
 
         return await loop.run_in_executor(None, _run)
-    except ImportError:
-        print("[STT] faster-whisper not installed. Run: pip install faster-whisper")
-        return None
-    except Exception as exc:
-        print(f"[STT Local Error] {exc}")
+    except Exception:
         return None
 
 
@@ -171,14 +167,14 @@ async def transcribe_audio(
     api_key = getattr(settings, "GROQ_API_KEY", None) or os.getenv("GROQ_API_KEY")
     if api_key:
         result = await transcribe_groq_whisper(audio_base64, language, audio_format)
-        if result:
+        if result is not None:
             return result
 
     result = await transcribe_local_whisper(audio_base64, language=language)
-    if result:
+    if result is not None:
         return result
 
-    return "[Could not transcribe audio]"
+    return ""
 
 
 class STTService:

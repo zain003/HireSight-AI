@@ -33,7 +33,7 @@ class MongoDB:
         
         # Backfill status="active" on legacy JobPost documents missing status
         try:
-            coll = JobPost.get_pymongo_collection()
+            coll = JobPost.get_motor_collection()
             await coll.update_many({"status": {"$exists": False}}, {"$set": {"status": "active"}})
         except Exception as e:
             print(f"[WARN] JobPost status backfill notice: {e}")

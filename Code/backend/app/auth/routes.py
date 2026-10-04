@@ -31,6 +31,7 @@ from app.auth.admin_candidates_service import (
     get_candidate_roster,
     get_candidate_session_report,
 )
+from app.interview.models import InterviewSession
 from bson import ObjectId
 
 router = APIRouter()
@@ -55,7 +56,7 @@ async def admin_login(login_data: UserLogin):
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token = create_access_token(
-        data={"user_id": admin_user["id"], "username": admin_user["username"]}
+        data={"user_id": admin_user["id"], "username": admin_user["username"], "role": "admin"}
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -190,6 +191,31 @@ async def get_job_candidates(
         if session.user_id and ObjectId.is_valid(session.user_id):
             user = await User.get(session.user_id)
         
+        # Extract score and recommendation with priority to 5D recruiter report
+        score = None
+        if session.recruiter_report and session.recruiter_report.get("overall_score") is not None:
+            try:
+                score = round(float(session.recruiter_report["overall_score"]), 1)
+            except (ValueError, TypeError):
+                pass
+        elif session.aggregate_scores:
+            if session.aggregate_scores.get("overall_composite_score") is not None:
+                try:
+                    score = round(float(session.aggregate_scores["overall_composite_score"]), 1)
+                except (ValueError, TypeError):
+                    pass
+            elif session.aggregate_scores.get("overall_score") is not None:
+                try:
+                    score = round(float(session.aggregate_scores["overall_score"]), 1)
+                except (ValueError, TypeError):
+                    pass
+
+        rec = None
+        if session.recruiter_report:
+            rec = session.recruiter_report.get("fit_status") or session.recruiter_report.get("hiring_recommendation")
+        elif session.aggregate_scores:
+            rec = session.aggregate_scores.get("fit_status")
+
         candidate_data = {
             "session_id": session.session_id,
             "candidate_id": session.candidate_id,
@@ -198,9 +224,10 @@ async def get_job_candidates(
             "status": session.status,
             "started_at": session.started_at.isoformat() if session.started_at else None,
             "ended_at": session.ended_at.isoformat() if session.ended_at else None,
-            "overall_score": session.aggregate_scores.get("overall_score") if session.aggregate_scores else None,
+            "overall_score": score,
             "has_report": bool(session.recruiter_report),
-            "hiring_recommendation": session.recruiter_report.get("hiring_recommendation") if session.recruiter_report else None,
+            "hiring_recommendation": rec,
+            "fit_status": rec,
             "confidence_level": session.recruiter_report.get("confidence_level") if session.recruiter_report else None,
             # Profile info
             "experience_years": profile.experience_years if profile else None,

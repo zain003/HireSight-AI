@@ -120,6 +120,14 @@ export const interviewService = {
   },
 
   /**
+   * Submit candidate coding run results for tracking and immediate persistence in session report.
+   */
+  submitCodingResult: async (sessionId, payload) => {
+    const response = await api.post(`/interview/live/${sessionId}/submit-coding-result`, payload);
+    return response.data;
+  },
+
+  /**
    * Live speech-to-text audio stream transcription via backend Whisper AI.
    */
   transcribeAudio: async (audioBase64, audioFormat = 'webm', language = 'en') => {

@@ -6,7 +6,15 @@ The NER model has limited accuracy, so results are heavily
 post-processed and filtered. Used alongside regex/keyword
 matching for robust extraction.
 """
-from transformers import pipeline, AutoTokenizer, AutoModelForTokenClassification
+try:
+    from transformers import pipeline, AutoTokenizer, AutoModelForTokenClassification
+    HAS_TRANSFORMERS = True
+except ImportError:
+    pipeline = None
+    AutoTokenizer = None
+    AutoModelForTokenClassification = None
+    HAS_TRANSFORMERS = False
+
 from typing import List, Dict, Optional
 import re
 
@@ -45,18 +53,26 @@ class NERModelService:
 
     def _load_model(self):
         """Load the BERT-NER model and tokenizer."""
+        if not HAS_TRANSFORMERS or AutoTokenizer is None:
+            print("[INFO] Transformers not available; using rule-based/regex extraction.")
+            return
+
         if self._pipeline is None:
-            print(f"Loading BERT-NER model: {self.model_name}")
-            self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            model = AutoModelForTokenClassification.from_pretrained(self.model_name)
-            self._pipeline = pipeline(
-                "token-classification",
-                model=model,
-                tokenizer=self._tokenizer,
-                aggregation_strategy="simple",
-                device=-1,  # CPU
-            )
-            print("[OK] BERT-NER model loaded successfully")
+            try:
+                print(f"Loading BERT-NER model: {self.model_name}")
+                self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                model = AutoModelForTokenClassification.from_pretrained(self.model_name)
+                self._pipeline = pipeline(
+                    "token-classification",
+                    model=model,
+                    tokenizer=self._tokenizer,
+                    aggregation_strategy="simple",
+                    device=-1,  # CPU
+                )
+                print("[OK] BERT-NER model loaded successfully")
+            except Exception as e:
+                print(f"[WARN] Could not load BERT-NER ({e}); fallback to rule parser.")
+                self._pipeline = None
 
     def extract_entities(self, text: str) -> Dict[str, List[str]]:
         """
@@ -65,6 +81,9 @@ class NERModelService:
         Returns:
             Dict mapping entity type to list of CLEANED values.
         """
+        if self._pipeline is None:
+            return {}
+
         chunks = self._chunk_text(text)
         all_entities: Dict[str, List[str]] = {}
 

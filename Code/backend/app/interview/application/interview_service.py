@@ -185,23 +185,45 @@ class InterviewService:
         question_text = question.get("question_text") or ""
         question_type = question.get("question_type") or QuestionType.TECHNICAL.value
 
-        # 1. Transcribe audio
-        transcript = await self.stt_service.transcribe(
+        # Subsample frame list to max 6 evenly distributed frames if list is long to reduce CV latency
+        sampled_frames = frame_base64_list
+        if len(frame_base64_list) > 6:
+            step = len(frame_base64_list) / 6.0
+            sampled_frames = [frame_base64_list[int(i * step)] for i in range(6)]
+
+        loop = asyncio.get_event_loop()
+
+        # 1. Parallel execution of STT, MediaPipe Behavioral CV, and Face Check
+        stt_task = self.stt_service.transcribe(
             audio_base64=audio_base64,
             transcript_text=transcript_text,
             language=language,
             audio_format=audio_format,
         )
-
-        # 2. Enhanced behavioral analysis (MediaPipe)
-        behavioral_metrics = self.behavioral_service.analyze_frames(frame_base64_list)
-        
-        # 3. Enhanced vocal analysis (OpenSMILE + Vosk)
-        vocal_metrics = await self.vocal_service.analyze_audio(
-            audio_base64=audio_base64,
-            transcript_text=transcript,
-            audio_format=audio_format
+        behavioral_task = loop.run_in_executor(
+            None, self.behavioral_service.analyze_frames, sampled_frames
         )
+        face_task = self.face_service.analyze(sampled_frames)
+
+        # 2. Concurrently execute Vocal Analysis if transcript is already available from live speech recognition
+        if transcript_text and transcript_text.strip():
+            vocal_task = self.vocal_service.analyze_audio(
+                audio_base64=audio_base64,
+                transcript_text=transcript_text,
+                audio_format=audio_format,
+            )
+            transcript, behavioral_metrics, vocal_metrics, frame_analysis = await asyncio.gather(
+                stt_task, behavioral_task, vocal_task, face_task
+            )
+        else:
+            transcript, behavioral_metrics, frame_analysis = await asyncio.gather(
+                stt_task, behavioral_task, face_task
+            )
+            vocal_metrics = await self.vocal_service.analyze_audio(
+                audio_base64=audio_base64,
+                transcript_text=transcript,
+                audio_format=audio_format,
+            )
         
         # Store metrics for final report (convert to serializable dicts for MongoDB)
         if not hasattr(session, 'behavioral_metrics') or session.behavioral_metrics is None:
@@ -211,17 +233,21 @@ class InterviewService:
             
         session.behavioral_metrics.append(to_serializable(behavioral_metrics))
         session.vocal_metrics.append(to_serializable(vocal_metrics))
-
-        # 4. Legacy frame analysis (for compatibility)
-        frame_analysis = await self.face_service.analyze(frame_base64_list)
         
-        # 5. Answer evaluation (with enhanced metrics)
+        # 3. Answer evaluation (with enhanced metrics & rubric alignment)
+        is_text_mode = bool(transcript_text and (not audio_base64 or len(audio_base64) < 100))
+        rubric_data = question.get("rubric")
+        competency_area = question.get("competency_area")
+
         evaluation = await evaluate_answer_interview(
             question_text=question_text,
             question_type=question_type,
             candidate_transcript=transcript,
-            job_role=session.job_role,
+            job_role=session.job_role or "Software Engineer",
             frame_analysis=frame_analysis,
+            rubric=rubric_data,
+            competency_area=competency_area,
+            input_mode="text" if is_text_mode else "voice",
         )
 
         evaluation.question_index = question_index
@@ -230,6 +256,17 @@ class InterviewService:
             evaluation.question_type = QuestionType(question_type)
         except ValueError:
             evaluation.question_type = QuestionType.TECHNICAL
+
+        # If coding question, calibrate evaluation with latest coding results if present
+        current_q_type = (question.get("question_type") or "").strip().lower()
+        if current_q_type == QuestionType.CODING.value and hasattr(session, 'coding_results') and session.coding_results:
+            latest_cr = session.coding_results[-1]
+            c_score = float(latest_cr.get("overall_coding_score", 100.0 if latest_cr.get("all_passed") else 0.0))
+            if c_score > 0:
+                evaluation.accuracy_score = max(evaluation.accuracy_score, c_score)
+                evaluation.is_correct = c_score >= 50.0
+                evaluation.relevance_score = max(evaluation.relevance_score, min(10.0, c_score / 10.0))
+                evaluation.depth_score = max(evaluation.depth_score, min(10.0, c_score / 10.0))
 
         session.evaluations.append(evaluation)
         session.frame_snapshots.append(frame_analysis)
@@ -250,8 +287,20 @@ class InterviewService:
             for q in existing_followups
             if (q.get("stage") or "").strip().lower() == current_stage
         ]
+        norm_transcript = str(transcript or "").strip().lower()
+        is_skipped = (
+            not norm_transcript
+            or "[skipped]" in norm_transcript
+            or "no verbal answer was provided" in norm_transcript
+            or "candidate chose to skip" in norm_transcript
+            or norm_transcript == "[no answer provided]"
+            or norm_transcript == "no answer"
+            or "no candidate verbal" in norm_transcript
+            or "(no candidate verbal or text answer submitted)" in norm_transcript
+        )
         can_add_followup = (
             evaluation.follow_up_triggered
+            and not is_skipped
             and not is_current_follow_up  # never ask follow-up on a follow-up
             and not is_coding  # coding rounds use the judge later, not verbal follow-ups
             and len(existing_followups) < self.MAX_FOLLOWUPS_PER_INTERVIEW
@@ -365,13 +414,14 @@ class InterviewService:
         # Update scores with 5-dimensional explainable metrics
         if recruiter_report.five_dimension_scores:
             scores.update({
+                "overall_score": recruiter_report.overall_score,
+                "overall_composite_score": recruiter_report.overall_score,
+                "fit_status": recruiter_report.fit_status,
                 "technical_knowledge_score": recruiter_report.technical_score,
                 "coding_ability_score": recruiter_report.coding_score,
                 "role_fit_score": recruiter_report.role_fit_score,
                 "communication_score": recruiter_report.communication_score,
                 "behavioral_indicators_score": recruiter_report.behavioral_score,
-                "overall_composite_score": recruiter_report.overall_score,
-                "fit_status": recruiter_report.fit_status,
             })
 
         # Store comprehensive report

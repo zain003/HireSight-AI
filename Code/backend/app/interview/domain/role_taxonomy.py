@@ -1,5 +1,6 @@
 """Domain models and definitions for standardized role taxonomy and competency matrices."""
 
+import re
 from enum import Enum
 from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
@@ -474,24 +475,118 @@ def parse_standard_role(role_str: Optional[str]) -> StandardRole:
         if role.value == norm or role.value == raw.lower():
             return role
 
-    # 2. Key phrase / synonym matching
+    # 2. Modern Full-Stack & Framework Stacks
     norm_text = raw.lower()
-    if any(k in norm_text for k in ["front", "react", "vue", "angular", "ui", "web dev"]):
-        return StandardRole.FRONTEND_ENGINEER
-    if any(k in norm_text for k in ["full", "stack", "fullstack", "full-stack"]):
+    if any(k in norm_text for k in ["mern", "mean", "mevn", "pern", "lamp", "jamstack", "fullstack", "full stack", "full_stack", "full-stack"]):
         return StandardRole.FULLSTACK_ENGINEER
-    if any(k in norm_text for k in ["devops", "cloud", "sre", "infra", "kubernetes", "platform"]):
+
+    # 3. Frontend & Mobile Stacks
+    if any(k in norm_text for k in ["front", "react", "vue", "angular", "svelte", "nextjs", "next.js", "ui", "web dev", "frontend", "flutter", "react native", "react_native", "ios", "android", "mobile"]):
+        return StandardRole.FRONTEND_ENGINEER
+
+    # 4. DevOps, Cloud & SRE
+    if any(k in norm_text for k in ["devops", "cloud", "sre", "infra", "infrastructure", "kubernetes", "k8s", "terraform", "platform", "aws", "gcp", "azure", "docker"]):
         return StandardRole.DEVOPS_ENGINEER
-    if any(k in norm_text for k in ["data", "analytics", "etl", "spark", "warehouse"]):
+
+    # 5. Data Engineering & Big Data
+    if any(k in norm_text for k in ["data engineer", "data_engineer", "big data", "etl", "spark", "warehouse", "snowflake", "databricks", "airflow", "kafka", "data pipeline"]):
         return StandardRole.DATA_ENGINEER
-    if any(k in norm_text for k in ["ml", "machine", "ai", "deep learning", "nlp", "llm"]):
+
+    # 6. ML / AI / Data Science
+    if any(k in norm_text for k in ["ml", "machine learning", "machine_learning", "ai engineer", "deep learning", "nlp", "computer vision", "llm", "genai", "generative ai", "data scientist", "data science"]):
         return StandardRole.ML_ENGINEER
-    if any(k in norm_text for k in ["qa", "test", "quality", "sdet", "automation"]):
+
+    # 7. QA & Test Automation
+    if any(k in norm_text for k in ["qa", "test", "quality", "sdet", "automation engineer", "playwright", "cypress", "selenium"]):
         return StandardRole.QA_AUTOMATION_ENGINEER
-    if any(k in norm_text for k in ["back", "server", "api", "backend", "python", "django", "fastapi", "golang", "java", "node"]):
+
+    # 8. Backend & Server-Side Systems
+    if any(k in norm_text for k in ["back", "server", "api", "backend", "python", "django", "fastapi", "flask", "golang", "go engineer", "java", "spring", "spring boot", "node", "express", "ruby", "rails", ".net", "dotnet", "c#", "csharp", "php", "rust"]):
         return StandardRole.BACKEND_ENGINEER
 
     return StandardRole.BACKEND_ENGINEER
+
+
+def detect_specialized_stack(role_str: Optional[str], skills: Optional[List[str]] = None) -> tuple[str, List[str]]:
+    """
+    Detects specialized tech stack tags and suggested core skills from role title and skills.
+    Prioritizes role title domain first, then explicit skills.
+    Returns (stack_key, default_stack_skills).
+    """
+    r_str = str(role_str or "").lower()
+    s_str = " ".join(skills or []).lower()
+
+    # 1. Check role title first to avoid cross-domain false positives (e.g. DevOps getting MERN because candidate has React on CV)
+    if any(k in r_str for k in ["devops", "cloud", "sre", "infrastructure", "kubernetes", "k8s", "terraform", "platform engineer", "docker", "site reliability"]):
+        return "devops_cloud", ["Docker", "Kubernetes", "Terraform", "CI/CD (GitHub Actions)", "AWS/GCP", "Prometheus/Grafana"]
+    if any(k in r_str for k in ["data engineer", "data_engineer", "etl", "spark", "airflow", "data pipeline"]):
+        return "data_pipeline", ["Apache Spark", "Python/PySpark", "SQL", "Airflow", "Data Warehousing (Snowflake/BigQuery)", "Kafka"]
+    if any(k in r_str for k in ["ml", "machine learning", "ai engineer", "deep learning", "nlp", "computer vision", "llm", "genai", "data scientist"]):
+        return "ml_ai", ["PyTorch/TensorFlow", "Transformers", "RAG & Vector DBs", "MLOps", "Model Serving", "Python"]
+    if any(k in r_str for k in ["qa", "quality assurance", "test automation", "sdet", "automation engineer"]):
+        return "qa_automation", ["Playwright/Cypress", "Python/TypeScript", "API Testing", "CI/CD Integration", "Page Object Model"]
+    if any(k in r_str for k in ["blockchain", "web3", "smart contract", "solidity", "crypto", "defi"]):
+        return "blockchain_web3", ["Solidity", "Smart Contracts", "EVM", "Hardhat/Foundry", "Web3.js/Ethers.js", "Reentrancy & Gas Optimization"]
+    if any(k in r_str for k in ["flutter", "dart"]):
+        return "flutter", ["Flutter", "Dart", "State Management (Bloc/Provider)", "REST APIs", "Mobile UI", "Offline Caching"]
+    if "react native" in r_str or "react_native" in r_str:
+        return "react_native", ["React Native", "JavaScript/TypeScript", "Redux/Zustand", "Native Modules", "Mobile Performance"]
+    if re.search(r"\b(spring|springboot|jvm|hibernate)\b", r_str) or (re.search(r"\bjava\b", r_str) and "javascript" not in r_str):
+        return "java_backend", ["Java", "Spring Boot", "Hibernate/JPA", "Microservices", "PostgreSQL", "REST APIs"]
+    if "django" in r_str or "flask" in r_str or "fastapi" in r_str or (re.search(r"\bpython\b", r_str) and ("backend" in r_str or "api" in r_str)):
+        return "python_backend", ["Python", "Django/FastAPI", "PostgreSQL", "ORM", "Asyncio", "REST APIs", "Celery"]
+    if "mern" in r_str:
+        return "mern", ["MongoDB", "Express.js", "React.js", "Node.js", "REST APIs", "JWT Authentication"]
+    if "mean" in r_str:
+        return "mean", ["MongoDB", "Express.js", "Angular", "Node.js", "TypeScript", "REST APIs"]
+    if "pern" in r_str:
+        return "pern", ["PostgreSQL", "Express.js", "React.js", "Node.js", "SQL", "REST APIs"]
+    if "lamp" in r_str:
+        return "lamp", ["Linux", "Apache", "MySQL", "PHP", "MVC", "OOP"]
+    if "vue" in r_str or "nuxt" in r_str:
+        return "vue", ["Vue.js", "Nuxt.js", "Pinia/Vuex", "TypeScript", "Component Design", "Vite"]
+    if "next" in r_str or ("react" in r_str and "native" not in r_str):
+        return "react_next", ["React.js", "Next.js", "TypeScript", "Tailwind CSS", "State Management", "SSR/SSG"]
+
+    # 2. Check combined text when role title is generic (e.g. 'Software Engineer', 'Fullstack Engineer')
+    raw = f"{r_str} {s_str}".strip()
+
+    if any(k in raw for k in ["k8s", "kubernetes", "terraform", "devops", "docker", "ci/cd", "aws", "gcp", "azure"]) and not any(k in r_str for k in ["front", "react"]):
+        if any(k in s_str for k in ["kubernetes", "k8s", "terraform", "docker", "ansible", "helm"]) and ("react" not in r_str and "node" not in r_str):
+            return "devops_cloud", ["Docker", "Kubernetes", "Terraform", "CI/CD (GitHub Actions)", "AWS/GCP", "Prometheus/Grafana"]
+
+    if "mern" in raw or (("react" in raw or "next" in raw) and ("node" in raw or "express" in raw or "mongo" in raw)):
+        return "mern", ["MongoDB", "Express.js", "React.js", "Node.js", "REST APIs", "JWT Authentication"]
+    if "mean" in raw or ("angular" in raw and ("node" in raw or "express" in raw or "mongo" in raw)):
+        return "mean", ["MongoDB", "Express.js", "Angular", "Node.js", "TypeScript", "REST APIs"]
+    if "pern" in raw:
+        return "pern", ["PostgreSQL", "Express.js", "React.js", "Node.js", "SQL", "REST APIs"]
+    if "lamp" in raw:
+        return "lamp", ["Linux", "Apache", "MySQL", "PHP", "MVC", "OOP"]
+    if "django" in raw or "flask" in raw or "fastapi" in raw or (re.search(r"\bpython\b", raw) and ("backend" in raw or "api" in raw or "django" in raw or "fastapi" in raw)):
+        return "python_backend", ["Python", "Django/FastAPI", "PostgreSQL", "ORM", "Asyncio", "REST APIs", "Celery"]
+    if re.search(r"\b(spring|springboot|jvm|hibernate)\b", raw) or (re.search(r"\bjava\b", raw) and "javascript" not in raw):
+        return "java_backend", ["Java", "Spring Boot", "Hibernate/JPA", "Microservices", "PostgreSQL", "REST APIs"]
+    if "flutter" in raw or "dart" in raw:
+        return "flutter", ["Flutter", "Dart", "State Management (Bloc/Provider)", "REST APIs", "Mobile UI", "Offline Caching"]
+    if "react native" in raw or "react_native" in raw:
+        return "react_native", ["React Native", "JavaScript/TypeScript", "Redux/Zustand", "Native Modules", "Mobile Performance"]
+    if "next" in raw or "react" in raw:
+        return "react_next", ["React.js", "Next.js", "TypeScript", "Tailwind CSS", "State Management", "SSR/SSG"]
+    if "vue" in raw or "nuxt" in raw:
+        return "vue", ["Vue.js", "Nuxt.js", "Pinia/Vuex", "TypeScript", "Component Design", "Vite"]
+    if any(k in raw for k in ["k8s", "kubernetes", "terraform", "devops", "docker", "ci/cd"]):
+        return "devops_cloud", ["Docker", "Kubernetes", "Terraform", "CI/CD (GitHub Actions)", "AWS/GCP", "Prometheus/Grafana"]
+    if any(k in raw for k in ["spark", "etl", "airflow", "data engineer", "snowflake", "bigquery"]):
+        return "data_pipeline", ["Apache Spark", "Python/PySpark", "SQL", "Airflow", "Data Warehousing (Snowflake/BigQuery)", "Kafka"]
+    if any(k in raw for k in ["llm", "rag", "deep learning", "machine learning", "pytorch", "tensorflow"]):
+        return "ml_ai", ["PyTorch/TensorFlow", "Transformers", "RAG & Vector DBs", "MLOps", "Model Serving", "Python"]
+    if any(k in raw for k in ["playwright", "cypress", "selenium", "qa", "pytest"]):
+        return "qa_automation", ["Playwright/Cypress", "Python/TypeScript", "API Testing", "CI/CD Integration", "Page Object Model"]
+    if any(k in raw for k in ["solidity", "smart contract", "blockchain", "web3", "evm", "crypto", "defi"]):
+        return "blockchain_web3", ["Solidity", "Smart Contracts", "EVM", "Hardhat/Foundry", "Web3.js/Ethers.js", "Reentrancy & Gas Optimization"]
+    
+    return "general", []
 
 
 def parse_seniority_level(
@@ -504,13 +599,13 @@ def parse_seniority_level(
 
     if difficulty_or_seniority and isinstance(difficulty_or_seniority, str):
         val = difficulty_or_seniority.strip().lower()
-        if any(k in val for k in ["lead", "principal", "staff", "expert"]):
+        if any(k in val for k in ["lead", "principal", "staff", "architect", "expert"]):
             return SeniorityLevel.LEAD
         if any(k in val for k in ["senior", "advanced", "hard", "sr"]):
             return SeniorityLevel.SENIOR
-        if any(k in val for k in ["entry", "junior", "beginner", "easy", "intern", "assoc"]):
+        if any(k in val for k in ["entry", "junior", "beginner", "easy", "intern", "assoc", "graduate", "fresher"]):
             return SeniorityLevel.ENTRY
-        if any(k in val for k in ["mid", "intermediate", "medium", "middle"]):
+        if any(k in val for k in ["mid", "intermediate", "medium", "middle", "experienced"]):
             return SeniorityLevel.MID
 
     # Experience-based inference fallback
@@ -522,4 +617,5 @@ def parse_seniority_level(
         return SeniorityLevel.SENIOR
     else:
         return SeniorityLevel.LEAD
+
 

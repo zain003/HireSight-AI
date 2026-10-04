@@ -1,6 +1,7 @@
 /**
  * Admin Dashboard Page
  * Manages job posts, candidate skill matching, and admin operations.
+ * Features ultra-clean, executive White & Professional Theme with instant Dark Mode toggle.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
@@ -22,6 +23,11 @@ import {
   Video,
   Code2,
   UserCheck,
+  Sun,
+  Moon,
+  ArrowLeft,
+  Sparkles,
+  CheckCircle2,
 } from 'lucide-react';
 import JobCandidatesList from '@/components/Admin/JobCandidatesList';
 import CandidateAssessmentRoster from '@/components/Admin/CandidateAssessmentRoster';
@@ -49,6 +55,7 @@ const JOB_STATUS_OPTIONS = [
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const [theme, setTheme] = useState('light');
   const [activeSection, setActiveSection] = useState('dashboard');
   const [jobPosts, setJobPosts] = useState([]);
   const [dashboardStats, setDashboardStats] = useState(null);
@@ -74,7 +81,7 @@ export default function AdminDashboard() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  // New states for candidate viewing
+  // States for candidate viewing
   const [viewMode, setViewMode] = useState('list'); // 'list', 'candidates', 'report'
   const [selectedJobForCandidates, setSelectedJobForCandidates] = useState(null);
   const [selectedSessionForReport, setSelectedSessionForReport] = useState(null);
@@ -88,6 +95,19 @@ export default function AdminDashboard() {
     domain: '',
     status: 'active',
   });
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('hiresight_admin_theme') || 'light';
+    setTheme(savedTheme);
+  }, []);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(nextTheme);
+    localStorage.setItem('hiresight_admin_theme', nextTheme);
+  };
+
+  const isLight = theme === 'light';
 
   useEffect(() => {
     if (!authService.isAuthenticated() || !authService.isAdminAuthenticated()) {
@@ -311,15 +331,21 @@ export default function AdminDashboard() {
   };
 
   const statusPill = (status) => {
-    const styles = {
+    const stylesLight = {
+      active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      draft: 'bg-slate-100 text-slate-600 border-slate-200',
+      closed: 'bg-rose-50 text-rose-700 border-rose-200',
+    };
+    const stylesDark = {
       active: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
       draft: 'bg-slate-600/40 text-slate-300 border-slate-500/30',
       closed: 'bg-red-500/15 text-red-300 border-red-500/30',
     };
+    const currentStyles = isLight ? stylesLight : stylesDark;
     const labels = { active: 'Active', draft: 'Draft', closed: 'Closed' };
     return (
       <span
-        className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${styles[status] || styles.draft}`}
+        className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${currentStyles[status] || currentStyles.draft}`}
       >
         {labels[status] || status}
       </span>
@@ -328,39 +354,46 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0B1120]">
+      <div className={`flex min-h-screen items-center justify-center ${isLight ? 'bg-[#F8FAFC]' : 'bg-[#0B1120]'}`}>
         <div className="flex flex-col items-center gap-4">
-          <div className="h-10 w-10 animate-spin rounded-full border-2 border-indigo-400/30 border-t-indigo-400" />
-          <p className="text-sm text-slate-400">Loading admin dashboard…</p>
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+          <p className={`text-sm font-medium ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Loading admin dashboard…</p>
         </div>
       </div>
     );
   }
 
-  const navItem = (sectionId, Icon, label) => (
-    <button
-      type="button"
-      title={label}
-      onClick={() => {
-        setActiveSection(sectionId);
-        // Reset view mode when switching sections
-        setViewMode('list');
-        setSelectedJobForCandidates(null);
-        setReportData(null);
-        if (sectionId !== 'dashboard' && sectionId !== 'jobs') {
-          setShowCreateForm(false);
-        }
-      }}
-      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${
-        activeSection === sectionId
-          ? 'bg-indigo-500/20 text-indigo-200'
-          : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
-      }`}
-    >
-      <Icon className="h-5 w-5 shrink-0 opacity-90" strokeWidth={1.75} />
-      <span className="hidden font-medium lg:inline">{label}</span>
-    </button>
-  );
+  const navItem = (sectionId, Icon, label) => {
+    const isActive = activeSection === sectionId;
+    const activeClass = isLight
+      ? 'bg-indigo-50 text-indigo-700 font-semibold shadow-xs'
+      : 'bg-indigo-500/20 text-indigo-200 font-semibold';
+    const inactiveClass = isLight
+      ? 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium'
+      : 'text-slate-400 hover:bg-white/5 hover:text-slate-200 font-medium';
+
+    return (
+      <button
+        type="button"
+        title={label}
+        onClick={() => {
+          setActiveSection(sectionId);
+          setViewMode('list');
+          setSelectedJobForCandidates(null);
+          setReportData(null);
+          if (sectionId !== 'dashboard' && sectionId !== 'jobs') {
+            setShowCreateForm(false);
+          }
+        }}
+        className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-sm transition ${
+          isActive ? activeClass : inactiveClass
+        }`}
+      >
+        <Icon className="h-5 w-5 shrink-0 opacity-90" strokeWidth={1.75} />
+        <span className="hidden lg:inline">{label}</span>
+      </button>
+    );
+  };
 
   const sectionMeta = {
     dashboard: {
@@ -414,38 +447,47 @@ export default function AdminDashboard() {
       value: s.total_job_posts ?? '—',
       icon: Briefcase,
       trend: `+${s.job_posts_created_this_week ?? 0} this week`,
-      iconBg: 'bg-indigo-500/20 text-indigo-300',
+      iconBg: isLight ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-indigo-500/20 text-indigo-300',
     },
     {
       label: 'Registered users',
       value: s.total_registered_users ?? '—',
       icon: Users,
       trend: `+${s.users_registered_this_week ?? 0} this week`,
-      iconBg: 'bg-sky-500/20 text-sky-300',
+      iconBg: isLight ? 'bg-sky-50 text-sky-600 border border-sky-100' : 'bg-sky-500/20 text-sky-300',
     },
     {
       label: 'Interviews today',
       value: s.interviews_today ?? '—',
       icon: Video,
       trend: `${s.interviews_this_week ?? 0} in last 7 days`,
-      iconBg: 'bg-violet-500/20 text-violet-300',
+      iconBg: isLight ? 'bg-violet-50 text-violet-600 border border-violet-100' : 'bg-violet-500/20 text-violet-300',
     },
     {
       label: 'Profiles with resume',
       value: s.profiles_with_resume ?? '—',
       icon: Code2,
-      trend: `${s.unique_skills_listed ?? 0} unique skills in job posts`,
-      iconBg: 'bg-amber-500/20 text-amber-200',
+      trend: `${s.unique_skills_listed ?? 0} unique skills`,
+      iconBg: isLight ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-amber-500/20 text-amber-200',
     },
   ];
 
   return (
-    <div className="flex min-h-screen bg-[#0B1120] text-slate-100">
+    <div className={`flex min-h-screen transition-colors duration-200 ${isLight ? 'bg-[#F8FAFC] text-slate-900' : 'bg-[#0B1120] text-slate-100'}`}>
       {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 flex w-[72px] flex-col border-r border-white/10 bg-[#0d1526] lg:w-56">
-        <div className="flex h-16 items-center justify-center border-b border-white/10 lg:justify-start lg:px-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500 text-lg font-bold text-white">
+      <aside className={`fixed inset-y-0 left-0 z-30 flex w-[72px] flex-col border-r transition-colors duration-200 lg:w-56 ${
+        isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-[#0d1526] border-white/10'
+      }`}>
+        <div className={`flex h-16 items-center justify-center border-b lg:justify-start lg:px-4 ${
+          isLight ? 'border-slate-100' : 'border-white/10'
+        }`}>
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-lg font-bold text-white shadow-md shadow-indigo-500/20">
             H
+          </div>
+          <div className="hidden lg:block ml-3">
+            <span className={`text-base font-extrabold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+              Hire<span className="text-indigo-600">SIGHT</span>
+            </span>
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1 p-2">
@@ -459,14 +501,18 @@ export default function AdminDashboard() {
 
       <div className="flex min-w-0 flex-1 flex-col pl-[72px] lg:pl-56">
         {/* Top bar */}
-        <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0B1120]/90 backdrop-blur-md">
+        <header className={`sticky top-0 z-20 border-b backdrop-blur-md transition-colors duration-200 ${
+          isLight ? 'border-slate-200/80 bg-white/95 shadow-xs' : 'border-white/10 bg-[#0B1120]/90'
+        }`}>
           <div className="flex flex-col gap-4 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <div className="flex min-w-0 items-center gap-3">
-              <a href="/" className="shrink-0 text-lg font-bold tracking-tight text-white">
-                Hire<span className="text-indigo-400">SIGHT</span>
+              <a href="/" className={`shrink-0 text-lg font-bold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                Hire<span className="text-indigo-600">SIGHT</span>
               </a>
-              <span className="rounded-md border border-indigo-400/40 bg-indigo-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-200">
-                Admin
+              <span className={`rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                isLight ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-indigo-400/40 bg-indigo-500/15 text-indigo-200'
+              }`}>
+                Admin Portal
               </span>
             </div>
 
@@ -475,7 +521,9 @@ export default function AdminDashboard() {
             ) : (
               <div className="relative mx-auto w-full max-w-xl sm:mx-0 sm:flex-1 sm:px-6">
                 <Search
-                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
+                  className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
+                    isLight ? 'text-slate-400' : 'text-slate-500'
+                  }`}
                   strokeWidth={1.75}
                 />
                 <input
@@ -491,27 +539,56 @@ export default function AdminDashboard() {
                       ? 'Search users by email, name…'
                       : 'Search jobs, skills, domain…'
                   }
-                  className="w-full rounded-xl border border-white/10 bg-slate-900/80 py-2.5 pl-10 pr-4 text-sm text-slate-200 placeholder:text-slate-500 focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
+                  className={`w-full rounded-xl border py-2 pl-10 pr-4 text-sm transition focus:outline-none focus:ring-2 ${
+                    isLight
+                      ? 'border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-indigo-100'
+                      : 'border-white/10 bg-slate-900/80 text-slate-200 placeholder:text-slate-500 focus:border-indigo-500/50 focus:ring-indigo-500/30'
+                  }`}
                 />
               </div>
             )}
 
             <div className="flex items-center justify-end gap-2 sm:gap-3">
+              {/* Theme Toggle Button */}
               <button
                 type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/5 hover:text-white"
+                onClick={toggleTheme}
+                className={`flex h-9 w-9 items-center justify-center rounded-xl border transition ${
+                  isLight
+                    ? 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                    : 'border-white/10 bg-slate-900/80 text-slate-300 hover:bg-white/5 hover:text-white'
+                }`}
+                title={isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+                aria-label="Toggle Theme"
+              >
+                {isLight ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+              </button>
+
+              <button
+                type="button"
+                className={`flex h-9 w-9 items-center justify-center rounded-xl border transition ${
+                  isLight
+                    ? 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                    : 'border-white/10 bg-slate-900/80 text-slate-300 hover:bg-white/5 hover:text-white'
+                }`}
                 aria-label="Notifications"
               >
-                <Bell className="h-5 w-5" strokeWidth={1.75} />
+                <Bell className="h-4 w-4" strokeWidth={1.75} />
               </button>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-500 text-sm font-bold text-white">
+
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white shadow-xs">
                 A
               </div>
-              <span className="hidden text-sm font-medium text-slate-300 sm:inline">Admin</span>
+              <span className={`hidden text-sm font-semibold sm:inline ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Admin</span>
+
               <button
                 type="button"
                 onClick={handleLogout}
-                className="rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-white"
+                className={`rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition ${
+                  isLight
+                    ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900 shadow-xs'
+                    : 'border-white/15 text-slate-300 hover:bg-white/5 hover:text-white'
+                }`}
               >
                 Logout
               </button>
@@ -527,19 +604,26 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   onClick={viewMode === 'report' ? handleBackFromReport : handleBackFromCandidates}
-                  className="shrink-0 rounded-xl border border-white/15 p-2 text-slate-300 transition hover:bg-white/5 hover:text-white"
+                  className={`shrink-0 rounded-xl border p-2 transition ${
+                    isLight
+                      ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs'
+                      : 'border-white/15 text-slate-300 hover:bg-white/5 hover:text-white'
+                  }`}
                   aria-label="Back"
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
+                  <ArrowLeft className="h-5 w-5" />
                 </button>
               )}
               <div>
-                <h1 className="text-2xl font-bold text-white sm:text-3xl">{pageTitle}</h1>
-                <p className="mt-1 text-sm text-slate-400">{pageSubtitle}</p>
+                <h1 className={`text-2xl font-extrabold tracking-tight sm:text-3xl ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                  {pageTitle}
+                </h1>
+                <p className={`mt-1 text-sm ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                  {pageSubtitle}
+                </p>
               </div>
             </div>
+
             {(activeSection === 'dashboard' || activeSection === 'jobs') && !showCreateForm && viewMode === 'list' && (
               <button
                 type="button"
@@ -548,32 +632,40 @@ export default function AdminDashboard() {
                   setError('');
                   setSuccess('');
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-600"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-700"
               >
-                <Plus className="h-5 w-5" strokeWidth={2} />
+                <Plus className="h-4 w-4" strokeWidth={2.5} />
                 Create Job Post
               </button>
             )}
           </div>
 
           {error && (
-            <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            <div className={`rounded-xl border px-4 py-3 text-sm font-medium ${
+              isLight ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-red-400/30 bg-red-500/10 text-red-200'
+            }`}>
               {error}
             </div>
           )}
           {success && (
-            <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+            <div className={`rounded-xl border px-4 py-3 text-sm font-medium ${
+              isLight ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+            }`}>
               {success}
             </div>
           )}
 
-          {/* Stats (API) */}
+          {/* Stats KPI Cards */}
           {activeSection === 'dashboard' && (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {statCards.map((card) => (
                 <div
                   key={card.label}
-                  className="rounded-2xl border border-white/10 bg-slate-900/50 p-5 transition hover:border-white/15"
+                  className={`rounded-2xl border p-5 transition-all ${
+                    isLight
+                      ? 'bg-white border-slate-200/90 shadow-xs hover:shadow-md hover:border-slate-300'
+                      : 'bg-slate-900/50 border-white/10 hover:border-white/15'
+                  }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div
@@ -581,12 +673,18 @@ export default function AdminDashboard() {
                     >
                       <card.icon className="h-5 w-5" strokeWidth={1.75} />
                     </div>
-                    <span className="max-w-[52%] text-right rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                    <span className={`max-w-[58%] text-right rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${
+                      isLight
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                    }`}>
                       {card.trend}
                     </span>
                   </div>
-                  <p className="mt-4 text-3xl font-bold text-white">{card.value}</p>
-                  <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <p className={`mt-4 text-3xl font-extrabold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    {card.value}
+                  </p>
+                  <p className={`mt-1 text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>
                     {card.label}
                   </p>
                 </div>
@@ -596,13 +694,19 @@ export default function AdminDashboard() {
 
           {/* Create form */}
           {(activeSection === 'dashboard' || activeSection === 'jobs') && showCreateForm && (
-            <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-6">
+            <div className={`rounded-2xl border p-6 shadow-xs ${
+              isLight ? 'bg-white border-slate-200' : 'bg-slate-900/50 border-white/10'
+            }`}>
               <div className="mb-6 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">New Job Post</h2>
+                <h2 className={`text-lg font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                  New Job Post
+                </h2>
                 <button
                   type="button"
                   onClick={() => setShowCreateForm(false)}
-                  className="rounded-lg p-2 text-slate-400 transition hover:bg-white/5 hover:text-white"
+                  className={`rounded-lg p-2 transition ${
+                    isLight ? 'text-slate-400 hover:bg-slate-100 hover:text-slate-700' : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  }`}
                   aria-label="Close"
                 >
                   ✕
@@ -610,20 +714,28 @@ export default function AdminDashboard() {
               </div>
               <form onSubmit={handleCreatePost} className="grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">
+                  <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${
+                    isLight ? 'text-slate-600' : 'text-slate-400'
+                  }`}>
                     Job title *
                   </label>
                   <input
                     type="text"
                     value={newPost.title}
                     onChange={(e) => setNewPost({ ...newPost, title: e.target.value })}
-                    placeholder="e.g. Java Developer"
-                    className="w-full rounded-xl border border-white/10 bg-[#0B1120] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
+                    placeholder="e.g. Senior Backend Engineer"
+                    className={`w-full rounded-xl border px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 ${
+                      isLight
+                        ? 'border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-indigo-100'
+                        : 'border-white/10 bg-[#0B1120] text-white placeholder:text-slate-500 focus:border-indigo-500/50 focus:ring-indigo-500/30'
+                    }`}
                     required
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">
+                  <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${
+                    isLight ? 'text-slate-600' : 'text-slate-400'
+                  }`}>
                     Description
                   </label>
                   <textarea
@@ -631,13 +743,19 @@ export default function AdminDashboard() {
                     onChange={(e) =>
                       setNewPost({ ...newPost, description: e.target.value })
                     }
-                    placeholder="Brief job description…"
+                    placeholder="Brief job description, responsibilities, requirements…"
                     rows={3}
-                    className="w-full resize-none rounded-xl border border-white/10 bg-[#0B1120] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
+                    className={`w-full resize-none rounded-xl border px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 ${
+                      isLight
+                        ? 'border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-indigo-100'
+                        : 'border-white/10 bg-[#0B1120] text-white placeholder:text-slate-500 focus:border-indigo-500/50 focus:ring-indigo-500/30'
+                    }`}
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">
+                  <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${
+                    isLight ? 'text-slate-600' : 'text-slate-400'
+                  }`}>
                     Required skills *
                   </label>
                   <input
@@ -646,20 +764,30 @@ export default function AdminDashboard() {
                     onChange={(e) =>
                       setNewPost({ ...newPost, required_skills: e.target.value })
                     }
-                    placeholder="Python, Docker, PostgreSQL"
-                    className="w-full rounded-xl border border-white/10 bg-[#0B1120] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
+                    placeholder="Python, Docker, PostgreSQL, React"
+                    className={`w-full rounded-xl border px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 ${
+                      isLight
+                        ? 'border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-indigo-100'
+                        : 'border-white/10 bg-[#0B1120] text-white placeholder:text-slate-500 focus:border-indigo-500/50 focus:ring-indigo-500/30'
+                    }`}
                     required
                   />
                   <p className="mt-1 text-xs text-slate-500">Separate skills with commas</p>
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">
+                  <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${
+                    isLight ? 'text-slate-600' : 'text-slate-400'
+                  }`}>
                     Status
                   </label>
                   <select
                     value={newPost.status}
                     onChange={(e) => setNewPost({ ...newPost, status: e.target.value })}
-                    className="w-full rounded-xl border border-white/10 bg-[#0B1120] px-4 py-2.5 text-sm text-white focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
+                    className={`w-full rounded-xl border px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 ${
+                      isLight
+                        ? 'border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-indigo-100'
+                        : 'border-white/10 bg-[#0B1120] text-white focus:border-indigo-500/50 focus:ring-indigo-500/30'
+                    }`}
                   >
                     {JOB_STATUS_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>
@@ -668,30 +796,38 @@ export default function AdminDashboard() {
                     ))}
                   </select>
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">
+                <div>
+                  <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${
+                    isLight ? 'text-slate-600' : 'text-slate-400'
+                  }`}>
                     Domain
                   </label>
                   <input
                     type="text"
                     value={newPost.domain}
                     onChange={(e) => setNewPost({ ...newPost, domain: e.target.value })}
-                    placeholder="e.g. Computing"
-                    className="w-full rounded-xl border border-white/10 bg-[#0B1120] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
+                    placeholder="e.g. Computing / Cloud / AI"
+                    className={`w-full rounded-xl border px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 ${
+                      isLight
+                        ? 'border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-indigo-100'
+                        : 'border-white/10 bg-[#0B1120] text-white placeholder:text-slate-500 focus:border-indigo-500/50 focus:ring-indigo-500/30'
+                    }`}
                   />
                 </div>
-                <div className="flex flex-wrap gap-3 sm:col-span-2">
+                <div className="flex flex-wrap gap-3 sm:col-span-2 pt-2">
                   <button
                     type="submit"
                     disabled={creating}
-                    className="rounded-xl bg-indigo-500 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-50"
+                    className="rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:opacity-50"
                   >
-                    {creating ? 'Creating…' : 'Create Post'}
+                    {creating ? 'Creating…' : 'Create Job Post'}
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowCreateForm(false)}
-                    className="rounded-xl border border-white/15 px-6 py-2.5 text-sm font-medium text-slate-300 hover:bg-white/5"
+                    className={`rounded-xl border px-6 py-2.5 text-sm font-semibold transition ${
+                      isLight ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' : 'border-white/15 text-slate-300 hover:bg-white/5'
+                    }`}
                   >
                     Cancel
                   </button>
@@ -700,13 +836,19 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* Users */}
+          {/* Users Table */}
           {activeSection === 'users' && (
-            <section className="rounded-2xl border border-white/10 bg-slate-900/40">
-              <div className="flex flex-col gap-4 border-b border-white/10 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <section className={`rounded-2xl border shadow-xs overflow-hidden ${
+              isLight ? 'bg-white border-slate-200' : 'bg-slate-900/40 border-white/10'
+            }`}>
+              <div className={`flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-center sm:justify-between ${
+                isLight ? 'border-slate-200 bg-slate-50/50' : 'border-white/10'
+              }`}>
                 <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-bold text-white">All users</h2>
-                  <span className="rounded-full border border-indigo-400/40 bg-indigo-500/15 px-2.5 py-0.5 text-xs font-semibold text-indigo-200">
+                  <h2 className={`text-lg font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>All Registered Users</h2>
+                  <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                    isLight ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-indigo-400/40 bg-indigo-500/15 text-indigo-200'
+                  }`}>
                     {users.length}
                   </span>
                 </div>
@@ -724,7 +866,9 @@ export default function AdminDashboard() {
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[880px] text-left text-sm">
                     <thead>
-                      <tr className="border-b border-white/10 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      <tr className={`border-b text-[11px] font-semibold uppercase tracking-wider ${
+                        isLight ? 'bg-slate-50 border-slate-200 text-slate-600' : 'border-white/10 text-slate-500'
+                      }`}>
                         <th className="px-5 py-4">Email</th>
                         <th className="px-5 py-4">Name</th>
                         <th className="px-5 py-4">Username</th>
@@ -738,16 +882,18 @@ export default function AdminDashboard() {
                       {filteredUsers.map((u) => (
                         <tr
                           key={u.id}
-                          className="border-b border-white/5 transition hover:bg-white/[0.03]"
+                          className={`border-b transition ${
+                            isLight ? 'border-slate-100 hover:bg-slate-50/80' : 'border-white/5 hover:bg-white/[0.03]'
+                          }`}
                         >
-                          <td className="px-5 py-4 align-top text-slate-200">{u.email}</td>
-                          <td className="px-5 py-4 align-top text-slate-300">
+                          <td className={`px-5 py-4 align-top font-medium ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{u.email}</td>
+                          <td className={`px-5 py-4 align-top ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
                             {u.full_name || '—'}
                           </td>
-                          <td className="px-5 py-4 align-top text-slate-400">
+                          <td className={`px-5 py-4 align-top ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                             {u.username || '—'}
                           </td>
-                          <td className="px-5 py-4 align-top text-slate-400">
+                          <td className={`px-5 py-4 align-top ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                             {u.created_at
                               ? new Date(u.created_at).toLocaleDateString('en-US', {
                                   year: 'numeric',
@@ -758,22 +904,22 @@ export default function AdminDashboard() {
                           </td>
                           <td className="px-5 py-4 align-top">
                             {u.has_resume ? (
-                              <span className="text-emerald-300">Yes</span>
+                              <span className="font-semibold text-emerald-600">Yes</span>
                             ) : (
-                              <span className="text-slate-500">No</span>
+                              <span className="text-slate-400">No</span>
                             )}
                           </td>
-                          <td className="px-5 py-4 align-top text-slate-400">
-                            <span className="text-slate-300">{u.job_role || '—'}</span>
+                          <td className="px-5 py-4 align-top">
+                            <span className={isLight ? 'text-slate-700 font-medium' : 'text-slate-300'}>{u.job_role || '—'}</span>
                             <span className="mt-1 block text-[11px] text-slate-500">
                               {u.skills_count != null ? `${u.skills_count} skills` : ''}
                             </span>
                           </td>
                           <td className="px-5 py-4 align-top">
                             {u.is_active !== false ? (
-                              <span className="text-emerald-300">Yes</span>
+                              <span className="font-semibold text-emerald-600">Active</span>
                             ) : (
-                              <span className="text-amber-300">No</span>
+                              <span className="font-semibold text-amber-600">Inactive</span>
                             )}
                           </td>
                         </tr>
@@ -787,24 +933,61 @@ export default function AdminDashboard() {
 
           {/* Settings */}
           {activeSection === 'settings' && (
-            <div className="space-y-6 rounded-2xl border border-white/10 bg-slate-900/40 p-6">
+            <div className={`space-y-6 rounded-2xl border p-6 shadow-xs ${
+              isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900/40 border-white/10 text-white'
+            }`}>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                   API base URL
                 </p>
-                <p className="mt-1 font-mono text-sm text-slate-200">
+                <p className={`mt-1 font-mono text-sm ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
                   {process.env.NEXT_PUBLIC_API_URL ||
                     'Same origin (relative /api or configured proxy)'}
                 </p>
               </div>
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Session
+              <div className="border-t pt-4 border-slate-100">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Theme Preference
+                </p>
+                <div className="mt-2 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTheme('light');
+                      localStorage.setItem('hiresight_admin_theme', 'light');
+                    }}
+                    className={`px-4 py-2 rounded-xl text-xs font-semibold border transition ${
+                      isLight ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' : 'border-slate-700 text-slate-300 hover:bg-white/5'
+                    }`}
+                  >
+                    White & Professional
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTheme('dark');
+                      localStorage.setItem('hiresight_admin_theme', 'dark');
+                    }}
+                    className={`px-4 py-2 rounded-xl text-xs font-semibold border transition ${
+                      !isLight ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' : 'border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    Executive Dark Mode
+                  </button>
+                </div>
+              </div>
+              <div className="border-t pt-4 border-slate-100">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Admin Session
                 </p>
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="mt-2 rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/5"
+                  className={`mt-2 rounded-xl border px-4 py-2 text-sm font-semibold transition ${
+                    isLight
+                      ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs'
+                      : 'border-white/15 text-slate-200 hover:bg-white/5'
+                  }`}
                 >
                   Log out of admin
                 </button>
@@ -812,22 +995,24 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* Candidates Tab View (Issue 02) */}
+          {/* Candidates Tab View */}
           {activeSection === 'candidates' && viewMode === 'list' && (
-            <CandidateAssessmentRoster onViewReport={handleViewReport} />
+            <CandidateAssessmentRoster theme={theme} onViewReport={handleViewReport} />
           )}
 
           {/* Job-specific Candidates View */}
           {(activeSection === 'dashboard' || activeSection === 'jobs') && viewMode === 'candidates' && selectedJobForCandidates && (
             <JobCandidatesList
+              theme={theme}
               jobPostId={selectedJobForCandidates.id}
               onViewReport={handleViewReport}
             />
           )}
 
-          {/* Full Report View (FEAT-009-FE / Issue 02) */}
+          {/* Full Report View */}
           {viewMode === 'report' && reportData && (
             <RecruiterReportViewer
+              theme={theme}
               report={reportData.recruiter_report}
               sessionId={reportData.session_id}
             />
@@ -838,23 +1023,31 @@ export default function AdminDashboard() {
             <section className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-white">Candidate Assessment Roster</h2>
-                  <p className="text-xs text-slate-400">
+                  <h2 className={`text-lg font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    Candidate Assessment Roster
+                  </h2>
+                  <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                     Real-time candidate evaluation list with multi-criteria filters and 5-dimensional scores
                   </p>
                 </div>
               </div>
-              <CandidateAssessmentRoster onViewReport={handleViewReport} />
+              <CandidateAssessmentRoster theme={theme} onViewReport={handleViewReport} />
             </section>
           )}
 
           {/* Job posts table */}
           {activeSection === 'jobs' && viewMode === 'list' && (
-          <section className="rounded-2xl border border-white/10 bg-slate-900/40">
-            <div className="flex flex-col gap-4 border-b border-white/10 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <section className={`rounded-2xl border shadow-xs overflow-hidden ${
+            isLight ? 'bg-white border-slate-200' : 'bg-slate-900/40 border-white/10'
+          }`}>
+            <div className={`flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-center sm:justify-between ${
+              isLight ? 'border-slate-200 bg-slate-50/50' : 'border-white/10'
+            }`}>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-white">Job posts</h2>
-                <span className="rounded-full border border-indigo-400/40 bg-indigo-500/15 px-2.5 py-0.5 text-xs font-semibold text-indigo-200">
+                <h2 className={`text-lg font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>Job Posts</h2>
+                <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                  isLight ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-indigo-400/40 bg-indigo-500/15 text-indigo-200'
+                }`}>
                   {jobPosts.length}
                 </span>
               </div>
@@ -871,7 +1064,11 @@ export default function AdminDashboard() {
                     onClick={() => setStatusFilter(f.id)}
                     className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                       statusFilter === f.id
-                        ? 'bg-white/10 text-white'
+                        ? isLight
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-white/10 text-white'
+                        : isLight
+                        ? 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                         : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
                     }`}
                   >
@@ -898,7 +1095,9 @@ export default function AdminDashboard() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[600px] text-left text-sm">
                   <thead>
-                    <tr className="border-b border-white/10 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    <tr className={`border-b text-[11px] font-semibold uppercase tracking-wider ${
+                      isLight ? 'bg-slate-50 border-slate-200 text-slate-600' : 'border-white/10 text-slate-500'
+                    }`}>
                       <th className="px-5 py-4">Job title</th>
                       <th className="px-5 py-4">Date posted</th>
                       <th className="px-5 py-4">Status</th>
@@ -914,18 +1113,22 @@ export default function AdminDashboard() {
                       return (
                         <tr
                           key={post.id}
-                          className="border-b border-white/5 transition hover:bg-white/[0.03]"
+                          className={`border-b transition ${
+                            isLight ? 'border-slate-100 hover:bg-slate-50/80' : 'border-white/5 hover:bg-white/[0.03]'
+                          }`}
                         >
                           <td className="px-5 py-4 align-top">
-                            <p className="font-semibold text-white">{post.title}</p>
+                            <p className={`font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>{post.title}</p>
                             <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{sub}</p>
                             {post.domain && (
-                              <span className="mt-2 inline-block rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-slate-400">
+                              <span className={`mt-2 inline-block rounded-md border px-2 py-0.5 text-[10px] font-medium ${
+                                isLight ? 'border-slate-200 bg-slate-100 text-slate-600' : 'border-white/10 bg-white/5 text-slate-400'
+                              }`}>
                                 {post.domain}
                               </span>
                             )}
                           </td>
-                          <td className="px-5 py-4 align-top text-slate-400">
+                          <td className={`px-5 py-4 align-top ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                             {new Date(post.created_at).toLocaleDateString('en-US', {
                               year: 'numeric',
                               month: 'short',
@@ -938,7 +1141,7 @@ export default function AdminDashboard() {
                               <button
                                 type="button"
                                 onClick={() => handleViewCandidates(post)}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-emerald-700"
                                 title="View candidates who applied and completed interviews"
                               >
                                 <UserCheck className="h-3.5 w-3.5" strokeWidth={2} />
@@ -950,7 +1153,7 @@ export default function AdminDashboard() {
                                   setViewJob(post);
                                   setError('');
                                 }}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-indigo-600"
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-indigo-700"
                               >
                                 <Eye className="h-3.5 w-3.5" strokeWidth={2} />
                                 View
@@ -958,7 +1161,11 @@ export default function AdminDashboard() {
                               <button
                                 type="button"
                                 onClick={() => openEdit(post)}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-white/5"
+                                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                                  isLight
+                                    ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs'
+                                    : 'border-white/15 text-slate-200 hover:bg-white/5'
+                                }`}
                               >
                                 <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
                                 Edit
@@ -967,7 +1174,11 @@ export default function AdminDashboard() {
                                 type="button"
                                 disabled={deletingId === post.id}
                                 onClick={() => handleDeletePost(post)}
-                                className="inline-flex items-center justify-center rounded-lg border border-red-400/30 p-1.5 text-red-300 transition hover:bg-red-500/10 disabled:opacity-50"
+                                className={`inline-flex items-center justify-center rounded-lg border p-1.5 transition disabled:opacity-50 ${
+                                  isLight
+                                    ? 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'
+                                    : 'border-red-400/30 text-red-300 hover:bg-red-500/10'
+                                }`}
                                 aria-label="Delete"
                               >
                                 <Trash2 className="h-4 w-4" strokeWidth={2} />
@@ -989,19 +1200,23 @@ export default function AdminDashboard() {
       {/* View job modal */}
       {viewJob && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-labelledby="view-job-title"
         >
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-[#0d1526] p-6 shadow-2xl">
+          <div className={`max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border p-6 shadow-2xl ${
+            isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#0d1526] border-white/10 text-white'
+          }`}>
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
-                <h3 id="view-job-title" className="text-lg font-bold text-white">
+                <h3 id="view-job-title" className={`text-lg font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
                   {viewJob.title}
                 </h3>
                 {viewJob.domain && (
-                  <span className="mt-2 inline-block rounded-md border border-white/10 px-2 py-0.5 text-[11px] text-slate-400">
+                  <span className={`mt-2 inline-block rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                    isLight ? 'border-slate-200 bg-slate-100 text-slate-600' : 'border-white/10 text-slate-400'
+                  }`}>
                     {viewJob.domain}
                   </span>
                 )}
@@ -1009,7 +1224,9 @@ export default function AdminDashboard() {
               <button
                 type="button"
                 onClick={() => setViewJob(null)}
-                className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white"
+                className={`rounded-lg p-2 transition ${
+                  isLight ? 'text-slate-400 hover:bg-slate-100 hover:text-slate-700' : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                }`}
                 aria-label="Close"
               >
                 ✕
@@ -1027,10 +1244,10 @@ export default function AdminDashboard() {
             </div>
             {viewJob.description ? (
               <div className="mb-4">
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                   Description
                 </p>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-300">
+                <p className={`whitespace-pre-wrap text-sm leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
                   {viewJob.description}
                 </p>
               </div>
@@ -1039,14 +1256,16 @@ export default function AdminDashboard() {
             )}
             {viewJob.required_skills?.length > 0 && (
               <div>
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                   Required skills
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {viewJob.required_skills.map((skill) => (
                     <span
                       key={skill}
-                      className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-slate-300"
+                      className={`rounded-md border px-2 py-1 text-[11px] font-medium ${
+                        isLight ? 'border-slate-200 bg-slate-100 text-slate-700' : 'border-white/10 bg-white/5 text-slate-300'
+                      }`}
                     >
                       {skill}
                     </span>
@@ -1054,21 +1273,23 @@ export default function AdminDashboard() {
                 </div>
               </div>
             )}
-            <div className="mt-6 flex flex-wrap gap-2 border-t border-white/10 pt-4">
+            <div className={`mt-6 flex flex-wrap gap-2 border-t pt-4 ${isLight ? 'border-slate-100' : 'border-white/10'}`}>
               <button
                 type="button"
                 onClick={() => {
                   openEdit(viewJob);
                   setViewJob(null);
                 }}
-                className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600"
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-700"
               >
                 Edit this job
               </button>
               <button
                 type="button"
                 onClick={() => setViewJob(null)}
-                className="rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/5"
+                className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
+                  isLight ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' : 'border-white/15 text-slate-300 hover:bg-white/5'
+                }`}
               >
                 Close
               </button>
@@ -1080,20 +1301,24 @@ export default function AdminDashboard() {
       {/* Edit job modal */}
       {editJob && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-labelledby="edit-job-title"
         >
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-[#0d1526] p-6 shadow-2xl">
+          <div className={`max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border p-6 shadow-2xl ${
+            isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#0d1526] border-white/10 text-white'
+          }`}>
             <div className="mb-6 flex items-center justify-between">
-              <h3 id="edit-job-title" className="text-lg font-bold text-white">
-                Edit job post
+              <h3 id="edit-job-title" className={`text-lg font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                Edit Job Post
               </h3>
               <button
                 type="button"
                 onClick={() => setEditJob(null)}
-                className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white"
+                className={`rounded-lg p-2 transition ${
+                  isLight ? 'text-slate-400 hover:bg-slate-100 hover:text-slate-700' : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                }`}
                 aria-label="Close"
               >
                 ✕
@@ -1101,19 +1326,27 @@ export default function AdminDashboard() {
             </div>
             <form onSubmit={handleUpdatePost} className="space-y-4">
               <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">
+                <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${
+                  isLight ? 'text-slate-600' : 'text-slate-400'
+                }`}>
                   Job title *
                 </label>
                 <input
                   type="text"
                   value={editForm.title}
                   onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                  className="w-full rounded-xl border border-white/10 bg-[#0B1120] px-4 py-2.5 text-sm text-white focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
+                  className={`w-full rounded-xl border px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 ${
+                    isLight
+                      ? 'border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-indigo-100'
+                      : 'border-white/10 bg-[#0B1120] text-white focus:border-indigo-500/50 focus:ring-indigo-500/30'
+                  }`}
                   required
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">
+                <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${
+                  isLight ? 'text-slate-600' : 'text-slate-400'
+                }`}>
                   Description
                 </label>
                 <textarea
@@ -1122,11 +1355,17 @@ export default function AdminDashboard() {
                     setEditForm({ ...editForm, description: e.target.value })
                   }
                   rows={4}
-                  className="w-full resize-none rounded-xl border border-white/10 bg-[#0B1120] px-4 py-2.5 text-sm text-white focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
+                  className={`w-full resize-none rounded-xl border px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 ${
+                    isLight
+                      ? 'border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-indigo-100'
+                      : 'border-white/10 bg-[#0B1120] text-white focus:border-indigo-500/50 focus:ring-indigo-500/30'
+                  }`}
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">
+                <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${
+                  isLight ? 'text-slate-600' : 'text-slate-400'
+                }`}>
                   Required skills *
                 </label>
                 <input
@@ -1136,19 +1375,29 @@ export default function AdminDashboard() {
                     setEditForm({ ...editForm, required_skills: e.target.value })
                   }
                   placeholder="Python, Docker, AWS"
-                  className="w-full rounded-xl border border-white/10 bg-[#0B1120] px-4 py-2.5 text-sm text-white focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
+                  className={`w-full rounded-xl border px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 ${
+                    isLight
+                      ? 'border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-indigo-100'
+                      : 'border-white/10 bg-[#0B1120] text-white focus:border-indigo-500/50 focus:ring-indigo-500/30'
+                  }`}
                   required
                 />
                 <p className="mt-1 text-xs text-slate-500">Separate skills with commas</p>
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">
+                <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${
+                  isLight ? 'text-slate-600' : 'text-slate-400'
+                }`}>
                   Status
                 </label>
                 <select
                   value={editForm.status}
                   onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                  className="w-full rounded-xl border border-white/10 bg-[#0B1120] px-4 py-2.5 text-sm text-white focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
+                  className={`w-full rounded-xl border px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 ${
+                    isLight
+                      ? 'border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-indigo-100'
+                      : 'border-white/10 bg-[#0B1120] text-white focus:border-indigo-500/50 focus:ring-indigo-500/30'
+                  }`}
                 >
                   {JOB_STATUS_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -1158,28 +1407,36 @@ export default function AdminDashboard() {
                 </select>
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">
+                <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${
+                  isLight ? 'text-slate-600' : 'text-slate-400'
+                }`}>
                   Domain
                 </label>
                 <input
                   type="text"
                   value={editForm.domain}
                   onChange={(e) => setEditForm({ ...editForm, domain: e.target.value })}
-                  className="w-full rounded-xl border border-white/10 bg-[#0B1120] px-4 py-2.5 text-sm text-white focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
+                  className={`w-full rounded-xl border px-4 py-2.5 text-sm transition focus:outline-none focus:ring-2 ${
+                    isLight
+                      ? 'border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:border-indigo-600 focus:ring-indigo-100'
+                      : 'border-white/10 bg-[#0B1120] text-white focus:border-indigo-500/50 focus:ring-indigo-500/30'
+                  }`}
                 />
               </div>
               <div className="flex flex-wrap gap-3 pt-2">
                 <button
                   type="submit"
                   disabled={savingEdit}
-                  className="rounded-xl bg-indigo-500 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-600 disabled:opacity-50"
+                  className="rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {savingEdit ? 'Saving…' : 'Save changes'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setEditJob(null)}
-                  className="rounded-xl border border-white/15 px-6 py-2.5 text-sm font-medium text-slate-300 hover:bg-white/5"
+                  className={`rounded-xl border px-6 py-2.5 text-sm font-medium transition ${
+                    isLight ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' : 'border-white/15 text-slate-300 hover:bg-white/5'
+                  }`}
                 >
                   Cancel
                 </button>

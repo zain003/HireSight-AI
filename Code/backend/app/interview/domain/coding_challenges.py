@@ -611,6 +611,533 @@ _CHALLENGE_CATALOG: Dict[str, CodingChallenge] = {
             ),
         ],
     ),
+    "CHAL-006-LRU-CACHE": CodingChallenge(
+        challenge_id="CHAL-006-LRU-CACHE",
+        title="Least Recently Used (LRU) Page Fault Simulator",
+        problem_statement=(
+            "Simulate a Least Recently Used (LRU) page replacement algorithm for a virtual memory system.\n"
+            "Input format:\n"
+            "Line 1: Two space-separated integers: physical frame capacity C (1 ≤ C ≤ 100) and reference count n (1 ≤ n ≤ 2000).\n"
+            "Line 2: n space-separated integers representing sequential page reference requests.\n"
+            "Output format:\n"
+            "Print the total number of page faults followed by a newline."
+        ),
+        difficulty="mid",
+        recommended_languages=["python", "javascript", "c", "cpp", "java"],
+        constraints="Time Complexity: O(n * C) or O(n). Memory: O(C).",
+        starter_code=(
+            "import sys\n\n\ndef main():\n"
+            "    data = sys.stdin.read().strip().split()\n"
+            "    if not data:\n"
+            "        return\n"
+            "    capacity = int(data[0])\n"
+            "    n = int(data[1])\n"
+            "    pages = [int(x) for x in data[2:2+n]]\n"
+            "    # TODO: Simulate LRU cache and count page faults\n"
+            "    print(0)\n\n\n"
+            "if __name__ == '__main__':\n"
+            "    main()\n"
+        ),
+        starter_templates={
+            "python": (
+                "import sys\n\n\ndef main():\n"
+                "    data = sys.stdin.read().strip().split()\n"
+                "    if not data:\n"
+                "        return\n"
+                "    capacity = int(data[0])\n"
+                "    n = int(data[1])\n"
+                "    pages = [int(x) for x in data[2:2+n]]\n"
+                "    cache = []\n"
+                "    faults = 0\n"
+                "    for p in pages:\n"
+                "        if p in cache:\n"
+                "            cache.remove(p)\n"
+                "            cache.append(p)\n"
+                "        else:\n"
+                "            faults += 1\n"
+                "            if len(cache) >= capacity:\n"
+                "                cache.pop(0)\n"
+                "            cache.append(p)\n"
+                "    print(faults)\n\n\n"
+                "if __name__ == '__main__':\n"
+                "    main()\n"
+            ),
+            "javascript": (
+                "const fs = require('fs');\n\n"
+                "function main() {\n"
+                "    const tokens = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);\n"
+                "    if (!tokens || tokens.length < 2) return;\n"
+                "    const capacity = parseInt(tokens[0], 10);\n"
+                "    const n = parseInt(tokens[1], 10);\n"
+                "    const pages = tokens.slice(2, 2 + n).map(Number);\n"
+                "    const cache = [];\n"
+                "    let faults = 0;\n"
+                "    for (const p of pages) {\n"
+                "        const idx = cache.indexOf(p);\n"
+                "        if (idx !== -1) {\n"
+                "            cache.splice(idx, 1);\n"
+                "            cache.push(p);\n"
+                "        } else {\n"
+                "            faults++;\n"
+                "            if (cache.length >= capacity) cache.shift();\n"
+                "            cache.push(p);\n"
+                "        }\n"
+                "    }\n"
+                "    console.log(faults);\n"
+                "}\n\n"
+                "main();\n"
+            ),
+            "cpp": (
+                "#include <iostream>\n"
+                "#include <vector>\n"
+                "#include <list>\n"
+                "#include <unordered_map>\n"
+                "using namespace std;\n\n"
+                "int main() {\n"
+                "    int capacity, n;\n"
+                "    if (!(cin >> capacity >> n)) return 0;\n"
+                "    list<int> lru;\n"
+                "    unordered_map<int, list<int>::iterator> pos;\n"
+                "    int faults = 0;\n"
+                "    for (int i = 0; i < n; ++i) {\n"
+                "        int p;\n"
+                "        cin >> p;\n"
+                "        if (pos.find(p) != pos.end()) {\n"
+                "            lru.erase(pos[p]);\n"
+                "            lru.push_back(p);\n"
+                "            pos[p] = --lru.end();\n"
+                "        } else {\n"
+                "            faults++;\n"
+                "            if ((int)lru.size() >= capacity) {\n"
+                "                int evict = lru.front();\n"
+                "                lru.pop_front();\n"
+                "                pos.erase(evict);\n"
+                "            }\n"
+                "            lru.push_back(p);\n"
+                "            pos[p] = --lru.end();\n"
+                "        }\n"
+                "    }\n"
+                "    cout << faults << \"\\n\";\n"
+                "    return 0;\n"
+                "}\n"
+            ),
+        },
+        public_test_cases=[
+            CodingTestCase(
+                test_id=1,
+                stdin="3 13\n7 0 1 2 0 3 0 4 2 3 0 3 2\n",
+                expected_stdout="10\n",
+                is_hidden=False,
+                description="3 frames with classic reference string yields 10 page faults",
+            ),
+            CodingTestCase(
+                test_id=2,
+                stdin="2 5\n1 2 1 3 1\n",
+                expected_stdout="4\n",
+                is_hidden=False,
+                description="2 frames with repetitive sequence yields 4 faults",
+            ),
+        ],
+        hidden_test_cases=[
+            CodingTestCase(
+                test_id=3,
+                stdin="4 8\n1 2 3 4 1 2 3 4\n",
+                expected_stdout="4\n",
+                is_hidden=True,
+                description="Capacity 4 holds all 4 unique pages with no eviction",
+            ),
+            CodingTestCase(
+                test_id=4,
+                stdin="1 6\n1 2 1 2 1 2\n",
+                expected_stdout="6\n",
+                is_hidden=True,
+                description="Capacity 1 evicts on every alternating page",
+            ),
+        ],
+    ),
+    "CHAL-007-MERGE-INTERVALS": CodingChallenge(
+        challenge_id="CHAL-007-MERGE-INTERVALS",
+        title="Overlapping Interval Scheduler",
+        problem_statement=(
+            "Given n time intervals [start, end], merge all overlapping intervals and print the total merged count followed by each merged range in ascending order.\n"
+            "Input format:\n"
+            "Line 1: Integer n (1 ≤ n ≤ 2000).\n"
+            "Next n lines: Two space-separated integers start and end.\n"
+            "Output format:\n"
+            "Line 1: Total number of non-overlapping merged intervals k.\n"
+            "Next k lines: start end in ascending order."
+        ),
+        difficulty="mid",
+        recommended_languages=["python", "javascript", "c", "cpp", "java"],
+        constraints="Time Complexity: O(n log n). Space Complexity: O(n).",
+        starter_code=(
+            "import sys\n\n\ndef main():\n"
+            "    lines = sys.stdin.read().strip().splitlines()\n"
+            "    if not lines:\n"
+            "        return\n"
+            "    n = int(lines[0].strip())\n"
+            "    # TODO: Merge overlapping intervals\n"
+            "    print(0)\n\n\n"
+            "if __name__ == '__main__':\n"
+            "    main()\n"
+        ),
+        starter_templates={
+            "python": (
+                "import sys\n\n\ndef main():\n"
+                "    tokens = sys.stdin.read().strip().split()\n"
+                "    if not tokens:\n"
+                "        return\n"
+                "    n = int(tokens[0])\n"
+                "    intervals = []\n"
+                "    idx = 1\n"
+                "    for _ in range(n):\n"
+                "        intervals.append([int(tokens[idx]), int(tokens[idx+1])])\n"
+                "        idx += 2\n"
+                "    intervals.sort(key=lambda x: x[0])\n"
+                "    merged = []\n"
+                "    for iv in intervals:\n"
+                "        if not merged or merged[-1][1] < iv[0]:\n"
+                "            merged.append(iv)\n"
+                "        else:\n"
+                "            merged[-1][1] = max(merged[-1][1], iv[1])\n"
+                "    print(len(merged))\n"
+                "    for s, e in merged:\n"
+                "        print(f'{s} {e}')\n\n\n"
+                "if __name__ == '__main__':\n"
+                "    main()\n"
+            ),
+            "javascript": (
+                "const fs = require('fs');\n\n"
+                "function main() {\n"
+                "    const tokens = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);\n"
+                "    if (!tokens || tokens.length < 1) return;\n"
+                "    const n = parseInt(tokens[0], 10);\n"
+                "    const intervals = [];\n"
+                "    let idx = 1;\n"
+                "    for (let i = 0; i < n; i++) {\n"
+                "        intervals.push([parseInt(tokens[idx], 10), parseInt(tokens[idx+1], 10)]);\n"
+                "        idx += 2;\n"
+                "    }\n"
+                "    intervals.sort((a, b) => a[0] - b[0]);\n"
+                "    const merged = [];\n"
+                "    for (const iv of intervals) {\n"
+                "        if (merged.length === 0 || merged[merged.length - 1][1] < iv[0]) {\n"
+                "            merged.push(iv);\n"
+                "        } else {\n"
+                "            merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], iv[1]);\n"
+                "        }\n"
+                "    }\n"
+                "    console.log(merged.length);\n"
+                "    for (const [s, e] of merged) {\n"
+                "        console.log(`${s} ${e}`);\n"
+                "    }\n"
+                "}\n\n"
+                "main();\n"
+            ),
+        },
+        public_test_cases=[
+            CodingTestCase(
+                test_id=1,
+                stdin="4\n1 3\n2 6\n8 10\n15 18\n",
+                expected_stdout="3\n1 6\n8 10\n15 18\n",
+                is_hidden=False,
+                description="Merge [1,3] and [2,6] into [1,6]",
+            ),
+            CodingTestCase(
+                test_id=2,
+                stdin="2\n1 4\n4 5\n",
+                expected_stdout="1\n1 5\n",
+                is_hidden=False,
+                description="Touching intervals merge into single [1,5]",
+            ),
+        ],
+        hidden_test_cases=[
+            CodingTestCase(
+                test_id=3,
+                stdin="3\n1 4\n0 4\n3 5\n",
+                expected_stdout="1\n0 5\n",
+                is_hidden=True,
+                description="Unordered nested intervals merge to [0,5]",
+            ),
+        ],
+    ),
+    "CHAL-008-GROUP-ANAGRAMS": CodingChallenge(
+        challenge_id="CHAL-008-GROUP-ANAGRAMS",
+        title="Anagram Signature Grouping",
+        problem_statement=(
+            "Given an array of lowercase strings, group the anagrams together and print the total number of distinct anagram groups.\n"
+            "Input format:\n"
+            "Line 1: Integer n (1 ≤ n ≤ 1000).\n"
+            "Line 2: n space-separated lowercase words.\n"
+            "Output format:\n"
+            "Print the number of distinct anagram groups followed by a newline."
+        ),
+        difficulty="entry",
+        recommended_languages=["python", "javascript", "c", "cpp", "java"],
+        constraints="Time Complexity: O(n * k log k).",
+        starter_code=(
+            "import sys\n\n\ndef main():\n"
+            "    data = sys.stdin.read().strip().split()\n"
+            "    if not data:\n"
+            "        return\n"
+            "    n = int(data[0])\n"
+            "    words = data[1:1+n]\n"
+            "    # TODO: Group anagrams\n"
+            "    print(0)\n\n\n"
+            "if __name__ == '__main__':\n"
+            "    main()\n"
+        ),
+        starter_templates={
+            "python": (
+                "import sys\n\n\ndef main():\n"
+                "    data = sys.stdin.read().strip().split()\n"
+                "    if not data:\n"
+                "        return\n"
+                "    n = int(data[0])\n"
+                "    words = data[1:1+n]\n"
+                "    groups = {}\n"
+                "    for w in words:\n"
+                "        key = ''.join(sorted(w))\n"
+                "        groups.setdefault(key, []).append(w)\n"
+                "    print(len(groups))\n\n\n"
+                "if __name__ == '__main__':\n"
+                "    main()\n"
+            ),
+            "javascript": (
+                "const fs = require('fs');\n\n"
+                "function main() {\n"
+                "    const tokens = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);\n"
+                "    if (!tokens || tokens.length < 2) return;\n"
+                "    const n = parseInt(tokens[0], 10);\n"
+                "    const words = tokens.slice(1, 1 + n);\n"
+                "    const groups = new Set();\n"
+                "    for (const w of words) {\n"
+                "        groups.add(w.split('').sort().join(''));\n"
+                "    }\n"
+                "    console.log(groups.size);\n"
+                "}\n\n"
+                "main();\n"
+            ),
+        },
+        public_test_cases=[
+            CodingTestCase(
+                test_id=1,
+                stdin="6\neat tea tan ate nat bat\n",
+                expected_stdout="3\n",
+                is_hidden=False,
+                description="6 words grouped into 3 anagram sets",
+            ),
+            CodingTestCase(
+                test_id=2,
+                stdin="1\na\n",
+                expected_stdout="1\n",
+                is_hidden=False,
+                description="Single letter word",
+            ),
+        ],
+        hidden_test_cases=[
+            CodingTestCase(
+                test_id=3,
+                stdin="4\nab ba cd dc\n",
+                expected_stdout="2\n",
+                is_hidden=True,
+                description="Two pairs of two anagrams",
+            ),
+        ],
+    ),
+    "CHAL-009-TOP-K-FREQUENT": CodingChallenge(
+        challenge_id="CHAL-009-TOP-K-FREQUENT",
+        title="Top K Frequent Metric Aggregator",
+        problem_statement=(
+            "Given an array of integer metric values, find the sum of the k most frequently occurring elements.\n"
+            "Input format:\n"
+            "Line 1: Two space-separated integers: n (1 ≤ n ≤ 5000) and k (1 ≤ k ≤ n).\n"
+            "Line 2: n space-separated integers.\n"
+            "Output format:\n"
+            "Print the sum of the k most frequent element values followed by a newline."
+        ),
+        difficulty="mid",
+        recommended_languages=["python", "javascript", "c", "cpp", "java"],
+        constraints="Time Complexity: O(n log n).",
+        starter_code=(
+            "import sys\n\n\ndef main():\n"
+            "    data = sys.stdin.read().strip().split()\n"
+            "    if not data:\n"
+            "        return\n"
+            "    n = int(data[0])\n"
+            "    k = int(data[1])\n"
+            "    nums = [int(x) for x in data[2:2+n]]\n"
+            "    # TODO: Calculate sum of top k frequent elements\n"
+            "    print(0)\n\n\n"
+            "if __name__ == '__main__':\n"
+            "    main()\n"
+        ),
+        starter_templates={
+            "python": (
+                "import sys\nfrom collections import Counter\n\n\ndef main():\n"
+                "    data = sys.stdin.read().strip().split()\n"
+                "    if not data:\n"
+                "        return\n"
+                "    n = int(data[0])\n"
+                "    k = int(data[1])\n"
+                "    nums = [int(x) for x in data[2:2+n]]\n"
+                "    counts = Counter(nums)\n"
+                "    top_k = [val for val, _ in counts.most_common(k)]\n"
+                "    print(sum(top_k))\n\n\n"
+                "if __name__ == '__main__':\n"
+                "    main()\n"
+            ),
+            "javascript": (
+                "const fs = require('fs');\n\n"
+                "function main() {\n"
+                "    const tokens = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);\n"
+                "    if (!tokens || tokens.length < 2) return;\n"
+                "    const n = parseInt(tokens[0], 10);\n"
+                "    const k = parseInt(tokens[1], 10);\n"
+                "    const nums = tokens.slice(2, 2 + n).map(Number);\n"
+                "    const freq = new Map();\n"
+                "    for (const x of nums) freq.set(x, (freq.get(x) || 0) + 1);\n"
+                "    const sorted = Array.from(freq.entries()).sort((a, b) => b[1] - a[1]);\n"
+                "    let sum = 0;\n"
+                "    for (let i = 0; i < Math.min(k, sorted.length); i++) sum += sorted[i][0];\n"
+                "    console.log(sum);\n"
+                "}\n\n"
+                "main();\n"
+            ),
+        },
+        public_test_cases=[
+            CodingTestCase(
+                test_id=1,
+                stdin="6 2\n1 1 1 2 2 3\n",
+                expected_stdout="3\n",
+                is_hidden=False,
+                description="Top 2 frequent elements 1 and 2 sum to 3",
+            ),
+            CodingTestCase(
+                test_id=2,
+                stdin="1 1\n100\n",
+                expected_stdout="100\n",
+                is_hidden=False,
+                description="Single element",
+            ),
+        ],
+        hidden_test_cases=[
+            CodingTestCase(
+                test_id=3,
+                stdin="7 3\n4 4 4 5 5 6 7\n",
+                expected_stdout="15\n",
+                is_hidden=True,
+                description="Top 3 frequent 4, 5, 6 sum to 15",
+            ),
+        ],
+    ),
+    "CHAL-010-TOKEN-BUCKET": CodingChallenge(
+        challenge_id="CHAL-010-TOKEN-BUCKET",
+        title="Token Bucket Rate Limiter Simulator",
+        problem_statement=(
+            "Simulate a token bucket rate limiter. Given capacity C and a sequence of arrival timestamps in seconds, where 1 token is refilled per second (up to capacity C), count how many requests are accepted and how many are rejected (dropped).\n"
+            "Input format:\n"
+            "Line 1: Two space-separated integers: capacity C (1 ≤ C ≤ 100) and request count n (1 ≤ n ≤ 2000).\n"
+            "Line 2: n space-separated non-decreasing integers representing request timestamps in seconds.\n"
+            "Output format:\n"
+            "Two space-separated integers: accepted_count rejected_count followed by a newline."
+        ),
+        difficulty="senior",
+        recommended_languages=["python", "javascript", "c", "cpp", "java"],
+        constraints="Time Complexity: O(n). Space Complexity: O(1).",
+        starter_code=(
+            "import sys\n\n\ndef main():\n"
+            "    data = sys.stdin.read().strip().split()\n"
+            "    if not data:\n"
+            "        return\n"
+            "    capacity = int(data[0])\n"
+            "    n = int(data[1])\n"
+            "    timestamps = [int(x) for x in data[2:2+n]]\n"
+            "    # TODO: Token bucket simulation\n"
+            "    print(f'{n} 0')\n\n\n"
+            "if __name__ == '__main__':\n"
+            "    main()\n"
+        ),
+        starter_templates={
+            "python": (
+                "import sys\n\n\ndef main():\n"
+                "    data = sys.stdin.read().strip().split()\n"
+                "    if not data:\n"
+                "        return\n"
+                "    capacity = int(data[0])\n"
+                "    n = int(data[1])\n"
+                "    timestamps = [int(x) for x in data[2:2+n]]\n"
+                "    tokens = capacity\n"
+                "    last_time = timestamps[0]\n"
+                "    accepted = 0\n"
+                "    dropped = 0\n"
+                "    for t in timestamps:\n"
+                "        elapsed = t - last_time\n"
+                "        tokens = min(capacity, tokens + elapsed)\n"
+                "        last_time = t\n"
+                "        if tokens >= 1:\n"
+                "            tokens -= 1\n"
+                "            accepted += 1\n"
+                "        else:\n"
+                "            dropped += 1\n"
+                "    print(f'{accepted} {dropped}')\n\n\n"
+                "if __name__ == '__main__':\n"
+                "    main()\n"
+            ),
+            "javascript": (
+                "const fs = require('fs');\n\n"
+                "function main() {\n"
+                "    const tokens = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);\n"
+                "    if (!tokens || tokens.length < 2) return;\n"
+                "    const capacity = parseInt(tokens[0], 10);\n"
+                "    const n = parseInt(tokens[1], 10);\n"
+                "    const timestamps = tokens.slice(2, 2 + n).map(Number);\n"
+                "    let tokenCount = capacity;\n"
+                "    let lastTime = timestamps[0];\n"
+                "    let accepted = 0;\n"
+                "    let dropped = 0;\n"
+                "    for (const t of timestamps) {\n"
+                "        const elapsed = t - lastTime;\n"
+                "        tokenCount = Math.min(capacity, tokenCount + elapsed);\n"
+                "        lastTime = t;\n"
+                "        if (tokenCount >= 1) {\n"
+                "            tokenCount -= 1;\n"
+                "            accepted++;\n"
+                "        } else {\n"
+                "            dropped++;\n"
+                "        }\n"
+                "    }\n"
+                "    console.log(`${accepted} ${dropped}`);\n"
+                "}\n\n"
+                "main();\n"
+            ),
+        },
+        public_test_cases=[
+            CodingTestCase(
+                test_id=1,
+                stdin="3 5\n1 1 1 1 2\n",
+                expected_stdout="4 1\n",
+                is_hidden=False,
+                description="4 bursts at t=1 drops 1 request, recovery at t=2 accepts 5th",
+            ),
+            CodingTestCase(
+                test_id=2,
+                stdin="2 3\n0 10 20\n",
+                expected_stdout="3 0\n",
+                is_hidden=False,
+                description="Spaced requests all accepted",
+            ),
+        ],
+        hidden_test_cases=[
+            CodingTestCase(
+                test_id=3,
+                stdin="1 5\n0 0 0 0 0\n",
+                expected_stdout="1 4\n",
+                is_hidden=True,
+                description="Capacity 1 with 5 simultaneous requests drops 4",
+            ),
+        ],
+    ),
 }
 
 
@@ -628,10 +1155,144 @@ def get_challenge(challenge_id: str) -> Optional[CodingChallenge]:
     return _CHALLENGE_CATALOG.get(challenge_id.strip())
 
 
+get_coding_challenge_by_id = get_challenge
+
+
+def get_role_challenges(job_role: str = "") -> List[CodingChallenge]:
+    """Return the curated challenge pool for a given job role."""
+    r_lower = (job_role or "").lower()
+    if any(k in r_lower for k in ["mern", "react", "frontend", "javascript", "node"]):
+        keys = ["CHAL-002-VALID-PARENTHESES", "CHAL-006-LRU-CACHE", "CHAL-007-MERGE-INTERVALS", "CHAL-009-TOP-K-FREQUENT", "CHAL-010-TOKEN-BUCKET", "CHAL-003-MAX-SUBARRAY"]
+    elif any(k in r_lower for k in ["python", "django", "fastapi", "backend"]):
+        keys = ["CHAL-006-LRU-CACHE", "CHAL-010-TOKEN-BUCKET", "CHAL-007-MERGE-INTERVALS", "CHAL-003-MAX-SUBARRAY", "CHAL-002-VALID-PARENTHESES", "CHAL-009-TOP-K-FREQUENT"]
+    elif any(k in r_lower for k in ["java", "spring"]):
+        keys = ["CHAL-005-BINARY-SEARCH", "CHAL-006-LRU-CACHE", "CHAL-007-MERGE-INTERVALS", "CHAL-002-VALID-PARENTHESES", "CHAL-003-MAX-SUBARRAY", "CHAL-010-TOKEN-BUCKET"]
+    elif any(k in r_lower for k in ["flutter", "mobile", "android", "ios", "react native"]):
+        keys = ["CHAL-006-LRU-CACHE", "CHAL-002-VALID-PARENTHESES", "CHAL-003-MAX-SUBARRAY", "CHAL-007-MERGE-INTERVALS", "CHAL-010-TOKEN-BUCKET"]
+    elif any(k in r_lower for k in ["data", "ml", "ai", "machine learning", "pipeline"]):
+        keys = ["CHAL-009-TOP-K-FREQUENT", "CHAL-007-MERGE-INTERVALS", "CHAL-010-TOKEN-BUCKET", "CHAL-003-MAX-SUBARRAY", "CHAL-005-BINARY-SEARCH"]
+    else:
+        keys = ["CHAL-006-LRU-CACHE", "CHAL-002-VALID-PARENTHESES", "CHAL-007-MERGE-INTERVALS", "CHAL-010-TOKEN-BUCKET", "CHAL-003-MAX-SUBARRAY", "CHAL-009-TOP-K-FREQUENT"]
+    return [_CHALLENGE_CATALOG[k] for k in keys if k in _CHALLENGE_CATALOG]
+
+
 def get_challenges_by_difficulty(difficulty: str) -> List[CodingChallenge]:
     """Filter challenges by difficulty tier (entry, mid, senior, lead, easy, medium, hard)."""
     target = (difficulty or "").strip().lower()
     return [c for c in _CHALLENGE_CATALOG.values() if c.difficulty.lower() == target]
+
+
+def match_or_select_coding_challenge(job_role: str = "", query_text: str = "", idx: int = 0) -> CodingChallenge:
+    """
+    Intelligently select or match the best coding challenge based on:
+    1. Keyword matching from question_text (e.g. 'LRU', 'bracket', 'kadane', 'interval', 'palindrome')
+    2. Role & stack specialization (e.g. MERN, Python, Java, Mobile, Data)
+    """
+    if not isinstance(idx, int):
+        try:
+            idx = int(idx)
+        except (ValueError, TypeError):
+            idx = 0
+
+    q_lower = (query_text or "").lower()
+    r_lower = (job_role or "").lower()
+
+    # 1. Direct keyword match
+    if any(k in q_lower for k in ["lru", "cache", "virtual memory", "page replacement", "page fault"]):
+        return _CHALLENGE_CATALOG["CHAL-006-LRU-CACHE"]
+    if any(k in q_lower for k in ["bracket", "parenthes", "valid syntax", "stack", "dsl"]):
+        return _CHALLENGE_CATALOG["CHAL-002-VALID-PARENTHESES"]
+    if any(k in q_lower for k in ["interval", "overlap", "schedule", "merge"]):
+        return _CHALLENGE_CATALOG["CHAL-007-MERGE-INTERVALS"]
+    if any(k in q_lower for k in ["anagram", "word group", "string grouping"]):
+        return _CHALLENGE_CATALOG["CHAL-008-GROUP-ANAGRAMS"]
+    if any(k in q_lower for k in ["top k", "frequent", "frequency", "metric aggregator"]):
+        return _CHALLENGE_CATALOG["CHAL-009-TOP-K-FREQUENT"]
+    if any(k in q_lower for k in ["token bucket", "rate limit", "throttle"]):
+        return _CHALLENGE_CATALOG["CHAL-010-TOKEN-BUCKET"]
+    if any(k in q_lower for k in ["subarray", "kadane", "contiguous", "throughput", "max sum"]):
+        return _CHALLENGE_CATALOG["CHAL-003-MAX-SUBARRAY"]
+    if any(k in q_lower for k in ["palindrome", "alphanumeric"]):
+        return _CHALLENGE_CATALOG["CHAL-004-PALINDROME-CHECK"]
+    if any(k in q_lower for k in ["binary search", "sorted array", "target index", "search"]):
+        return _CHALLENGE_CATALOG["CHAL-005-BINARY-SEARCH"]
+    if any(k in q_lower for k in ["two sum", "duplicate", "seen set", "ticket id"]):
+        return _CHALLENGE_CATALOG["CHAL-001-TWO-SUM"]
+
+    # 2. Role-specific catalog cycling
+    if any(k in r_lower for k in ["mern", "react", "frontend", "javascript", "node"]):
+        role_pool = [
+            "CHAL-002-VALID-PARENTHESES",
+            "CHAL-006-LRU-CACHE",
+            "CHAL-007-MERGE-INTERVALS",
+            "CHAL-009-TOP-K-FREQUENT",
+            "CHAL-010-TOKEN-BUCKET",
+            "CHAL-003-MAX-SUBARRAY",
+        ]
+    elif any(k in r_lower for k in ["python", "django", "fastapi", "backend"]):
+        role_pool = [
+            "CHAL-006-LRU-CACHE",
+            "CHAL-010-TOKEN-BUCKET",
+            "CHAL-007-MERGE-INTERVALS",
+            "CHAL-003-MAX-SUBARRAY",
+            "CHAL-002-VALID-PARENTHESES",
+            "CHAL-009-TOP-K-FREQUENT",
+        ]
+    elif any(k in r_lower for k in ["java", "spring"]):
+        role_pool = [
+            "CHAL-005-BINARY-SEARCH",
+            "CHAL-006-LRU-CACHE",
+            "CHAL-007-MERGE-INTERVALS",
+            "CHAL-002-VALID-PARENTHESES",
+            "CHAL-003-MAX-SUBARRAY",
+            "CHAL-010-TOKEN-BUCKET",
+        ]
+    elif any(k in r_lower for k in ["devops", "cloud", "sre", "infrastructure", "k8s", "kubernetes", "docker", "terraform"]):
+        role_pool = [
+            "CHAL-007-MERGE-INTERVALS",
+            "CHAL-002-VALID-PARENTHESES",
+            "CHAL-009-TOP-K-FREQUENT",
+            "CHAL-005-BINARY-SEARCH",
+            "CHAL-006-LRU-CACHE",
+            "CHAL-010-TOKEN-BUCKET",
+        ]
+    elif any(k in r_lower for k in ["qa", "test", "automation", "sdet"]):
+        role_pool = [
+            "CHAL-002-VALID-PARENTHESES",
+            "CHAL-004-PALINDROME-CHECK",
+            "CHAL-005-BINARY-SEARCH",
+            "CHAL-009-TOP-K-FREQUENT",
+            "CHAL-007-MERGE-INTERVALS",
+        ]
+    elif any(k in r_lower for k in ["flutter", "mobile", "android", "ios", "react native"]):
+        role_pool = [
+            "CHAL-006-LRU-CACHE",
+            "CHAL-002-VALID-PARENTHESES",
+            "CHAL-003-MAX-SUBARRAY",
+            "CHAL-007-MERGE-INTERVALS",
+            "CHAL-010-TOKEN-BUCKET",
+        ]
+    elif any(k in r_lower for k in ["data", "ml", "ai", "machine learning", "pipeline"]):
+        role_pool = [
+            "CHAL-009-TOP-K-FREQUENT",
+            "CHAL-003-MAX-SUBARRAY",
+            "CHAL-005-BINARY-SEARCH",
+            "CHAL-007-MERGE-INTERVALS",
+            "CHAL-010-TOKEN-BUCKET",
+        ]
+    else:
+        role_pool = [
+            "CHAL-006-LRU-CACHE",
+            "CHAL-002-VALID-PARENTHESES",
+            "CHAL-007-MERGE-INTERVALS",
+            "CHAL-003-MAX-SUBARRAY",
+            "CHAL-010-TOKEN-BUCKET",
+            "CHAL-005-BINARY-SEARCH",
+            "CHAL-009-TOP-K-FREQUENT",
+        ]
+
+    selected_id = role_pool[idx % len(role_pool)]
+    return _CHALLENGE_CATALOG[selected_id]
 
 
 def get_public_challenge_dict(challenge: CodingChallenge) -> Dict[str, Any]:

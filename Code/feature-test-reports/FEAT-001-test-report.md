@@ -1,15 +1,15 @@
 # FEAT-001 Verification Test Report
-**Execution Timestamp**: 2026-09-08T21:54:23.909924Z
+**Execution Timestamp**: 2026-09-09T16:08:26.544137Z
 **Target Specs**: `FEAT-001-BE-role-competency-mapping.md`, `FEAT-001-FE-interview-config-role-select.md`
 
 ---
 
 ## 1. Automated Backend Unit & Taxonomy Tests
-- [x] **infer_seniority_level(0) == ENTRY**: `PASSED` -> SeniorityLevel.ENTRY
-- [x] **infer_seniority_level(3) == MID**: `PASSED` -> SeniorityLevel.MID
-- [x] **infer_seniority_level(7) == SENIOR**: `PASSED` -> SeniorityLevel.SENIOR
-- [x] **infer_seniority_level(10) == LEAD**: `PASSED` -> SeniorityLevel.LEAD
-- [x] **Missing experience (None) defaults to ENTRY**: `PASSED` -> SeniorityLevel.ENTRY
+- [x] **infer_seniority_level(0) == ENTRY**: `PASSED` -> entry
+- [x] **infer_seniority_level(3) == MID**: `PASSED` -> mid
+- [x] **infer_seniority_level(7) == SENIOR**: `PASSED` -> senior
+- [x] **infer_seniority_level(10) == LEAD**: `PASSED` -> lead
+- [x] **Missing experience (None) defaults to ENTRY**: `PASSED` -> entry
 - [x] **All 7 Standard Roles Present**: `PASSED` Registered: 7 roles
 - [x] **Competency Weights Sum to 1.0**: `PASSED` All 7 roles verified with sum == 1.000
 - [x] **Role Metadata Registry Complete**: `PASSED` Title and description present for all roles

@@ -18,60 +18,12 @@ import CandidateHeader from '@/components/Candidate/CandidateHeader';
 import InterviewConfigCard from '@/components/Interview/InterviewConfigCard';
 import { formatApiDetail } from '@/utils/formatApiDetail';
 
-const DEFAULT_ROLES = [
-  {
-    role_id: 'frontend_engineer',
-    display_name: 'Frontend Engineer',
-    inferred_seniority: 'mid',
-    competency_areas: ['Core Web Technologies', 'Modern UI Frameworks (React)', 'State Management', 'Web Performance'],
-  },
-  {
-    role_id: 'backend_engineer',
-    display_name: 'Backend Engineer',
-    inferred_seniority: 'mid',
-    competency_areas: ['API & Microservices Design', 'Database Architecture & SQL', 'Concurrency & Distributed Systems'],
-  },
-  {
-    role_id: 'fullstack_engineer',
-    display_name: 'Full-Stack Engineer',
-    inferred_seniority: 'mid',
-    competency_areas: ['Frontend & Backend Architecture', 'REST & GraphQL APIs', 'Database Integration', 'End-to-End Testing'],
-  },
-  {
-    role_id: 'devops_engineer',
-    display_name: 'DevOps & Cloud Infrastructure',
-    inferred_seniority: 'mid',
-    competency_areas: ['CI/CD Pipelines & Automation', 'Containers & Kubernetes', 'Cloud Architecture (AWS/GCP/Azure)'],
-  },
-  {
-    role_id: 'data_engineer',
-    display_name: 'Data & Analytics Engineer',
-    inferred_seniority: 'mid',
-    competency_areas: ['Data Pipeline & ETL Engineering', 'Distributed Big Data (Spark/Flink)', 'Data Warehousing & SQL'],
-  },
-  {
-    role_id: 'ml_engineer',
-    display_name: 'Machine Learning / AI Engineer',
-    inferred_seniority: 'mid',
-    competency_areas: ['ML Algorithms & Math', 'Deep Learning & Neural Networks', 'MLOps & Model Deployment', 'LLMs & GenAI'],
-  },
-  {
-    role_id: 'qa_automation_engineer',
-    display_name: 'QA Automation Engineer',
-    inferred_seniority: 'mid',
-    competency_areas: ['Test Automation Frameworks', 'API & Integration Testing', 'Performance & Load Testing'],
-  },
-];
-
 export default function InterviewSetupPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [jobPost, setJobPost] = useState(null);
-  const [roles, setRoles] = useState(DEFAULT_ROLES);
-  const [selectedRoleId, setSelectedRoleId] = useState('backend_engineer');
-  const [seniority, setSeniority] = useState('mid');
-  const [codingLanguage, setCodingLanguage] = useState('python');
+  const [codingLanguage, setCodingLanguage] = useState('javascript');
   const [roleFit, setRoleFit] = useState(null);
   const [loadingFit, setLoadingFit] = useState(false);
 
@@ -103,7 +55,7 @@ export default function InterviewSetupPage() {
     return Array.from(new Set([...base, ...exp, ...known]));
   }, [profile, normalizeList]);
 
-  // Load user and initial role configs
+  // Load user, job post (if any), and profile
   const loadInitialData = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -126,40 +78,19 @@ export default function InterviewSetupPage() {
         console.log('No profile found, proceeding with defaults');
       }
 
-      // If jobPostId is present in query, fetch job details
       const queryJobPostId = router.query.jobPostId;
       if (queryJobPostId && typeof queryJobPostId === 'string') {
         try {
-          const jobData = await jobService.getJobPost(queryJobPostId);
-          setJobPost(jobData);
+          const loadedJobPost = await jobService.getJobPost(queryJobPostId);
+          setJobPost(loadedJobPost);
         } catch (err) {
           console.warn('Could not load specific job post:', err);
         }
       }
-
-      const expYears = userProfile?.years_of_experience || userProfile?.experience_years || null;
-      const roleConfigRes = await interviewService.getRoleConfigs(expYears);
-      const fetchedRoles = roleConfigRes?.roles || [];
-      setRoles(fetchedRoles);
-
-      if (fetchedRoles.length > 0) {
-        // Map target role from profile or job post if matching
-        const candidateTarget = (userProfile?.job_role || '').toLowerCase().replace(/\s+/g, '_');
-        const matchedRole = fetchedRoles.find(
-          (r) =>
-            r.role_id === candidateTarget ||
-            candidateTarget.includes(r.role_id) ||
-            r.display_name.toLowerCase().includes((userProfile?.job_role || '').toLowerCase())
-        );
-
-        const initialRole = matchedRole || fetchedRoles[0];
-        setSelectedRoleId(initialRole.role_id);
-        setSeniority(initialRole.inferred_seniority || 'mid');
-      }
     } catch (err) {
       console.error('Failed to load interview setup:', err);
       setNetworkError(true);
-      setError('Unable to load role configurations from server. Please check connection and retry.');
+      setError('Unable to load interview configuration.');
     } finally {
       setLoading(false);
     }
@@ -171,39 +102,7 @@ export default function InterviewSetupPage() {
     }
   }, [router.isReady, loadInitialData]);
 
-  // Recalculate role fit on role change
-  useEffect(() => {
-    if (!selectedRoleId) return;
-
-    let isMounted = true;
-    const computeFit = async () => {
-      setLoadingFit(true);
-      try {
-        const fitData = await interviewService.getRoleFit(
-          selectedRoleId,
-          profileSkills,
-          profile?.experience_years || null
-        );
-        if (isMounted) {
-          setRoleFit(fitData);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setRoleFit(null);
-        }
-      } finally {
-        if (isMounted) setLoadingFit(false);
-      }
-    };
-
-    computeFit();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedRoleId, profileSkills, profile]);
-
-  const handleStartInterview = async ({ roleId, roleDisplayName, seniority: chosenSeniority, codingLanguage: chosenLang }) => {
+  const handleStartInterview = async ({ jobRole: chosenRole, codingLanguage: chosenLang }) => {
     setSubmitting(true);
     setError('');
 
@@ -212,13 +111,21 @@ export default function InterviewSetupPage() {
         ? Math.max(4, Math.min(30, parseInt(router.query.num_questions, 10) || 20))
         : 20;
 
+      const effectiveRoleName = jobPost?.title || chosenRole || profile?.job_role || 'Software Engineer';
+      let effectiveSkills = [...profileSkills];
+
+      if (jobPost?.required_skills && Array.isArray(jobPost.required_skills)) {
+        effectiveSkills = Array.from(new Set([...effectiveSkills, ...jobPost.required_skills]));
+      }
+
       const payload = {
-        job_role: roleDisplayName,
-        candidate_skills: profileSkills,
+        job_role: effectiveRoleName,
+        candidate_skills: effectiveSkills,
         num_questions: numQuestions,
-        difficulty: chosenSeniority,
-        seniority: chosenSeniority,
-        ...(jobPost?.id || router.query.jobPostId ? { job_post_id: jobPost?.id || router.query.jobPostId } : {}),
+        ...(jobPost?.id || router.query.jobPostId
+          ? { job_post_id: jobPost?.id || router.query.jobPostId }
+          : {}),
+        ...(jobPost?.description ? { job_description: jobPost.description } : {}),
       };
 
       // Launch live interview session
@@ -235,8 +142,7 @@ export default function InterviewSetupPage() {
           pathname: '/interview',
           query: {
             sessionId: data.session_id,
-            role: roleId,
-            seniority: chosenSeniority,
+            role: effectiveRoleName,
             lang: chosenLang,
           },
         });
@@ -245,7 +151,10 @@ export default function InterviewSetupPage() {
       }
     } catch (err) {
       console.error('Failed to start interview session:', err);
-      setError(formatApiDetail(err.response?.data?.detail) || 'Failed to initialize live interview session. Please try again.');
+      setError(
+        formatApiDetail(err.response?.data?.detail) ||
+        'Failed to initialize live interview session. Please try again.'
+      );
       setSubmitting(false);
     }
   };
@@ -254,156 +163,152 @@ export default function InterviewSetupPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-10 w-10 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
-          <p className="text-sm font-medium text-slate-300">Loading interview configuration engine...</p>
+      <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-9 w-9 animate-spin rounded-full border-2 border-indigo-600/20 border-t-indigo-600" />
+          <p className="text-xs font-medium text-slate-500">Loading interview configuration engine…</p>
         </div>
       </div>
     );
   }
 
+  const activeJobTitle = jobPost?.title || profile?.job_role || 'Software Engineer';
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-100">
+    <div className="min-h-screen bg-[#f4f7fb] text-slate-800 antialiased font-sans">
       <Head>
-        <title>Pre-Interview Setup — HireSIGHT AI</title>
-        <meta name="description" content="Configure target role, seniority tier, and review interview agenda." />
+        <title>Interview Setup — HireSight AI</title>
+        <meta name="description" content="Review job requirements, matched CV profile, and 4-phase interview agenda." />
       </Head>
 
       <CandidateHeader activePath="/interview-setup" user={user} onLogout={handleLogout} />
 
-      <main className="container mx-auto max-w-6xl space-y-8 px-6 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-7">
         {/* Navigation Breadcrumb */}
         <div className="flex items-center justify-between">
           <button
             type="button"
             onClick={() => router.push('/dashboard')}
-            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-slate-900/60 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 shadow-2xs"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-3.5 w-3.5" />
             Back to Dashboard
           </button>
 
-          <div className="flex items-center gap-2 text-xs font-medium text-indigo-300">
-            <Sparkles className="h-4 w-4" />
-            <span>AI Multimodal Evaluation Engine</span>
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-3 py-1 rounded-full">
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>AI Role-Adaptive Assessment Engine</span>
           </div>
         </div>
 
         {/* Network Error Banner with Retry */}
         {networkError && (
-          <div className="flex items-center justify-between rounded-2xl border border-red-500/30 bg-red-950/50 p-5 backdrop-blur-md">
+          <div className="flex items-center justify-between rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-rose-800 shadow-xs">
             <div className="flex items-center gap-3">
-              <AlertTriangle className="h-6 w-6 text-red-400" />
+              <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0" />
               <div>
-                <p className="font-semibold text-red-100">Configuration Service Offline</p>
-                <p className="text-xs text-red-300">{error}</p>
+                <p className="font-bold text-slate-900">Configuration Service Warning</p>
+                <p className="text-xs text-slate-600 mt-0.5">{error}</p>
               </div>
             </div>
             <button
               type="button"
               onClick={loadInitialData}
-              className="inline-flex items-center gap-2 rounded-xl bg-red-500/20 px-4 py-2 text-xs font-semibold text-red-200 border border-red-500/40 hover:bg-red-500/30"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 shadow-2xs"
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className="h-3.5 w-3.5" />
               Retry Connection
             </button>
           </div>
         )}
 
         {/* Candidate Profile Context Banner */}
-        <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl backdrop-blur-md">
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-6 sm:p-7 shadow-xs">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-1">
-              <div className="inline-flex items-center gap-2 rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-0.5 text-xs font-medium text-indigo-300">
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-0.5 text-xs font-semibold text-blue-700">
                 <UserCheck className="h-3.5 w-3.5" />
-                Step 1 of 2: Pre-Interview Assessment Calibration
+                Live Interview Readiness
               </div>
-              <h1 className="text-2xl font-black text-white sm:text-3xl">
-                Interview Readiness & Role Calibration
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+                {activeJobTitle} Assessment
               </h1>
-              <p className="text-sm text-slate-300">
-                Review your extracted profile attributes, customize your assessment targets, and inspect the grading agenda.
+              <p className="text-xs sm:text-sm text-slate-600 max-w-2xl leading-relaxed">
+                Questions are generated in real-time by the AI interviewer based on the job posting requirements and your verified CV profile.
               </p>
             </div>
 
             {jobPost && (
-              <div className="rounded-xl border border-indigo-400/30 bg-indigo-950/40 p-3 text-right">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">Applying For</span>
-                <p className="text-sm font-bold text-white">{jobPost.title}</p>
-                <p className="text-xs text-slate-400">{jobPost.department || 'Engineering'}</p>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-right shadow-2xs">
+                <div className="flex items-center justify-end gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-800">
+                  <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
+                  Eligible for Interview
+                </div>
+                <p className="text-xs sm:text-sm font-bold text-slate-900">{jobPost.title}</p>
+                <p className="text-[11px] text-slate-500">{jobPost.domain || 'Engineering'}</p>
               </div>
             )}
           </div>
 
           {/* Profile Skill Snapshot */}
-          <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-xl border border-white/10 bg-slate-950/50 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                <FileText className="h-4 w-4 text-indigo-400" />
+          <div className="mt-6 pt-6 border-t border-slate-100 grid gap-4 sm:grid-cols-3">
+            <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                <FileText className="h-3.5 w-3.5 text-blue-700" />
                 Resume Status
               </div>
-              <p className="mt-2 text-sm font-semibold text-white">
-                {profile?.resume_path ? 'CV On File & Analyzed' : 'No Resume Uploaded'}
+              <p className="mt-1.5 text-sm font-bold text-slate-900">
+                {profile?.resume_path ? 'CV on File' : 'Profile Active'}
               </p>
-              <p className="text-xs text-slate-400">
-                {profile?.resume_path ? 'Skills extracted automatically' : 'Role matched via manual selection'}
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {profile?.resume_path ? 'Skills & experience linked' : 'Calibrated to target role'}
               </p>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-slate-950/50 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                <Briefcase className="h-4 w-4 text-emerald-400" />
+            <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                <Briefcase className="h-3.5 w-3.5 text-emerald-600" />
                 Detected Skills
               </div>
-              <p className="mt-2 text-sm font-semibold text-white">
+              <p className="mt-1.5 text-sm font-bold text-slate-900">
                 {profileSkills.length} Technical Skills
               </p>
-              <div className="mt-1 flex flex-wrap gap-1">
+              <div className="mt-1.5 flex flex-wrap gap-1">
                 {profileSkills.slice(0, 4).map((sk) => (
-                  <span key={sk} className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-slate-300">
+                  <span key={sk} className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700 shadow-2xs">
                     {sk}
                   </span>
                 ))}
                 {profileSkills.length > 4 && (
-                  <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-slate-400">
+                  <span className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-500 shadow-2xs">
                     +{profileSkills.length - 4} more
                   </span>
                 )}
               </div>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-slate-950/50 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                <CheckCircle className="h-4 w-4 text-sky-400" />
-                Target Alignment
+            <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                <CheckCircle className="h-3.5 w-3.5 text-blue-700" />
+                Target Role
               </div>
-              <p className="mt-2 text-sm font-semibold text-white">
-                {profile?.job_role || 'General Software Engineering'}
+              <p className="mt-1.5 text-sm font-bold text-slate-900">
+                {activeJobTitle}
               </p>
-              <p className="text-xs text-slate-400">
-                Inferred: {profile?.experience_years ? `${profile.experience_years} years exp` : 'Standard Calibration'}
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {jobPost?.domain || 'Engineering Department'}
               </p>
             </div>
           </div>
-
-          {profileSkills.length === 0 && (
-            <div className="mt-4 flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-950/30 p-3 text-xs text-amber-200">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
-              <span>
-                No resume skills detected. You can select any role and difficulty tier below to generate standard benchmark questions.
-              </span>
-            </div>
-          )}
         </section>
 
-        {/* Core Configuration & Agenda Card Component */}
+        {/* Focused Configuration & 4-Phase Agenda Card */}
         <InterviewConfigCard
-          roles={roles}
-          selectedRoleId={selectedRoleId}
-          onSelectRole={setSelectedRoleId}
-          seniority={seniority}
-          onSelectSeniority={setSeniority}
+          jobPost={jobPost}
+          jobRole={activeJobTitle}
+          requiredSkills={jobPost?.required_skills || []}
+          candidateSkills={profileSkills}
+          candidateProjects={profile?.projects || []}
           codingLanguage={codingLanguage}
           onSelectCodingLanguage={setCodingLanguage}
           roleFit={roleFit}

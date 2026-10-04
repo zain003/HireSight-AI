@@ -72,7 +72,7 @@ def run_verification():
     log(f"- Behavioral Indicators Weight: {w_beh * 100:.1f}% ({w_beh})")
     log(f"- Total Sum of Weights: {total_w:.4f}")
 
-    if abs(total_w - 1.00) < 1e-9 and w_tech == 0.35 and w_coding == 0.20 and w_role == 0.15 and w_comm == 0.15 and w_beh == 0.15:
+    if abs(total_w - 1.00) < 1e-9 and w_tech == 0.45 and w_coding == 0.25 and w_role == 0.0 and w_comm == 0.15 and w_beh == 0.15:
         log("✅ **Check 1 PASSED**: Scoring weights sum exactly to 1.00 (100%).")
         checks_passed += 1
     else:
@@ -106,9 +106,8 @@ def run_verification():
         )
 
         expected_from_dimensions = round(
-            0.35 * res.technical_knowledge_score
-            + 0.20 * res.coding_ability_score
-            + 0.15 * res.role_fit_score
+            0.45 * res.technical_knowledge_score
+            + 0.25 * res.coding_ability_score
             + 0.15 * res.communication_score
             + 0.15 * res.behavioral_indicators_score,
             2,
@@ -182,7 +181,7 @@ def run_verification():
 
     audit = res.scoring_formula_audit
     required_audit_keys = ["formula", "weights", "dimension_scores", "weighted_contributions", "overall_composite_score", "fit_status", "dimension_audits"]
-    required_dim_audits = ["technical_knowledge", "coding_ability", "role_fit", "communication", "behavioral_indicators"]
+    required_dim_audits = ["technical_knowledge", "coding_ability", "communication", "behavioral_indicators"]
 
     has_all_keys = all(k in audit for k in required_audit_keys)
     has_all_dim_audits = all(k in audit.get("dimension_audits", {}) for k in required_dim_audits)
@@ -269,11 +268,10 @@ def run_verification():
     log(f"- RecruiterReport overall_score: {report.overall_score}")
     log(f"- RecruiterReport technical_score: {report.technical_score}")
     log(f"- RecruiterReport coding_score: {report.coding_score}")
-    log(f"- RecruiterReport role_fit_score: {report.role_fit_score}")
     log(f"- RecruiterReport fit_status: {report.fit_status}")
     log(f"- FiveDimensionScores attached: {bool(report.five_dimension_scores)}")
 
-    if report.five_dimension_scores is not None and report.scoring_formula_audit is not None and report.role_fit_score == 85.0:
+    if report.five_dimension_scores is not None and report.scoring_formula_audit is not None:
         log("✅ **Check 7 PASSED**: RecruiterReportGenerator generates 5-dimensional scores and attaches audit.")
         checks_passed += 1
     else:
@@ -306,9 +304,8 @@ def run_verification():
     # ----------------------------------------------------
     log("### Check 9: Explainable Scoring Invariant (Zero Opaque Numbers)")
     calc_composite = (
-        0.35 * res.technical_knowledge_score
-        + 0.20 * res.coding_ability_score
-        + 0.15 * res.role_fit_score
+        0.45 * res.technical_knowledge_score
+        + 0.25 * res.coding_ability_score
         + 0.15 * res.communication_score
         + 0.15 * res.behavioral_indicators_score
     )

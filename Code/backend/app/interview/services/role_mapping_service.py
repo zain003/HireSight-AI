@@ -170,6 +170,7 @@ def get_supported_roles_config(
 
     return {
         "supported_roles": supported_roles,
+        "roles": supported_roles,
         "default_seniority": inferred_seniority.value,
         "seniority_levels": [level.value for level in SeniorityLevel],
     }

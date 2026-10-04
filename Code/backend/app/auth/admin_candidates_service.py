@@ -32,37 +32,48 @@ def _parse_iso_date(date_str: Optional[str]) -> Optional[datetime]:
 def _extract_overall_score(session: Optional[InterviewSession]) -> Optional[float]:
     if not session:
         return None
-    if session.aggregate_scores and session.aggregate_scores.get("overall_score") is not None:
-        try:
-            return float(session.aggregate_scores["overall_score"])
-        except (ValueError, TypeError):
-            pass
     if session.recruiter_report:
         rep = session.recruiter_report
         if rep.get("overall_score") is not None:
             try:
-                return float(rep["overall_score"])
+                return round(float(rep["overall_score"]), 1)
             except (ValueError, TypeError):
                 pass
         five_dim = rep.get("five_dimension_scores")
         if isinstance(five_dim, dict) and five_dim.get("overall_composite_score") is not None:
             try:
-                return float(five_dim["overall_composite_score"])
+                return round(float(five_dim["overall_composite_score"]), 1)
+            except (ValueError, TypeError):
+                pass
+    if session.aggregate_scores:
+        if session.aggregate_scores.get("overall_composite_score") is not None:
+            try:
+                return round(float(session.aggregate_scores["overall_composite_score"]), 1)
+            except (ValueError, TypeError):
+                pass
+        if session.aggregate_scores.get("overall_score") is not None:
+            try:
+                return round(float(session.aggregate_scores["overall_score"]), 1)
             except (ValueError, TypeError):
                 pass
     return None
 
 
 def _extract_recommendation(session: Optional[InterviewSession]) -> Optional[str]:
-    if not session or not session.recruiter_report:
+    if not session:
         return None
-    rep = session.recruiter_report
-    rec = rep.get("fit_status") or rep.get("hiring_recommendation")
-    if rec:
-        return str(rec).strip()
-    five_dim = rep.get("five_dimension_scores")
-    if isinstance(five_dim, dict) and five_dim.get("fit_status"):
-        return str(five_dim["fit_status"]).strip()
+    if session.recruiter_report:
+        rep = session.recruiter_report
+        rec = rep.get("fit_status") or rep.get("hiring_recommendation")
+        if rec:
+            return str(rec).strip()
+        five_dim = rep.get("five_dimension_scores")
+        if isinstance(five_dim, dict) and five_dim.get("fit_status"):
+            return str(five_dim["fit_status"]).strip()
+    if session.aggregate_scores:
+        rec = session.aggregate_scores.get("fit_status")
+        if rec:
+            return str(rec).strip()
     return None
 
 

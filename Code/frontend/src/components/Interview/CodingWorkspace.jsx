@@ -57,16 +57,18 @@ export default function CodingWorkspace({
   recommendedLanguages = ['python'],
   title = 'Solution',
   publicTestCases = [],
+  theme = 'light',
   onEditorFocus,
   onSubmitSuccess,
 }) {
+  const isLight = theme === 'light';
   const initialLang = useMemo(
     () => inferApiLanguageFromRecommended(recommendedLanguages),
     [recommendedLanguages]
   );
 
   const [selectedLang, setSelectedLang] = useState(initialLang);
-  
+
   // Store code per language so language switching preserves candidate edits
   const [codeByLang, setCodeByLang] = useState(() => {
     const initial = { ...DEFAULT_TEMPLATES, ...starterTemplates };
@@ -138,6 +140,15 @@ export default function CodingWorkspace({
       };
       const data = await interviewService.runPublicCode(payload);
       setRunResult(data);
+
+      // Automatically sync successful run results to the interview session
+      if (sessionId && data) {
+        try {
+          await interviewService.submitCodingResult(sessionId, data);
+        } catch (syncErr) {
+          console.warn('Coding run result session sync notice:', syncErr);
+        }
+      }
     } catch (err) {
       const detail = err?.response?.data?.detail;
       const fallback = err?.response?.data?.message || err?.message || 'Run failed';
@@ -146,7 +157,7 @@ export default function CodingWorkspace({
     } finally {
       setRunLoading(false);
     }
-  }, [canRun, currentCode, publicTestCases, selectedLang]);
+  }, [canRun, currentCode, publicTestCases, selectedLang, sessionId]);
 
   const handleSubmit = useCallback(async () => {
     if (!sessionId) {
@@ -276,27 +287,59 @@ export default function CodingWorkspace({
   }, [runResult]);
 
   return (
-    <div className="relative z-20 flex min-h-0 flex-col overflow-hidden rounded-xl border border-white/15 bg-[#1a1b26] shadow-2xl ring-1 ring-white/5">
+    <div
+      className={`relative z-20 flex min-h-0 flex-col overflow-hidden rounded-xl border shadow-xl transition-colors ${
+        isLight
+          ? 'border-slate-200/90 bg-white shadow-slate-200/50 ring-1 ring-slate-900/5'
+          : 'border-white/15 bg-[#1a1b26] shadow-2xl ring-1 ring-white/5'
+      }`}
+    >
       {/* Top Chrome / Header */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-[#16161e] px-3 py-2.5">
+      <div
+        className={`flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-3 py-2.5 ${
+          isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-[#16161e]'
+        }`}
+      >
         <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-500/20 text-xs font-bold text-emerald-300">
+          <span
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold ${
+              isLight
+                ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                : 'bg-emerald-500/20 text-emerald-300'
+            }`}
+          >
             {'</>'}
           </span>
           <div className="min-w-0">
-            <p className="truncate text-xs font-semibold text-slate-200">{title}</p>
-            <p className="text-[10px] text-slate-400">Sandboxed multi-language test runner (3.0s CPU limit)</p>
+            <p
+              className={`truncate text-xs font-semibold ${
+                isLight ? 'text-slate-900' : 'text-slate-200'
+              }`}
+            >
+              {title}
+            </p>
+            <p className={isLight ? 'text-[10px] text-slate-500' : 'text-[10px] text-slate-400'}>
+              Sandboxed multi-language test runner (3.0s CPU limit)
+            </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Language Selector */}
-          <label className="flex items-center gap-1.5 text-[11px] text-slate-400">
+          <label
+            className={`flex items-center gap-1.5 text-[11px] ${
+              isLight ? 'text-slate-600' : 'text-slate-400'
+            }`}
+          >
             <span className="hidden sm:inline">Language:</span>
             <select
               value={selectedLang}
               onChange={(e) => handleLanguageChange(e.target.value)}
-              className="max-w-[160px] rounded-md border border-white/15 bg-black/40 px-2 py-1 text-[11px] font-medium text-slate-200 outline-none focus:border-emerald-500/40"
+              className={`max-w-[160px] rounded-md border px-2 py-1 text-[11px] font-medium outline-none focus:border-emerald-500 ${
+                isLight
+                  ? 'border-slate-300 bg-white text-slate-800'
+                  : 'border-white/15 bg-black/40 text-slate-200'
+              }`}
             >
               {LANGUAGE_OPTIONS.map((opt) => (
                 <option key={opt.id} value={opt.id}>
@@ -309,14 +352,22 @@ export default function CodingWorkspace({
           <button
             type="button"
             onClick={handleCopy}
-            className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:bg-white/10"
+            className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+              isLight
+                ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                : 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10'
+            }`}
           >
             {copied ? 'Copied!' : 'Copy'}
           </button>
           <button
             type="button"
             onClick={handleReset}
-            className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-100 transition hover:bg-amber-500/20"
+            className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+              isLight
+                ? 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20'
+            }`}
           >
             Reset Boilerplate
           </button>
@@ -329,7 +380,7 @@ export default function CodingWorkspace({
                 ? 'Run candidate code against public test cases'
                 : 'No public tests available for this challenge'
             }
-            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-600/90 px-3 py-1 text-xs font-semibold text-white shadow-lg shadow-emerald-900/30 transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-600 px-3 py-1 text-xs font-semibold text-white shadow-md shadow-emerald-900/20 transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {runLoading ? (
               <>
@@ -351,7 +402,7 @@ export default function CodingWorkspace({
             type="button"
             onClick={handleSubmit}
             disabled={submitLoading || runLoading}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-gradient-to-r from-cyan-600 to-blue-600 px-3 py-1 text-xs font-semibold text-white shadow-lg shadow-cyan-900/30 transition hover:from-cyan-500 hover:to-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-gradient-to-r from-cyan-600 to-blue-600 px-3 py-1 text-xs font-semibold text-white shadow-md shadow-cyan-900/20 transition hover:from-cyan-500 hover:to-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {submitLoading ? (
               <>
@@ -373,13 +424,17 @@ export default function CodingWorkspace({
         <Editor
           height="100%"
           language={monacoLang}
-          theme="vs-dark"
+          theme={isLight ? 'vs' : 'vs-dark'}
           value={currentCode}
           onChange={handleCodeChange}
           onMount={handleMount}
           options={editorOptions}
           loading={
-            <div className="flex h-full min-h-[340px] items-center justify-center bg-[#1e1e1e] text-sm text-slate-400">
+            <div
+              className={`flex h-full min-h-[340px] items-center justify-center text-sm ${
+                isLight ? 'bg-slate-100 text-slate-500' : 'bg-[#1e1e1e] text-slate-400'
+              }`}
+            >
               Loading editor environment…
             </div>
           }
@@ -388,28 +443,64 @@ export default function CodingWorkspace({
 
       {/* Submission Success Dialog / Banner */}
       {submissionEval && (
-        <div className="border-t border-cyan-500/30 bg-cyan-950/40 p-3">
+        <div
+          className={`border-t p-3 ${
+            isLight
+              ? 'border-cyan-200 bg-cyan-50 text-cyan-900'
+              : 'border-cyan-500/30 bg-cyan-950/40'
+          }`}
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-bold text-cyan-300">
+              <span
+                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
+                  isLight ? 'bg-cyan-200 text-cyan-800' : 'bg-cyan-500/20 text-cyan-300'
+                }`}
+              >
                 ✓
               </span>
               <div>
-                <p className="text-xs font-semibold text-cyan-100">Coding Solution Evaluated & Persisted</p>
-                <p className="text-[11px] text-cyan-200/80">
-                  Overall Score: <strong className="text-cyan-300">{submissionEval.overall_coding_score}/100</strong> · Public: {submissionEval.public_tests_passed}/{submissionEval.public_tests_total} · Hidden: {submissionEval.hidden_tests_passed}/{submissionEval.hidden_tests_total}
+                <p
+                  className={`text-xs font-semibold ${
+                    isLight ? 'text-cyan-900' : 'text-cyan-100'
+                  }`}
+                >
+                  Coding Solution Evaluated & Persisted
+                </p>
+                <p
+                  className={`text-[11px] ${
+                    isLight ? 'text-cyan-700' : 'text-cyan-200/80'
+                  }`}
+                >
+                  Overall Score:{' '}
+                  <strong className={isLight ? 'text-cyan-900 font-bold' : 'text-cyan-300'}>
+                    {submissionEval.overall_coding_score}/100
+                  </strong>{' '}
+                  · Public: {submissionEval.public_tests_passed}/{submissionEval.public_tests_total} · Hidden:{' '}
+                  {submissionEval.hidden_tests_passed}/{submissionEval.hidden_tests_total}
                 </p>
               </div>
             </div>
-            <span className="rounded-md bg-cyan-500/20 px-2 py-0.5 font-mono text-[10px] text-cyan-200">
-              Total Runtime: {submissionEval.execution_time_total_ms}ms · Peak Mem: {(submissionEval.peak_memory_kb / 1024).toFixed(1)}MB
+            <span
+              className={`rounded-md px-2 py-0.5 font-mono text-[10px] ${
+                isLight
+                  ? 'bg-cyan-100 text-cyan-800 border border-cyan-200'
+                  : 'bg-cyan-500/20 text-cyan-200'
+              }`}
+            >
+              Total Runtime: {submissionEval.execution_time_total_ms}ms · Peak Mem:{' '}
+              {(submissionEval.peak_memory_kb / 1024).toFixed(1)}MB
             </span>
           </div>
         </div>
       )}
 
       {/* Bottom Panel: Interactive Test Cases & Results */}
-      <div className="shrink-0 border-t border-white/10 bg-[#16161e] p-3">
+      <div
+        className={`shrink-0 border-t p-3 ${
+          isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-[#16161e]'
+        }`}
+      >
         {/* Test Case Tab Bar */}
         <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
@@ -422,15 +513,19 @@ export default function CodingWorkspace({
                   onClick={() => setActiveTab(idx)}
                   className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
                     activeTab === idx
-                      ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-200'
-                      : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200'
+                      ? isLight
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800 shadow-xs font-semibold'
+                        : 'border-emerald-500/40 bg-emerald-950/40 text-emerald-200'
+                      : isLight
+                        ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                        : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200'
                   }`}
                 >
                   <span>{tc.description || `Case ${idx + 1}`}</span>
                   {res && (
                     <span
                       className={`h-2 w-2 rounded-full ${
-                        res.passed ? 'bg-emerald-400' : 'bg-red-400'
+                        res.passed ? 'bg-emerald-500' : 'bg-red-500'
                       }`}
                       title={res.passed ? 'Test Passed' : 'Test Failed'}
                     />
@@ -444,26 +539,52 @@ export default function CodingWorkspace({
 
         {/* Global Errors */}
         {runError && (
-          <div className="mb-2 rounded-lg border border-red-500/30 bg-red-950/40 p-2.5 text-xs text-red-100">
+          <div
+            className={`mb-2 rounded-lg border p-2.5 text-xs ${
+              isLight
+                ? 'border-red-200 bg-red-50 text-red-800'
+                : 'border-red-500/30 bg-red-950/40 text-red-100'
+            }`}
+          >
             <p className="font-semibold">Execution Error / Timeout</p>
-            <p className="mt-0.5 text-red-200/90">{runError}</p>
+            <p className="mt-0.5">{runError}</p>
           </div>
         )}
 
         {submitError && (
-          <div className="mb-2 rounded-lg border border-red-500/30 bg-red-950/40 p-2.5 text-xs text-red-100">
+          <div
+            className={`mb-2 rounded-lg border p-2.5 text-xs ${
+              isLight
+                ? 'border-red-200 bg-red-50 text-red-800'
+                : 'border-red-500/30 bg-red-950/40 text-red-100'
+            }`}
+          >
             <p className="font-semibold">Submission Error</p>
-            <p className="mt-0.5 text-red-200/90">{submitError}</p>
+            <p className="mt-0.5">{submitError}</p>
           </div>
         )}
 
         {/* Compilation Error Details */}
         {runResult && !runResult.compile_success && runResult.compile_output ? (
-          <div className="mb-2 rounded-lg border border-red-500/20 bg-black/50 p-3">
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-red-300">
+          <div
+            className={`mb-2 rounded-lg border p-3 ${
+              isLight
+                ? 'border-red-200 bg-red-50/70'
+                : 'border-red-500/20 bg-black/50'
+            }`}
+          >
+            <p
+              className={`mb-1 text-[11px] font-semibold uppercase tracking-wider ${
+                isLight ? 'text-red-800' : 'text-red-300'
+              }`}
+            >
               Compilation / Syntax Diagnostic:
             </p>
-            <pre className="max-h-36 overflow-auto font-mono text-[11px] leading-relaxed text-red-100/95">
+            <pre
+              className={`max-h-36 overflow-auto font-mono text-[11px] leading-relaxed ${
+                isLight ? 'text-red-900' : 'text-red-100/95'
+              }`}
+            >
               {runResult.compile_output}
             </pre>
           </div>
@@ -475,18 +596,36 @@ export default function CodingWorkspace({
             const tc = publicTestCases[activeTab];
             const result = runResult?.results?.[activeTab];
             return (
-              <div className="space-y-2 rounded-lg border border-white/10 bg-black/30 p-3 text-xs">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 pb-2">
+              <div
+                className={`space-y-2 rounded-lg border p-3 text-xs ${
+                  isLight
+                    ? 'border-slate-200 bg-white text-slate-800'
+                    : 'border-white/10 bg-black/30 text-slate-200'
+                }`}
+              >
+                <div
+                  className={`flex flex-wrap items-center justify-between gap-2 border-b pb-2 ${
+                    isLight ? 'border-slate-100' : 'border-white/5'
+                  }`}
+                >
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-slate-200">
+                    <span
+                      className={`font-semibold ${
+                        isLight ? 'text-slate-900' : 'text-slate-200'
+                      }`}
+                    >
                       {tc.description || `Test Case ${activeTab + 1}`}
                     </span>
                     {result && (
                       <span
                         className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-bold ${
                           result.passed
-                            ? 'bg-emerald-500/20 text-emerald-300'
-                            : 'bg-red-500/20 text-red-300'
+                            ? isLight
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-emerald-500/20 text-emerald-300'
+                            : isLight
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-red-500/20 text-red-300'
                         }`}
                       >
                         {result.passed ? 'PASSED' : 'FAILED'}
@@ -494,14 +633,24 @@ export default function CodingWorkspace({
                     )}
                   </div>
                   {result && (
-                    <span className="font-mono text-[10px] text-slate-400">
+                    <span
+                      className={`font-mono text-[10px] ${
+                        isLight ? 'text-slate-500' : 'text-slate-400'
+                      }`}
+                    >
                       exit code: {result.exit_code}
                     </span>
                   )}
                 </div>
 
                 {result?.error && (
-                  <div className="rounded bg-red-950/30 p-2 font-mono text-[11px] text-red-200">
+                  <div
+                    className={`rounded p-2 font-mono text-[11px] ${
+                      isLight
+                        ? 'bg-red-50 text-red-800 border border-red-200'
+                        : 'bg-red-950/30 text-red-200'
+                    }`}
+                  >
                     <span className="font-semibold">Error: </span>
                     {result.error}
                   </div>
@@ -509,33 +658,65 @@ export default function CodingWorkspace({
 
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>
-                    <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-slate-400">
+                    <p
+                      className={`mb-1 font-mono text-[10px] uppercase tracking-wider ${
+                        isLight ? 'text-slate-500' : 'text-slate-400'
+                      }`}
+                    >
                       Standard Input (stdin)
                     </p>
-                    <pre className="max-h-24 overflow-auto rounded border border-white/5 bg-black/50 p-2 font-mono text-[11px] text-slate-200">
+                    <pre
+                      className={`max-h-24 overflow-auto rounded border p-2 font-mono text-[11px] ${
+                        isLight
+                          ? 'border-slate-200 bg-slate-50 text-slate-800'
+                          : 'border-white/5 bg-black/50 text-slate-200'
+                      }`}
+                    >
                       {tc.stdin || '<empty>'}
                     </pre>
                   </div>
                   <div>
-                    <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-slate-400">
+                    <p
+                      className={`mb-1 font-mono text-[10px] uppercase tracking-wider ${
+                        isLight ? 'text-slate-500' : 'text-slate-400'
+                      }`}
+                    >
                       Expected Output
                     </p>
-                    <pre className="max-h-24 overflow-auto rounded border border-white/5 bg-black/50 p-2 font-mono text-[11px] text-emerald-300/90">
+                    <pre
+                      className={`max-h-24 overflow-auto rounded border p-2 font-mono text-[11px] ${
+                        isLight
+                          ? 'border-emerald-200 bg-emerald-50/60 text-emerald-800'
+                          : 'border-white/5 bg-black/50 text-emerald-300/90'
+                      }`}
+                    >
                       {tc.expected_stdout || '<empty>'}
                     </pre>
                   </div>
                 </div>
 
                 {result && (
-                  <div className="mt-2 border-t border-white/5 pt-2">
-                    <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-slate-400">
+                  <div
+                    className={`mt-2 border-t pt-2 ${
+                      isLight ? 'border-slate-100' : 'border-white/5'
+                    }`}
+                  >
+                    <p
+                      className={`mb-1 font-mono text-[10px] uppercase tracking-wider ${
+                        isLight ? 'text-slate-500' : 'text-slate-400'
+                      }`}
+                    >
                       Your Program Output (stdout)
                     </p>
                     <pre
                       className={`max-h-28 overflow-auto rounded border p-2 font-mono text-[11px] ${
                         result.passed
-                          ? 'border-emerald-500/20 bg-emerald-950/20 text-emerald-100'
-                          : 'border-red-500/20 bg-red-950/20 text-red-100'
+                          ? isLight
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                            : 'border-emerald-500/20 bg-emerald-950/20 text-emerald-100'
+                          : isLight
+                            ? 'border-red-200 bg-red-50 text-red-900'
+                            : 'border-red-500/20 bg-red-950/20 text-red-100'
                       }`}
                     >
                       {result.actual_stdout || '<no output produced>'}
@@ -544,11 +725,25 @@ export default function CodingWorkspace({
                 )}
 
                 {result?.stderr ? (
-                  <div className="mt-2 border-t border-white/5 pt-2">
-                    <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-amber-400/80">
+                  <div
+                    className={`mt-2 border-t pt-2 ${
+                      isLight ? 'border-slate-100' : 'border-white/5'
+                    }`}
+                  >
+                    <p
+                      className={`mb-1 font-mono text-[10px] uppercase tracking-wider ${
+                        isLight ? 'text-amber-800' : 'text-amber-400/80'
+                      }`}
+                    >
                       Stderr / Diagnostics
                     </p>
-                    <pre className="max-h-24 overflow-auto rounded border border-amber-500/20 bg-amber-950/20 p-2 font-mono text-[11px] text-amber-100">
+                    <pre
+                      className={`max-h-24 overflow-auto rounded border p-2 font-mono text-[11px] ${
+                        isLight
+                          ? 'border-amber-200 bg-amber-50 text-amber-900'
+                          : 'border-amber-500/20 bg-amber-950/20 text-amber-100'
+                      }`}
+                    >
                       {result.stderr}
                     </pre>
                   </div>
@@ -557,7 +752,7 @@ export default function CodingWorkspace({
             );
           })()
         ) : (
-          <p className="text-[11px] text-slate-500">
+          <p className={isLight ? 'text-[11px] text-slate-500' : 'text-[11px] text-slate-500'}>
             No public test cases configured for this question. Implement your solution and click &quot;Submit Solution&quot;.
           </p>
         )}

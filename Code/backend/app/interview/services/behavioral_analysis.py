@@ -4,10 +4,14 @@ Computes resolution-independent eye gaze normalization, solvePnP 3D head pose es
 and physical facial movement dynamics (EAR blinks and micro-movements) with zero psychological claims.
 """
 import base64
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+
+warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf")
+warnings.filterwarnings("ignore", message=".*SymbolDatabase.GetPrototype.*")
 
 try:
     import cv2
@@ -61,12 +65,12 @@ class BehavioralAnalysisService:
             self.face_mesh = self.mp_face_mesh.FaceMesh(
                 max_num_faces=1,
                 refine_landmarks=True,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5
+                min_detection_confidence=0.25,
+                min_tracking_confidence=0.25
             )
             self.face_detection = self.mp_face_detection.FaceDetection(
-                model_selection=1,
-                min_detection_confidence=0.5
+                model_selection=0,  # 0 = short range frontal webcam (< 2m)
+                min_detection_confidence=0.25
             )
         else:
             self.mp_face_mesh = None
@@ -135,23 +139,33 @@ class BehavioralAnalysisService:
 
                 h, w, _ = frame.shape
                 if cv2 is not None:
-                    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    # If frame is dim or low-contrast, apply adaptive contrast enhancement for robust detection
+                    gray_mean = np.mean(frame)
+                    if gray_mean < 80.0:
+                        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+                        l_channel, a_channel, b_channel = cv2.split(lab)
+                        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                        enhanced_l = clahe.apply(l_channel)
+                        enhanced_lab = cv2.merge((enhanced_l, a_channel, b_channel))
+                        enhanced_frame = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
+                        rgb_frame = cv2.cvtColor(enhanced_frame, cv2.COLOR_BGR2RGB)
+                    else:
+                        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 else:
                     rgb_frame = frame
 
-                # Face detection check
-                if self.face_detection is not None:
-                    face_results = self.face_detection.process(rgb_frame)
-                    if not face_results or not face_results.detections:
-                        continue
-
-                # Face mesh extraction
+                # Face mesh extraction (with fallback to direct mesh detection)
                 if self.face_mesh is None:
                     continue
 
                 mesh_results = self.face_mesh.process(rgb_frame)
                 if not mesh_results or not mesh_results.multi_face_landmarks:
-                    continue
+                    # If enhanced RGB failed, try original frame
+                    if cv2 is not None:
+                        orig_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        mesh_results = self.face_mesh.process(orig_rgb)
+                    if not mesh_results or not mesh_results.multi_face_landmarks:
+                        continue
 
                 landmarks = mesh_results.multi_face_landmarks[0]
                 frames_with_face += 1

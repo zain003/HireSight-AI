@@ -493,21 +493,75 @@ async def submit_live_coding_challenge(
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
 
+    custom_test_cases = None
+    target_q = None
+    if request.question_index is not None and 0 <= request.question_index < len(session.questions):
+        target_q = session.questions[request.question_index]
+    else:
+        for q in session.questions:
+            cid = q.get("coding_challenge_id") or (q.get("coding_challenge") or {}).get("challenge_id")
+            if cid and cid == request.challenge_id:
+                target_q = q
+                break
+
+    if target_q and target_q.get("coding_challenge"):
+        c_dict = target_q["coding_challenge"]
+        public_tcs = c_dict.get("public_test_cases") or []
+        hidden_tcs = c_dict.get("hidden_test_cases") or []
+        from app.interview.domain.coding_challenges import CodingTestCase
+
+        custom_test_cases = []
+        for idx, tc in enumerate(public_tcs):
+            custom_test_cases.append(
+                CodingTestCase(
+                    test_id=idx + 1,
+                    is_hidden=False,
+                    stdin=tc.get("stdin", ""),
+                    expected_stdout=tc.get("expected_stdout", ""),
+                    description=tc.get("description"),
+                )
+            )
+        for idx, tc in enumerate(hidden_tcs):
+            custom_test_cases.append(
+                CodingTestCase(
+                    test_id=len(public_tcs) + idx + 1,
+                    is_hidden=True,
+                    stdin=tc.get("stdin", ""),
+                    expected_stdout=tc.get("expected_stdout", ""),
+                    description=tc.get("description"),
+                )
+            )
+
     evaluation = await asyncio.to_thread(
         evaluate_coding_challenge,
         challenge_id=request.challenge_id,
         language=request.language,
         source_code=request.source_code,
+        custom_test_cases=custom_test_cases,
     )
 
-    # Store coding result in session
+    # Store coding result in session (deduplicated by question_index or challenge_id)
     if not hasattr(session, 'coding_results') or session.coding_results is None:
         session.coding_results = []
 
     eval_dict = evaluation.model_dump()
     eval_dict["timestamp"] = datetime.utcnow().isoformat()
     eval_dict["question_index"] = request.question_index
-    session.coding_results.append(eval_dict)
+    eval_dict["challenge_id"] = request.challenge_id
+
+    # Update existing entry for the same question/challenge or append
+    replaced = False
+    for idx, existing in enumerate(session.coding_results):
+        if isinstance(existing, dict):
+            if (
+                (request.question_index is not None and existing.get("question_index") == request.question_index)
+                or (request.challenge_id and existing.get("challenge_id") == request.challenge_id)
+            ):
+                session.coding_results[idx] = eval_dict
+                replaced = True
+                break
+    if not replaced:
+        session.coding_results.append(eval_dict)
 
     await session.save()
     return evaluation
@@ -533,14 +587,25 @@ async def submit_coding_result(
     if not hasattr(session, 'coding_results') or session.coding_results is None:
         session.coding_results = []
     
-    session.coding_results.append({
+    passed_count = sum(1 for r in request.results if r.passed)
+    total_count = max(1, len(request.results))
+    score = (passed_count / total_count) * 100.0 if request.compile_success else 0.0
+
+    res_entry = {
         "compile_success": request.compile_success,
         "all_passed": request.all_passed,
-        "passed_count": sum(1 for r in request.results if r.passed),
-        "total_count": len(request.results),
-        "timestamp": datetime.utcnow().isoformat()
-    })
+        "passed_count": passed_count,
+        "total_count": total_count,
+        "overall_coding_score": round(score, 1),
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+    # Deduplicate against last entry if identical or from same challenge
+    if session.coding_results and isinstance(session.coding_results[-1], dict) and session.coding_results[-1].get("overall_coding_score") == round(score, 1):
+        session.coding_results[-1] = res_entry
+    else:
+        session.coding_results.append(res_entry)
     
     await session.save()
     
-    return {"status": "success", "message": "Coding result recorded"}
+    return {"status": "success", "message": "Coding result recorded", "overall_coding_score": score}

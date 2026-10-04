@@ -2,6 +2,7 @@
  * Candidate Full Report Page (Issue 02 - Part 3)
  * Dynamic Route: /admin/candidates/[id]
  * Renders complete single-source-of-truth dossier for recruiter assessment & hiring decisions.
+ * Executive White & Professional Theme with instant Dark Mode support.
  */
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
@@ -20,6 +21,8 @@ import {
   Share2,
   FileText,
   AlertCircle,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import authService from '@/services/authService';
 import adminDashboardService from '@/services/adminDashboardService';
@@ -29,10 +32,24 @@ export default function CandidateReportPage() {
   const router = useRouter();
   const { id } = router.query;
 
+  const [theme, setTheme] = useState('light');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('hiresight_admin_theme') || 'light';
+    setTheme(savedTheme);
+  }, []);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(nextTheme);
+    localStorage.setItem('hiresight_admin_theme', nextTheme);
+  };
+
+  const isLight = theme === 'light';
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -101,34 +118,60 @@ export default function CandidateReportPage() {
         </title>
       </Head>
 
-      <div className="min-h-screen bg-[#0B1120] text-slate-100 pb-16">
+      <div className={`min-h-screen pb-16 transition-colors duration-200 ${
+        isLight ? 'bg-[#F8FAFC] text-slate-900' : 'bg-[#0B1120] text-slate-100'
+      }`}>
         {/* Sticky Top Header */}
-        <header className="sticky top-0 z-30 border-b border-white/10 bg-[#0B1120]/90 backdrop-blur-md px-4 py-3 sm:px-8">
+        <header className={`sticky top-0 z-30 border-b backdrop-blur-md px-4 py-3 sm:px-8 transition-colors ${
+          isLight ? 'border-slate-200 bg-white/95 text-slate-900 shadow-xs' : 'border-white/10 bg-[#0B1120]/90 text-slate-100'
+        }`}>
           <div className="mx-auto flex max-w-7xl items-center justify-between">
             <div className="flex items-center gap-4">
               <Link
                 href="/admin-dashboard"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white"
+                className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition ${
+                  isLight
+                    ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 shadow-xs'
+                    : 'border-white/10 bg-slate-900/80 text-slate-300 hover:bg-white/5 hover:text-white'
+                }`}
               >
                 <ArrowLeft className="h-4 w-4" />
                 <span>Dashboard</span>
               </Link>
 
               <div className="hidden sm:block">
-                <span className="text-xs text-slate-500">/</span>
-                <span className="ml-2 text-xs text-slate-400">Candidate Assessments</span>
-                <span className="mx-2 text-xs text-slate-500">/</span>
-                <span className="text-xs font-semibold text-white truncate max-w-xs">
+                <span className="text-xs text-slate-400">/</span>
+                <span className={`ml-2 text-xs font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Candidate Assessments</span>
+                <span className="mx-2 text-xs text-slate-400">/</span>
+                <span className={`text-xs font-bold truncate max-w-xs ${isLight ? 'text-slate-900' : 'text-white'}`}>
                   {candidate.name || id}
                 </span>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Theme Toggle Button */}
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className={`flex h-8 w-8 items-center justify-center rounded-xl border transition ${
+                  isLight
+                    ? 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                    : 'border-white/10 bg-slate-900/80 text-slate-300 hover:bg-white/5 hover:text-white'
+                }`}
+                title={isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+              >
+                {isLight ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+              </button>
+
               <button
                 type="button"
                 onClick={handleCopyShareLink}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-slate-900/80 px-3.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white"
+                className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition ${
+                  isLight
+                    ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 shadow-xs'
+                    : 'border-white/10 bg-slate-900/80 text-slate-300 hover:bg-white/5 hover:text-white'
+                }`}
                 title="Copy shareable report URL"
               >
                 <Share2 className="h-3.5 w-3.5" />
@@ -141,25 +184,29 @@ export default function CandidateReportPage() {
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-8 space-y-6">
           {loading ? (
             <div className="flex flex-col items-center justify-center p-24 gap-4">
-              <div className="h-10 w-10 animate-spin rounded-full border-2 border-indigo-400/30 border-t-indigo-400" />
-              <p className="text-sm text-slate-400">Loading comprehensive candidate dossier…</p>
+              <div className="h-10 w-10 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+              <p className={`text-sm font-medium ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Loading comprehensive candidate dossier…</p>
             </div>
           ) : error ? (
-            <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-8 text-center max-w-2xl mx-auto space-y-4">
-              <ShieldAlert className="mx-auto h-12 w-12 text-red-400" />
-              <h2 className="text-lg font-bold text-white">Unable to Load Report</h2>
-              <p className="text-sm text-red-200">{error}</p>
+            <div className={`rounded-2xl border p-8 text-center max-w-2xl mx-auto space-y-4 shadow-xs ${
+              isLight ? 'border-rose-200 bg-rose-50' : 'border-red-500/30 bg-red-500/10'
+            }`}>
+              <ShieldAlert className="mx-auto h-12 w-12 text-rose-500" />
+              <h2 className={`text-lg font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>Unable to Load Report</h2>
+              <p className={`text-sm ${isLight ? 'text-rose-800 font-medium' : 'text-red-200'}`}>{error}</p>
               <div className="pt-2 flex justify-center gap-3">
                 <button
                   type="button"
                   onClick={() => id && loadReport(String(id))}
-                  className="rounded-xl bg-red-500/20 px-4 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/30"
+                  className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700"
                 >
                   Retry
                 </button>
                 <Link
                   href="/admin-dashboard"
-                  className="rounded-xl border border-white/15 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-white/5"
+                  className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
+                    isLight ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs' : 'border-white/15 text-slate-300 hover:bg-white/5'
+                  }`}
                 >
                   Return to Dashboard
                 </Link>
@@ -168,41 +215,45 @@ export default function CandidateReportPage() {
           ) : data ? (
             <>
               {/* Candidate Summary Header Hero Banner */}
-              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 backdrop-blur-md shadow-xl">
+              <div className={`rounded-2xl border p-6 shadow-xs ${
+                isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900/60 border-white/10 text-white backdrop-blur-md shadow-xl'
+              }`}>
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
                   {/* Left: Avatar & Candidate Info */}
                   <div className="flex items-start gap-4">
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-2xl font-black text-white shadow-lg shadow-indigo-500/20">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-indigo-600 text-2xl font-black text-white shadow-md shadow-indigo-600/20">
                       {(candidate.name || 'C').charAt(0).toUpperCase()}
                     </div>
                     <div>
                       <div className="flex flex-wrap items-center gap-3">
-                        <h1 className="text-2xl font-bold text-white">{candidate.name}</h1>
-                        <span className="rounded-full border border-indigo-400/40 bg-indigo-500/15 px-3 py-0.5 text-xs font-semibold text-indigo-300">
+                        <h1 className={`text-2xl font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{candidate.name}</h1>
+                        <span className={`rounded-full border px-3 py-0.5 text-xs font-semibold ${
+                          isLight ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-indigo-400/40 bg-indigo-500/15 text-indigo-300'
+                        }`}>
                           {data.job_title || data.job_role || 'Engineering Candidate'}
                         </span>
                       </div>
 
-                      <div className="mt-2.5 flex flex-wrap items-center gap-4 text-xs text-slate-400">
+                      <div className={`mt-2.5 flex flex-wrap items-center gap-4 text-xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                         {candidate.email && (
-                          <span className="flex items-center gap-1.5">
-                            <Mail className="h-3.5 w-3.5 text-slate-500" />
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <Mail className="h-3.5 w-3.5 text-slate-400" />
                             {candidate.email}
                           </span>
                         )}
                         {candidate.experience_years != null && (
-                          <span className="flex items-center gap-1.5">
-                            <Briefcase className="h-3.5 w-3.5 text-slate-500" />
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <Briefcase className="h-3.5 w-3.5 text-slate-400" />
                             {candidate.experience_years} years experience
                           </span>
                         )}
-                        <span className="flex items-center gap-1.5">
-                          <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                        <span className="flex items-center gap-1.5 font-medium">
+                          <Calendar className="h-3.5 w-3.5 text-slate-400" />
                           {formatDate(interview.ended_at || interview.started_at)}
                         </span>
                         {interview.duration_minutes != null && (
-                          <span className="flex items-center gap-1.5">
-                            <Clock className="h-3.5 w-3.5 text-slate-500" />
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <Clock className="h-3.5 w-3.5 text-slate-400" />
                             {interview.duration_minutes} min duration
                           </span>
                         )}
@@ -214,7 +265,11 @@ export default function CandidateReportPage() {
                           {candidate.skills.map((skill, idx) => (
                             <span
                               key={idx}
-                              className="rounded-md border border-white/10 bg-slate-950/60 px-2 py-0.5 text-[11px] font-medium text-slate-300"
+                              className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                                isLight
+                                  ? 'border-slate-200 bg-slate-100 text-slate-700'
+                                  : 'border-white/10 bg-slate-950/60 text-slate-300'
+                              }`}
                             >
                               {skill}
                             </span>
@@ -226,14 +281,20 @@ export default function CandidateReportPage() {
 
                   {/* Right: Overall Score Highlight */}
                   {overallScore !== null && (
-                    <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4 shrink-0">
+                    <div className={`flex items-center gap-4 rounded-2xl border p-4 shrink-0 shadow-xs ${
+                      isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/60 border-white/10'
+                    }`}>
                       <div className="text-right">
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 block">
                           Overall Assessment
                         </span>
-                        <span className="text-xs font-semibold text-indigo-300">{fitStatus}</span>
+                        <span className={`text-xs font-bold ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}>{fitStatus}</span>
                       </div>
-                      <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-indigo-500/20 text-2xl font-black text-indigo-300 border border-indigo-400/30">
+                      <div className={`flex h-14 w-14 items-center justify-center rounded-xl text-2xl font-black ${
+                        isLight
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/30'
+                      }`}>
                         {Math.round(overallScore)}
                       </div>
                     </div>
@@ -241,17 +302,20 @@ export default function CandidateReportPage() {
                 </div>
               </div>
 
-              {/* Full Recruiter Report Viewer (FEAT-009-FE) */}
+              {/* Full Recruiter Report Viewer */}
               {recruiterReport ? (
                 <RecruiterReportViewer
+                  theme={theme}
                   report={recruiterReport}
                   sessionId={data.session_id || String(id)}
                 />
               ) : (
-                <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-12 text-center backdrop-blur-md">
-                  <AlertCircle className="mx-auto h-12 w-12 text-amber-400 mb-3" />
-                  <h3 className="text-base font-semibold text-white">Report Incomplete</h3>
-                  <p className="mt-1 text-sm text-slate-400">
+                <div className={`rounded-2xl border p-12 text-center shadow-xs ${
+                  isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-white/10 backdrop-blur-md'
+                }`}>
+                  <AlertCircle className="mx-auto h-12 w-12 text-amber-500 mb-3" />
+                  <h3 className={`text-base font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>Report Incomplete</h3>
+                  <p className={`mt-1 text-sm ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                     This interview session has not been fully evaluated or ended yet.
                   </p>
                 </div>

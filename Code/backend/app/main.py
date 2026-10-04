@@ -1,7 +1,7 @@
-"""
-Main FastAPI application entry point.
-This is the core of our Modular Monolith architecture.
-"""
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf")
+warnings.filterwarnings("ignore", message=".*SymbolDatabase.GetPrototype.*")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles

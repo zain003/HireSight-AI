@@ -211,6 +211,7 @@ class RoleDetailOut(BaseModel):
 
 class RoleConfigResponse(BaseModel):
     supported_roles: List[RoleDetailOut]
+    roles: Optional[List[RoleDetailOut]] = None
     default_seniority: str
     seniority_levels: List[str]
 

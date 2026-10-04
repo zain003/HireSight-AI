@@ -339,9 +339,8 @@ def test_recruiter_report():
         
         print_status(f"Report generated: {report.fit_status or report.hiring_recommendation}", "success")
         print_status(f"Overall composite: {report.overall_score:.1f}/100", "info")
-        print_status(f"Technical (35%): {report.technical_score:.1f}/100", "info")
-        print_status(f"Coding (20%): {report.coding_score:.1f}/100", "info")
-        print_status(f"Role Fit (15%): {report.role_fit_score:.1f}/100", "info")
+        print_status(f"Technical (45%): {report.technical_score:.1f}/100", "info")
+        print_status(f"Coding (25%): {report.coding_score:.1f}/100", "info")
         print_status(f"Communication (15%): {report.communication_score:.1f}/100", "info")
         print_status(f"Behavioral (15%): {report.behavioral_score:.1f}/100", "info")
         

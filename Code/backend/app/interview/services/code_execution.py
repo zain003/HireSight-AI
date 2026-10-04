@@ -490,10 +490,15 @@ def calculate_coding_score(
     if public_total + hidden_total == 0:
         return 0.0
 
-    pub_ratio = (public_passed / public_total) if public_total > 0 else 1.0
-    hid_ratio = (hidden_passed / hidden_total) if hidden_total > 0 else 1.0
+    pub_ratio = (public_passed / public_total) if public_total > 0 else 0.0
+    hid_ratio = (hidden_passed / hidden_total) if hidden_total > 0 else 0.0
 
-    correctness_score = (0.35 * pub_ratio + 0.50 * hid_ratio) * 100.0
+    if hidden_total == 0:
+        correctness_score = 85.0 * pub_ratio
+    elif public_total == 0:
+        correctness_score = 85.0 * hid_ratio
+    else:
+        correctness_score = (0.35 * pub_ratio + 0.50 * hid_ratio) * 100.0
 
     total_passed = public_passed + hidden_passed
     total_tests = public_total + hidden_total

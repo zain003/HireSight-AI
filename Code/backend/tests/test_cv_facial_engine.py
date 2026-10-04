@@ -54,39 +54,51 @@ def _create_synthetic_face_landmarks(
     Builds a canonical normalized 2D face landmark layout for testing solvePnP and gaze normalization.
     """
     landmarks = {}
-    
-    # Nose tip (index 1)
-    landmarks[1] = (center_x, center_y, 0.0)
-    # Chin (index 152)
-    landmarks[152] = (center_x, center_y + scale * 0.7, -0.05 * scale)
-    
-    # Left eye outer corner (index 33) & Right eye outer corner (index 263)
-    left_corner_x = center_x - scale * 0.4
-    right_corner_x = center_x + scale * 0.4
-    eye_y = center_y - scale * 0.2
-    landmarks[33] = (left_corner_x, eye_y, -0.02 * scale)
-    landmarks[263] = (right_corner_x, eye_y, -0.02 * scale)
-    
-    # Left eye inner corner (index 133) & Right eye inner corner (index 362)
-    landmarks[133] = (center_x - scale * 0.15, eye_y, -0.01 * scale)
-    landmarks[362] = (center_x + scale * 0.15, eye_y, -0.01 * scale)
-    
-    # Left mouth corner (index 61) & Right mouth corner (index 291)
-    mouth_y = center_y + scale * 0.4
-    landmarks[61] = (center_x - scale * 0.25, mouth_y, -0.03 * scale)
-    landmarks[291] = (center_x + scale * 0.25, mouth_y, -0.03 * scale)
-    landmarks[13] = (center_x, mouth_y - mouth_open * scale, 0.0)
-    landmarks[14] = (center_x, mouth_y + mouth_open * scale, 0.0)
+    w, h = 1280, 720
+    focal_length = float(w)
+    center = (float(w) * center_x, float(h) * center_y)
+    camera_matrix = np.array([
+        [focal_length, 0.0, center[0]],
+        [0.0, focal_length, center[1]],
+        [0.0, 0.0, 1.0]
+    ], dtype=np.float64)
+    dist_coeffs = np.zeros((4, 1), dtype=np.float64)
+
+    rvec = np.zeros((3, 1), dtype=np.float64)
+    tvec = np.array([[0.0], [0.0], [1000.0]], dtype=np.float64)
+
+    service = BehavioralAnalysisService()
+    proj_2d, _ = cv2.projectPoints(service.MODEL_POINTS_3D, rvec, tvec, camera_matrix, dist_coeffs)
+    pts = proj_2d.reshape(-1, 2)
+
+    # 1: Nose, 152: Chin, 33: Left eye, 263: Right eye, 61: Left mouth, 291: Right mouth
+    landmarks[1] = (float(pts[0][0] / w), float(pts[0][1] / h), 0.0)
+    landmarks[152] = (float(pts[1][0] / w), float(pts[1][1] / h), -0.065 * scale)
+    landmarks[33] = (float(pts[2][0] / w), float(pts[2][1] / h), -0.135 * scale)
+    landmarks[263] = (float(pts[3][0] / w), float(pts[3][1] / h), -0.135 * scale)
+    landmarks[61] = (float(pts[4][0] / w), float(pts[4][1] / h), -0.125 * scale)
+    landmarks[291] = (float(pts[5][0] / w), float(pts[5][1] / h), -0.125 * scale)
+
+    left_corner_x = landmarks[33][0]
+    right_corner_x = landmarks[263][0]
+    eye_y = landmarks[33][1]
+
+    # Inner eye corners
+    landmarks[133] = (center_x - scale * 0.10, eye_y, -0.10 * scale)
+    landmarks[362] = (center_x + scale * 0.10, eye_y, -0.10 * scale)
+
+    landmarks[13] = (center_x, landmarks[61][1] - mouth_open * scale, 0.0)
+    landmarks[14] = (center_x, landmarks[61][1] + mouth_open * scale, 0.0)
     
     # Left eye contour points for EAR
-    left_eye_center_x = (left_corner_x + (center_x - scale * 0.15)) / 2.0
+    left_eye_center_x = (left_corner_x + (center_x - scale * 0.10)) / 2.0
     landmarks[160] = (left_eye_center_x - 0.01 * scale, eye_y - ear_factor * scale * 0.1, 0.0)
     landmarks[158] = (left_eye_center_x + 0.01 * scale, eye_y - ear_factor * scale * 0.1, 0.0)
     landmarks[144] = (left_eye_center_x - 0.01 * scale, eye_y + ear_factor * scale * 0.1, 0.0)
     landmarks[153] = (left_eye_center_x + 0.01 * scale, eye_y + ear_factor * scale * 0.1, 0.0)
     
     # Right eye contour points for EAR
-    right_eye_center_x = (right_corner_x + (center_x + scale * 0.15)) / 2.0
+    right_eye_center_x = (right_corner_x + (center_x + scale * 0.10)) / 2.0
     landmarks[385] = (right_eye_center_x - 0.01 * scale, eye_y - ear_factor * scale * 0.1, 0.0)
     landmarks[387] = (right_eye_center_x + 0.01 * scale, eye_y - ear_factor * scale * 0.1, 0.0)
     landmarks[380] = (right_eye_center_x - 0.01 * scale, eye_y + ear_factor * scale * 0.1, 0.0)

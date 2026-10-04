@@ -2,6 +2,7 @@
  * Recruiter Report Viewer Component (FEAT-009-FE)
  * Displays comprehensive 5-dimensional explainable scores, fit status rationale,
  * tailored feedback roadmaps, observable physical metrics, and one-click PDF & JSON exports.
+ * Fully supports executive White & Professional theme alongside Dark Mode.
  */
 import { useState } from 'react';
 import {
@@ -30,7 +31,8 @@ import {
 import { toast } from 'react-hot-toast';
 import adminDashboardService from '@/services/adminDashboardService';
 
-export default function RecruiterReportViewer({ report, sessionId, onClose }) {
+export default function RecruiterReportViewer({ report, sessionId, onClose, theme = 'light' }) {
+  const isLight = theme === 'light';
   const [activeTab, setActiveTab] = useState('summary');
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [isExportingJson, setIsExportingJson] = useState(false);
@@ -38,10 +40,12 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
 
   if (!report) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
+      <div className={`min-h-[400px] p-6 ${isLight ? 'bg-[#F8FAFC] text-slate-900' : 'bg-slate-950 text-slate-100'}`}>
         <div className="max-w-4xl mx-auto">
-          <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-12 text-center backdrop-blur-md">
-            <p className="text-slate-400">No recruiter report available for this session.</p>
+          <div className={`rounded-2xl border p-12 text-center ${
+            isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-slate-900/60 border-white/10 backdrop-blur-md'
+          }`}>
+            <p className="text-slate-500">No recruiter report available for this session.</p>
           </div>
         </div>
       </div>
@@ -73,43 +77,53 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
   const missingRoleSkills = feedback.missing_role_skills || [];
   const recommendations = feedback.actionable_improvement_recommendations || report.next_steps?.split('\n').filter(Boolean) || [];
 
-  // Mathematical Audit Data
-  const auditData = report.scoring_formula_audit || fiveDim.scoring_formula_audit || {
-    formula: '0.35 * Tech + 0.20 * Coding + 0.15 * RoleFit + 0.15 * Comm + 0.15 * Behavioral',
-    weights: {
-      technical_knowledge: 0.35,
-      coding_ability: 0.20,
-      role_fit: 0.15,
-      communication: 0.15,
-      behavioral_indicators: 0.15,
-    },
-    weighted_contributions: {
-      technical_knowledge: +(techScore * 0.35).toFixed(2),
-      coding_ability: +(codingScore * 0.20).toFixed(2),
-      role_fit: +(roleFitScore * 0.15).toFixed(2),
-      communication: +(commScore * 0.15).toFixed(2),
-      behavioral_indicators: +(behScore * 0.15).toFixed(2),
-    },
-    overall_composite_score: +overallScore.toFixed(2),
-    fit_status: fitStatus,
+  // Mathematical Audit Data & Mode Detection
+  const auditData = report.scoring_formula_audit || fiveDim.scoring_formula_audit || {};
+  const commAudit = auditData?.dimension_audits?.communication || {};
+  const isTextMode = commAudit.input_mode === 'text' || (!report.speech_clarity && !report.vocal_confidence);
+  const behAudit = auditData?.dimension_audits?.behavioral_indicators || {};
+  const isVideoCalibrated = (report.attention_span ?? 0) >= 25 && behAudit.is_calibrated !== false;
+
+  const effWeights = auditData.effective_weights || auditData.weights || {
+    technical_knowledge: 0.45,
+    coding_ability: 0.25,
+    communication: 0.15,
+    behavioral_indicators: 0.15,
+  };
+
+  const contributions = auditData.weighted_contributions || {
+    technical_knowledge: +(techScore * (effWeights.technical_knowledge || 0.45)).toFixed(2),
+    coding_ability: +(codingScore * (effWeights.coding_ability || 0.25)).toFixed(2),
+    communication: +(commScore * (effWeights.communication || 0.15)).toFixed(2),
+    behavioral_indicators: +(behScore * (effWeights.behavioral_indicators || 0.15)).toFixed(2),
   };
 
   const getFitBadgeStyle = (status) => {
     switch (status) {
       case 'Strong Fit':
       case 'Strong Hire':
-        return 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+        return isLight
+          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+          : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
       case 'Potential Fit':
       case 'Hire':
-        return 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+        return isLight
+          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+          : 'bg-amber-500/15 text-amber-400 border-amber-500/30';
       case 'Needs Growth':
       case 'Maybe':
-        return 'bg-orange-500/15 text-orange-400 border-orange-500/30';
+        return isLight
+          ? 'bg-amber-50 text-amber-700 border-amber-200'
+          : 'bg-orange-500/15 text-orange-400 border-orange-500/30';
       case 'Not a Fit':
       case 'No Hire':
-        return 'bg-red-500/15 text-red-400 border-red-500/30';
+        return isLight
+          ? 'bg-rose-50 text-rose-700 border-rose-200'
+          : 'bg-red-500/15 text-red-400 border-red-500/30';
       default:
-        return 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30';
+        return isLight
+          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+          : 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30';
     }
   };
 
@@ -155,33 +169,37 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
     }
   };
 
-  const DimensionMeter = ({ title, weight, score, icon: Icon, color = 'indigo' }) => {
+  const DimensionMeter = ({ title, weight, score, icon: Icon }) => {
     const getColorClass = (val) => {
-      if (val >= 80) return 'bg-emerald-500 text-emerald-400';
-      if (val >= 60) return 'bg-amber-500 text-amber-400';
-      return 'bg-red-500 text-red-400';
+      if (val >= 80) return isLight ? 'bg-emerald-600 text-emerald-700' : 'bg-emerald-500 text-emerald-400';
+      if (val >= 60) return isLight ? 'bg-amber-500 text-amber-700' : 'bg-amber-500 text-amber-400';
+      return isLight ? 'bg-rose-600 text-rose-700' : 'bg-red-500 text-red-400';
     };
 
     return (
-      <div className="rounded-xl border border-white/10 bg-slate-950/50 p-4 transition hover:border-white/20">
+      <div className={`rounded-xl border p-4 transition-all ${
+        isLight
+          ? 'bg-slate-50/80 border-slate-200/90 hover:bg-white hover:border-slate-300 hover:shadow-xs'
+          : 'bg-slate-950/50 border-white/10 hover:border-white/20'
+      }`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="rounded-lg bg-white/5 p-2 text-slate-300">
+            <div className={`rounded-lg p-2 ${isLight ? 'bg-white border border-slate-200 text-slate-700' : 'bg-white/5 text-slate-300'}`}>
               <Icon className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-white">{title}</p>
-              <p className="text-xs text-slate-400">Weight: {weight}</p>
+              <p className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{title}</p>
+              <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Weight: {weight}</p>
             </div>
           </div>
           <div className="text-right">
-            <span className={`text-lg font-bold ${getColorClass(score).split(' ')[1]}`}>
+            <span className={`text-lg font-black ${getColorClass(score).split(' ')[1]}`}>
               {Math.round(score)}
             </span>
-            <span className="text-xs text-slate-500"> / 100</span>
+            <span className="text-xs text-slate-400"> / 100</span>
           </div>
         </div>
-        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-800">
+        <div className={`mt-3 h-2 w-full overflow-hidden rounded-full ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`}>
           <div
             className={`h-full transition-all duration-700 ${getColorClass(score).split(' ')[0]}`}
             style={{ width: `${Math.min(100, Math.max(0, score))}%` }}
@@ -189,7 +207,7 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
         </div>
         <div className="mt-1.5 flex justify-between text-[10px] text-slate-500">
           <span>Weighted Contribution:</span>
-          <span className="font-mono text-slate-400">
+          <span className={`font-mono font-semibold ${isLight ? 'text-slate-700' : 'text-slate-400'}`}>
             {(score * parseFloat(weight) / 100).toFixed(2)} pts
           </span>
         </div>
@@ -198,9 +216,11 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className={`rounded-2xl transition-colors ${isLight ? 'bg-[#F8FAFC] text-slate-900' : 'bg-slate-950 text-slate-100'}`}>
       {/* Top Header & Export Controls */}
-      <div className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 backdrop-blur-md">
+      <div className={`sticky top-0 z-20 border-b rounded-t-2xl backdrop-blur-md transition-colors ${
+        isLight ? 'border-slate-200 bg-white/95 text-slate-900 shadow-xs' : 'border-white/10 bg-slate-950/90 text-slate-100'
+      }`}>
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
@@ -208,7 +228,11 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
                 <button
                   type="button"
                   onClick={onClose}
-                  className="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-400 transition hover:bg-white/10 hover:text-white"
+                  className={`rounded-xl border p-2 transition ${
+                    isLight
+                      ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 shadow-xs'
+                      : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white'
+                  }`}
                   title="Close Report View"
                 >
                   <X className="h-5 w-5" />
@@ -216,16 +240,16 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
               )}
               <div>
                 <div className="flex items-center gap-3">
-                  <h1 className="text-xl font-bold text-white sm:text-2xl">
+                  <h1 className={`text-xl font-bold sm:text-2xl ${isLight ? 'text-slate-900' : 'text-white'}`}>
                     {report.candidate_name || 'Candidate Dossier'}
                   </h1>
                   <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${getFitBadgeStyle(fitStatus)}`}>
                     {fitStatus}
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 mt-1">
-                  Target Role: <span className="text-slate-200 font-medium">{report.job_role || 'Not specified'}</span> • Session:{' '}
-                  <span className="font-mono text-slate-300">{effectiveSessionId.slice(0, 14)}...</span>
+                <p className={`text-xs mt-1 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Target Role: <span className={`font-semibold ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>{report.job_role || 'Not specified'}</span> • Session:{' '}
+                  <span className={`font-mono ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>{effectiveSessionId.slice(0, 14)}...</span>
                 </p>
               </div>
             </div>
@@ -235,10 +259,14 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
               <button
                 type="button"
                 onClick={() => setShowAuditModal(true)}
-                className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/10 hover:text-white"
+                className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition ${
+                  isLight
+                    ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 shadow-xs'
+                    : 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10 hover:text-white'
+                }`}
                 title="View mathematical scoring weights and formulas"
               >
-                <Calculator className="h-4 w-4 text-indigo-400" />
+                <Calculator className="h-4 w-4 text-indigo-600" />
                 Scoring Math
               </button>
 
@@ -246,12 +274,16 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
                 type="button"
                 onClick={handleExportJson}
                 disabled={isExportingJson}
-                className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+                className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition disabled:opacity-50 ${
+                  isLight
+                    ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 shadow-xs'
+                    : 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10 hover:text-white'
+                }`}
               >
                 {isExportingJson ? (
-                  <RefreshCw className="h-4 w-4 animate-spin text-sky-400" />
+                  <RefreshCw className="h-4 w-4 animate-spin text-sky-600" />
                 ) : (
-                  <FileJson className="h-4 w-4 text-sky-400" />
+                  <FileJson className="h-4 w-4 text-sky-600" />
                 )}
                 Export JSON
               </button>
@@ -260,7 +292,7 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
                 type="button"
                 onClick={handleDownloadPdf}
                 disabled={isDownloadingPdf}
-                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-indigo-500/20 transition hover:from-indigo-400 hover:to-violet-500 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:opacity-50"
               >
                 {isDownloadingPdf ? (
                   <RefreshCw className="h-4 w-4 animate-spin" />
@@ -273,7 +305,11 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-400 transition hover:bg-white/10 hover:text-white hidden md:block"
+                className={`rounded-xl border p-2 transition hidden md:block ${
+                  isLight
+                    ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100 shadow-xs'
+                    : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white'
+                }`}
                 title="Print Report"
               >
                 <Printer className="h-4 w-4" />
@@ -284,7 +320,7 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="border-b border-white/10 bg-slate-900/40">
+      <div className={`border-b transition-colors ${isLight ? 'border-slate-200 bg-white' : 'border-white/10 bg-slate-900/40'}`}>
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex gap-2 sm:gap-6 overflow-x-auto">
             {[
@@ -302,11 +338,15 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-2 border-b-2 py-3.5 px-3 text-xs sm:text-sm font-semibold transition whitespace-nowrap ${
                     isActive
-                      ? 'border-indigo-500 text-white'
+                      ? isLight
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-indigo-500 text-white'
+                      : isLight
+                      ? 'border-transparent text-slate-500 hover:text-slate-800'
                       : 'border-transparent text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  <Icon className={`h-4 w-4 ${isActive ? 'text-indigo-400' : 'text-slate-500'}`} />
+                  <Icon className={`h-4 w-4 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
                   {tab.label}
                 </button>
               );
@@ -321,11 +361,15 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
         {activeTab === 'summary' && (
           <div className="space-y-6">
             {/* Hero Score Card */}
-            <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 sm:p-8 backdrop-blur-md">
+            <div className={`rounded-2xl border p-6 sm:p-8 transition-all ${
+              isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-slate-900/60 border-white/10 backdrop-blur-md'
+            }`}>
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
                 {/* Composite Score Circle */}
-                <div className="lg:col-span-4 flex flex-col items-center justify-center p-4 border-b lg:border-b-0 lg:border-r border-white/10">
-                  <p className="text-xs uppercase font-bold tracking-widest text-slate-400 mb-2">
+                <div className={`lg:col-span-4 flex flex-col items-center justify-center p-4 border-b lg:border-b-0 lg:border-r ${
+                  isLight ? 'border-slate-100' : 'border-white/10'
+                }`}>
+                  <p className="text-xs uppercase font-bold tracking-widest text-slate-500 mb-2">
                     5-Dimensional Overall Score
                   </p>
                   <div className="relative flex items-center justify-center">
@@ -337,7 +381,7 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
                         stroke="currentColor"
                         strokeWidth="8"
                         fill="transparent"
-                        className="text-slate-800"
+                        className={isLight ? 'text-slate-100' : 'text-slate-800'}
                       />
                       <circle
                         cx="72"
@@ -349,18 +393,18 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
                         strokeDasharray={2 * Math.PI * 58}
                         strokeDashoffset={2 * Math.PI * 58 * (1 - overallScore / 100)}
                         strokeLinecap="round"
-                        className="text-indigo-500 transition-all duration-1000"
+                        className="text-indigo-600 transition-all duration-1000"
                       />
                     </svg>
                     <div className="absolute flex flex-col items-center justify-center text-center">
-                      <span className="text-4xl font-black text-white">{overallScore.toFixed(1)}</span>
+                      <span className={`text-4xl font-black ${isLight ? 'text-slate-900' : 'text-white'}`}>{overallScore.toFixed(1)}</span>
                       <span className="text-xs text-slate-400">/ 100</span>
                     </div>
                   </div>
                   <div className="mt-3 flex items-center gap-2">
-                    <span className="text-xs text-slate-400">Recommendation:</span>
-                    <span className="text-xs font-bold text-white">
-                      {report.hiring_recommendation || fitStatus}
+                    <span className="text-xs text-slate-500">Recommendation:</span>
+                    <span className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                      {fitStatus || report.hiring_recommendation}
                     </span>
                   </div>
                 </div>
@@ -368,37 +412,56 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
                 {/* 5-Dimensional Summary Grid */}
                 <div className="lg:col-span-8">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">
+                    <h3 className={`text-sm font-bold uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
                       Evaluation Pillars (100% Total Weight)
                     </h3>
                     <button
                       onClick={() => setShowAuditModal(true)}
-                      className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
                     >
                       <Calculator className="h-3.5 w-3.5" />
                       View Audit Math
                     </button>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <DimensionMeter title="Technical Knowledge" weight="35%" score={techScore} icon={Code2} />
-                    <DimensionMeter title="Coding Ability" weight="20%" score={codingScore} icon={Layers} />
-                    <DimensionMeter title="Role Fit Alignment" weight="15%" score={roleFitScore} icon={Award} />
-                    <DimensionMeter title="Communication" weight="15%" score={commScore} icon={Mic} />
-                    <div className="sm:col-span-2">
-                      <DimensionMeter title="Behavioral Indicators (CV)" weight="15%" score={behScore} icon={Video} />
-                    </div>
+                    <DimensionMeter
+                      title="Technical Knowledge"
+                      weight={`${((effWeights.technical_knowledge || 0.45) * 100).toFixed(0)}%`}
+                      score={techScore}
+                      icon={Code2}
+                    />
+                    <DimensionMeter
+                      title="Coding Ability"
+                      weight={`${((effWeights.coding_ability || 0.25) * 100).toFixed(0)}%`}
+                      score={codingScore}
+                      icon={Layers}
+                    />
+                    <DimensionMeter
+                      title={isTextMode ? 'Communication (Written Text)' : 'Communication (Verbal/Acoustic)'}
+                      weight={`${((effWeights.communication || 0.15) * 100).toFixed(0)}%`}
+                      score={commScore}
+                      icon={Mic}
+                    />
+                    <DimensionMeter
+                      title={isVideoCalibrated ? 'Behavioral Indicators (CV Video)' : 'Behavioral Indicators (Uncalibrated / Deducted)'}
+                      weight={`${((effWeights.behavioral_indicators || 0.15) * 100).toFixed(0)}%`}
+                      score={behScore}
+                      icon={Video}
+                    />
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Executive Narrative */}
-            <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 backdrop-blur-md">
-              <h3 className="text-base font-bold text-white mb-3 flex items-center gap-2">
-                <FileText className="h-4 w-4 text-indigo-400" />
+            <div className={`rounded-2xl border p-6 ${
+              isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-slate-900/60 border-white/10 backdrop-blur-md'
+            }`}>
+              <h3 className={`text-base font-bold mb-3 flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                <FileText className="h-4 w-4 text-indigo-600" />
                 Executive Candidate Summary
               </h3>
-              <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
+              <p className={`text-sm leading-relaxed whitespace-pre-line ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
                 {report.executive_summary || 'No narrative summary generated for this session.'}
               </p>
             </div>
@@ -406,57 +469,71 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
             {/* Strengths & Concerns 2-Column Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Strengths */}
-              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-6">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-emerald-300 mb-4 flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              <div className={`rounded-2xl border p-6 ${
+                isLight ? 'bg-emerald-50/50 border-emerald-200 shadow-xs' : 'border-emerald-500/20 bg-emerald-500/5'
+              }`}>
+                <h3 className={`text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2 ${
+                  isLight ? 'text-emerald-800' : 'text-emerald-300'
+                }`}>
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                   Key Strengths & Mastery ({strongestAreas.length})
                 </h3>
                 {strongestAreas.length > 0 ? (
                   <ul className="space-y-2.5">
                     {strongestAreas.map((item, idx) => (
-                      <li key={idx} className="flex items-start gap-2.5 text-xs text-slate-200">
-                        <Check className="h-3.5 w-3.5 text-emerald-400 mt-0.5 shrink-0" />
+                      <li key={idx} className={`flex items-start gap-2.5 text-xs ${isLight ? 'text-emerald-950 font-medium' : 'text-slate-200'}`}>
+                        <Check className="h-3.5 w-3.5 text-emerald-600 mt-0.5 shrink-0" />
                         <span>{item}</span>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-xs text-slate-400">Baseline candidate performance recorded.</p>
+                  <p className="text-xs text-slate-500">Baseline candidate performance recorded.</p>
                 )}
               </div>
 
               {/* Identified Gaps / Concerns */}
-              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-6">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-amber-300 mb-4 flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-400" />
+              <div className={`rounded-2xl border p-6 ${
+                isLight ? 'bg-amber-50/50 border-amber-200 shadow-xs' : 'border-amber-500/20 bg-amber-500/5'
+              }`}>
+                <h3 className={`text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2 ${
+                  isLight ? 'text-amber-800' : 'text-amber-300'
+                }`}>
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
                   Identified Gaps & Attention Areas ({weakestAreas.length})
                 </h3>
                 {weakestAreas.length > 0 ? (
                   <ul className="space-y-2.5">
                     {weakestAreas.map((item, idx) => (
-                      <li key={idx} className="flex items-start gap-2.5 text-xs text-slate-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0" />
+                      <li key={idx} className={`flex items-start gap-2.5 text-xs ${isLight ? 'text-amber-950 font-medium' : 'text-slate-200'}`}>
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0" />
                         <span>{item}</span>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-xs text-slate-400">No critical weaknesses detected.</p>
+                  <p className="text-xs text-slate-500">No critical weaknesses detected.</p>
                 )}
               </div>
             </div>
 
             {/* Actionable Next Steps */}
             {recommendations.length > 0 && (
-              <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-6">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-indigo-300 mb-4 flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-indigo-400" />
+              <div className={`rounded-2xl border p-6 ${
+                isLight ? 'bg-indigo-50/50 border-indigo-200 shadow-xs' : 'border-indigo-500/20 bg-indigo-500/5'
+              }`}>
+                <h3 className={`text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2 ${
+                  isLight ? 'text-indigo-800' : 'text-indigo-300'
+                }`}>
+                  <TrendingUp className="h-4 w-4 text-indigo-600" />
                   Recommended Hiring Next Steps
                 </h3>
                 <div className="space-y-2">
                   {recommendations.map((rec, idx) => (
-                    <div key={idx} className="flex items-start gap-3 text-xs text-slate-200">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-[10px] font-bold text-indigo-300">
+                    <div key={idx} className={`flex items-start gap-3 text-xs ${isLight ? 'text-indigo-950 font-medium' : 'text-slate-200'}`}>
+                      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                        isLight ? 'bg-indigo-200 text-indigo-800' : 'bg-indigo-500/20 text-indigo-300'
+                      }`}>
                         {idx + 1}
                       </span>
                       <p className="mt-0.5">{rec}</p>
@@ -473,134 +550,133 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Technical Knowledge Detail */}
-              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6">
+              <div className={`rounded-2xl border p-6 shadow-xs ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-white/10'}`}>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Code2 className="h-4 w-4 text-indigo-400" />
-                    1. Technical Knowledge (Weight: 35%)
+                  <h3 className={`text-sm font-bold flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    <Code2 className="h-4 w-4 text-indigo-600" />
+                    1. Technical Knowledge (Weight: {((effWeights.technical_knowledge || 0.45) * 100).toFixed(0)}%)
                   </h3>
-                  <span className="text-lg font-black text-indigo-400">{techScore.toFixed(1)}/100</span>
+                  <span className="text-lg font-black text-indigo-600">{techScore.toFixed(1)}/100</span>
                 </div>
-                <p className="text-xs text-slate-300 mb-4">
+                <p className={`text-xs mb-4 ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
                   Calculated from rubric evaluations across technical question prompts:
                   30% relevance + 40% conceptual depth + 30% technical accuracy.
                 </p>
-                <div className="space-y-2 rounded-xl bg-slate-950/50 p-4 border border-white/5 text-xs">
-                  <div className="flex justify-between text-slate-400">
+                <div className={`space-y-2 rounded-xl p-4 border text-xs ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/50 border-white/5'
+                }`}>
+                  <div className="flex justify-between text-slate-500">
                     <span>Evaluations Count:</span>
-                    <span className="text-white font-mono">{report.questions_answered || 0}</span>
+                    <span className={`font-mono font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>{report.questions_answered || 0}</span>
                   </div>
-                  <div className="flex justify-between text-slate-400">
+                  <div className="flex justify-between text-slate-500">
                     <span>Weighted Points Contribution:</span>
-                    <span className="text-indigo-300 font-mono">{(techScore * 0.35).toFixed(2)} pts</span>
+                    <span className="text-indigo-600 font-mono font-bold">
+                      {contributions.technical_knowledge ?? (techScore * (effWeights.technical_knowledge || 0.45)).toFixed(2)} pts
+                    </span>
                   </div>
                 </div>
               </div>
 
               {/* Coding Ability Detail */}
-              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6">
+              <div className={`rounded-2xl border p-6 shadow-xs ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-white/10'}`}>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Layers className="h-4 w-4 text-emerald-400" />
-                    2. Coding Ability (Weight: 20%)
+                  <h3 className={`text-sm font-bold flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    <Layers className="h-4 w-4 text-emerald-600" />
+                    2. Coding Ability (Weight: {((effWeights.coding_ability || 0.25) * 100).toFixed(0)}%)
                   </h3>
-                  <span className="text-lg font-black text-emerald-400">{codingScore.toFixed(1)}/100</span>
+                  <span className="text-lg font-black text-emerald-600">{codingScore.toFixed(1)}/100</span>
                 </div>
-                <p className="text-xs text-slate-300 mb-4">
+                <p className={`text-xs mb-4 ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
                   Evaluated in sandboxed execution with strict timeouts and output buffer caps.
                   Covers both public and private hidden test suites.
                 </p>
-                <div className="space-y-2 rounded-xl bg-slate-950/50 p-4 border border-white/5 text-xs">
-                  <div className="flex justify-between text-slate-400">
+                <div className={`space-y-2 rounded-xl p-4 border text-xs ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/50 border-white/5'
+                }`}>
+                  <div className="flex justify-between text-slate-500">
                     <span>Challenges Passed:</span>
-                    <span className="text-white font-mono">
+                    <span className={`font-mono font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>
                       {report.coding_challenges_passed ?? 0} / {report.coding_challenges_total ?? 0}
                     </span>
                   </div>
-                  <div className="flex justify-between text-slate-400">
+                  <div className="flex justify-between text-slate-500">
                     <span>Weighted Points Contribution:</span>
-                    <span className="text-emerald-300 font-mono">{(codingScore * 0.20).toFixed(2)} pts</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Role Fit Alignment */}
-              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Award className="h-4 w-4 text-sky-400" />
-                    3. Role Fit Alignment (Weight: 15%)
-                  </h3>
-                  <span className="text-lg font-black text-sky-400">{roleFitScore.toFixed(1)}/100</span>
-                </div>
-                <p className="text-xs text-slate-300 mb-4">
-                  Matches demonstrated skills against target role competency clusters from standardized engineering taxonomy.
-                </p>
-                <div className="space-y-2 rounded-xl bg-slate-950/50 p-4 border border-white/5 text-xs">
-                  <div className="flex justify-between text-slate-400">
-                    <span>Target Taxonomy Role:</span>
-                    <span className="text-white">{report.job_role || 'General Engineering'}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-400">
-                    <span>Weighted Points Contribution:</span>
-                    <span className="text-sky-300 font-mono">{(roleFitScore * 0.15).toFixed(2)} pts</span>
+                    <span className="text-emerald-600 font-mono font-bold">
+                      {contributions.coding_ability ?? (codingScore * (effWeights.coding_ability || 0.25)).toFixed(2)} pts
+                    </span>
                   </div>
                 </div>
               </div>
 
               {/* Communication Skills */}
-              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6">
+              <div className={`rounded-2xl border p-6 shadow-xs ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-white/10'}`}>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Mic className="h-4 w-4 text-violet-400" />
-                    4. Communication (Weight: 15%)
+                  <h3 className={`text-sm font-bold flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    <Mic className="h-4 w-4 text-violet-600" />
+                    3. Communication (Weight: {((effWeights.communication || 0.15) * 100).toFixed(0)}%)
                   </h3>
-                  <span className="text-lg font-black text-violet-400">{commScore.toFixed(1)}/100</span>
+                  <span className="text-lg font-black text-violet-600">{commScore.toFixed(1)}/100</span>
                 </div>
-                <p className="text-xs text-slate-300 mb-4">
-                  Combines verbal articulation (60%) with acoustic speaking rate WPM and pause duration ratios (40%).
+                <p className={`text-xs mb-4 ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
+                  {isTextMode
+                    ? 'Evaluated from written response structure, technical terminology precision, and clarity (100% Written Text Mode).'
+                    : 'Combines verbal articulation (60%) with acoustic speaking rate WPM and pause duration ratios (40%).'}
                 </p>
-                <div className="space-y-2 rounded-xl bg-slate-950/50 p-4 border border-white/5 text-xs">
-                  <div className="flex justify-between text-slate-400">
-                    <span>Speech Clarity Score:</span>
-                    <span className="text-white font-mono">{report.speech_clarity || 75.0}/100</span>
+                <div className={`space-y-2 rounded-xl p-4 border text-xs ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/50 border-white/5'
+                }`}>
+                  <div className="flex justify-between text-slate-500">
+                    <span>{isTextMode ? 'Written Response Articulation:' : 'Speech Clarity Score:'}</span>
+                    <span className={`font-mono font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                      {isTextMode ? `${commScore.toFixed(1)}/100` : `${(report.speech_clarity ?? 0).toFixed(1)}/100`}
+                    </span>
                   </div>
-                  <div className="flex justify-between text-slate-400">
+                  <div className="flex justify-between text-slate-500">
+                    <span>Input Mode:</span>
+                    <span className="text-violet-600 font-mono font-semibold">
+                      {isTextMode ? 'Written Text (No Audio)' : 'Spoken Voice (Audio Tracked)'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-slate-500">
                     <span>Weighted Points Contribution:</span>
-                    <span className="text-violet-300 font-mono">{(commScore * 0.15).toFixed(2)} pts</span>
+                    <span className="text-violet-600 font-mono font-bold">{contributions.communication ?? (commScore * (effWeights.communication || 0.15)).toFixed(2)} pts</span>
                   </div>
                 </div>
               </div>
 
               {/* Behavioral Indicators */}
-              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 md:col-span-2">
+              <div className={`rounded-2xl border p-6 shadow-xs ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-white/10'}`}>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Video className="h-4 w-4 text-amber-400" />
-                    5. Observable Behavioral Indicators (Weight: 15%)
+                  <h3 className={`text-sm font-bold flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    <Video className="h-4 w-4 text-amber-600" />
+                    4. Observable Behavioral Indicators (Weight: {((effWeights.behavioral_indicators || 0.15) * 100).toFixed(0)}%)
                   </h3>
-                  <span className="text-lg font-black text-amber-400">{behScore.toFixed(1)}/100</span>
+                  <span className="text-lg font-black text-amber-600">{behScore.toFixed(1)}/100</span>
                 </div>
-                <p className="text-xs text-slate-300 mb-4">
-                  Measures objective physical indicators from computer vision video stream:
-                  gaze stability ratio, head pose variance, and micro-movement dynamics.
+                <p className={`text-xs mb-4 ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
+                  {!isVideoCalibrated
+                    ? 'Video behavioral tracking was uncalibrated or candidate face was not detected in camera view (presence < 25%). Evaluated with a deduction in overall composite score.'
+                    : 'Measures objective physical indicators from computer vision video stream: gaze stability ratio, head pose variance, and micro-movement dynamics.'}
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                  <div className="rounded-lg bg-slate-950/50 p-3 border border-white/5">
-                    <p className="text-slate-400">Gaze Stability</p>
-                    <p className="text-sm font-bold text-white mt-1">{report.eye_contact_score ?? 75.0}%</p>
+                  <div className={`rounded-lg p-3 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/50 border-white/5'}`}>
+                    <p className="text-slate-400 font-semibold text-[10px] uppercase">Gaze Stability</p>
+                    <p className={`text-sm font-bold mt-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>{(report.eye_contact_score ?? 0).toFixed(1)}%</p>
                   </div>
-                  <div className="rounded-lg bg-slate-950/50 p-3 border border-white/5">
-                    <p className="text-slate-400">Frame Presence</p>
-                    <p className="text-sm font-bold text-white mt-1">{report.attention_span ?? 85.0}%</p>
+                  <div className={`rounded-lg p-3 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/50 border-white/5'}`}>
+                    <p className="text-slate-400 font-semibold text-[10px] uppercase">Frame Presence</p>
+                    <p className={`text-sm font-bold mt-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>{(report.attention_span ?? 0).toFixed(1)}%</p>
                   </div>
-                  <div className="rounded-lg bg-slate-950/50 p-3 border border-white/5">
-                    <p className="text-slate-400">Postural Stability</p>
-                    <p className="text-sm font-bold text-white mt-1">{report.fidgeting_score ?? 80.0}%</p>
+                  <div className={`rounded-lg p-3 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/50 border-white/5'}`}>
+                    <p className="text-slate-400 font-semibold text-[10px] uppercase">Postural Stability</p>
+                    <p className={`text-sm font-bold mt-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>{(report.fidgeting_score ?? 0).toFixed(1)}%</p>
                   </div>
-                  <div className="rounded-lg bg-slate-950/50 p-3 border border-white/5">
-                    <p className="text-slate-400">Weighted Pts</p>
-                    <p className="text-sm font-bold text-amber-400 mt-1">{(behScore * 0.15).toFixed(2)} pts</p>
+                  <div className={`rounded-lg p-3 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/50 border-white/5'}`}>
+                    <p className="text-slate-400 font-semibold text-[10px] uppercase">Weighted Pts</p>
+                    <p className="text-sm font-bold text-amber-600 mt-1">
+                      {(contributions.behavioral_indicators ?? (behScore * (effWeights.behavioral_indicators || 0.15))).toFixed(2)} pts
+                    </p>
                   </div>
                 </div>
               </div>
@@ -611,9 +687,9 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
         {/* TAB 3: TAILORED REMEDIATION */}
         {activeTab === 'feedback' && (
           <div className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-white mb-4 flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-indigo-400" />
+            <div className={`rounded-2xl border p-6 shadow-xs ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-white/10'}`}>
+              <h3 className={`text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                <Sparkles className="h-4 w-4 text-indigo-600" />
                 Actionable Technology Remediation Roadmap
               </h3>
               {recommendations.length > 0 ? (
@@ -621,13 +697,19 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
                   {recommendations.map((rec, idx) => (
                     <div
                       key={idx}
-                      className="rounded-xl border border-white/10 bg-slate-950/50 p-4 transition hover:border-indigo-400/30"
+                      className={`rounded-xl border p-4 transition ${
+                        isLight
+                          ? 'bg-slate-50 border-slate-200 hover:border-indigo-300 hover:bg-white'
+                          : 'bg-slate-950/50 border-white/10 hover:border-indigo-400/30'
+                      }`}
                     >
                       <div className="flex items-start gap-3">
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-indigo-500/20 text-xs font-bold text-indigo-300">
+                        <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
+                          isLight ? 'bg-indigo-100 text-indigo-700' : 'bg-indigo-500/20 text-indigo-300'
+                        }`}>
                           {idx + 1}
                         </span>
-                        <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">{rec}</p>
+                        <p className={`text-xs sm:text-sm leading-relaxed ${isLight ? 'text-slate-700 font-medium' : 'text-slate-200'}`}>{rec}</p>
                       </div>
                     </div>
                   ))}
@@ -639,27 +721,31 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
 
             {/* Coding Challenge Feedback */}
             {codingSummary && (
-              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6">
-                <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-                  <Code2 className="h-4 w-4 text-emerald-400" />
+              <div className={`rounded-2xl border p-6 shadow-xs ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-white/10'}`}>
+                <h3 className={`text-sm font-bold mb-3 flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                  <Code2 className="h-4 w-4 text-emerald-600" />
                   Coding Challenge Execution Analysis
                 </h3>
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">{codingSummary}</p>
+                <p className={`text-xs sm:text-sm leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>{codingSummary}</p>
               </div>
             )}
 
             {/* Missing Role Skills */}
             {missingRoleSkills.length > 0 && (
-              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-6">
-                <h3 className="text-sm font-bold text-amber-300 mb-3 flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-400" />
+              <div className={`rounded-2xl border p-6 shadow-xs ${isLight ? 'bg-amber-50/50 border-amber-200' : 'border-amber-500/20 bg-amber-500/5'}`}>
+                <h3 className={`text-sm font-bold mb-3 flex items-center gap-2 ${isLight ? 'text-amber-800' : 'text-amber-300'}`}>
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
                   Target Role Competencies Requiring Practice
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {missingRoleSkills.map((skill, idx) => (
                     <span
                       key={idx}
-                      className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-200"
+                      className={`rounded-lg border px-3 py-1 text-xs font-semibold ${
+                        isLight
+                          ? 'border-amber-200 bg-amber-100 text-amber-800'
+                          : 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+                      }`}
                     >
                       {skill}
                     </span>
@@ -675,59 +761,109 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Computer Vision Signals */}
-              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6">
-                <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                  <Video className="h-4 w-4 text-sky-400" />
-                  Computer Vision Physical Metrics
-                </h3>
-                <div className="space-y-3 text-xs">
-                  <div className="flex justify-between border-b border-white/5 pb-2">
-                    <span className="text-slate-400">Gaze Stability Ratio:</span>
-                    <span className="text-white font-mono">{report.eye_contact_score ?? 75.0}%</span>
-                  </div>
-                  <div className="flex justify-between border-b border-white/5 pb-2">
-                    <span className="text-slate-400">Head Pose Variance:</span>
-                    <span className="text-white font-mono">{report.fidgeting_score ?? 75.0}%</span>
-                  </div>
-                  <div className="flex justify-between border-b border-white/5 pb-2">
-                    <span className="text-slate-400">Frame Presence Ratio:</span>
-                    <span className="text-white font-mono">{report.attention_span ?? 85.0}%</span>
-                  </div>
-                  <div className="flex justify-between pb-2">
-                    <span className="text-slate-400">Physical Flags:</span>
-                    <span className="text-emerald-400">None (Optimal Orientation)</span>
-                  </div>
+              <div className={`rounded-2xl border p-6 shadow-xs ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-white/10'}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className={`text-sm font-bold flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    <Video className="h-4 w-4 text-sky-600" />
+                    Computer Vision Physical Metrics
+                  </h3>
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                    isVideoCalibrated
+                      ? isLight ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                      : isLight ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                  }`}>
+                    {isVideoCalibrated ? 'Calibrated' : 'Uncalibrated / Excluded'}
+                  </span>
                 </div>
+                {!isVideoCalibrated ? (
+                  <div className={`rounded-xl border p-4 text-xs space-y-2 ${
+                    isLight ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-amber-500/20 bg-amber-500/10 text-amber-300'
+                  }`}>
+                    <p className="font-semibold flex items-center gap-1.5">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                      Camera Misalignment / Low Frame Presence
+                    </p>
+                    <p className="leading-relaxed">
+                      Camera presence was below the calibration threshold ({(report.attention_span ?? 0).toFixed(1)}% observed).
+                      Computer vision metrics were excluded from candidate scoring to maintain assessment fairness and integrity.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 text-xs">
+                    <div className={`flex justify-between border-b pb-2 ${isLight ? 'border-slate-100' : 'border-white/5'}`}>
+                      <span className="text-slate-500">Gaze Stability Ratio:</span>
+                      <span className={`font-mono font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>{(report.eye_contact_score ?? 0).toFixed(1)}%</span>
+                    </div>
+                    <div className={`flex justify-between border-b pb-2 ${isLight ? 'border-slate-100' : 'border-white/5'}`}>
+                      <span className="text-slate-500">Head Pose Variance:</span>
+                      <span className={`font-mono font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>{(report.fidgeting_score ?? 0).toFixed(1)}%</span>
+                    </div>
+                    <div className={`flex justify-between border-b pb-2 ${isLight ? 'border-slate-100' : 'border-white/5'}`}>
+                      <span className="text-slate-500">Frame Presence Ratio:</span>
+                      <span className={`font-mono font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>{(report.attention_span ?? 0).toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between pb-2">
+                      <span className="text-slate-500">Physical Flags:</span>
+                      <span className="text-emerald-600 font-semibold">Optimal Facial Tracking</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Vocal Acoustic Signals */}
-              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6">
-                <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                  <Mic className="h-4 w-4 text-violet-400" />
-                  Vocal Acoustic & Speech Metrics
-                </h3>
-                <div className="space-y-3 text-xs">
-                  <div className="flex justify-between border-b border-white/5 pb-2">
-                    <span className="text-slate-400">Conversational Speaking Rate:</span>
-                    <span className="text-white font-mono">138.0 WPM (Norm: 120-160)</span>
-                  </div>
-                  <div className="flex justify-between border-b border-white/5 pb-2">
-                    <span className="text-slate-400">Pause Duration Ratio:</span>
-                    <span className="text-white font-mono">0.18 (Norm: 0.10-0.25)</span>
-                  </div>
-                  <div className="flex justify-between border-b border-white/5 pb-2">
-                    <span className="text-slate-400">Speech Clarity Score:</span>
-                    <span className="text-white font-mono">{report.speech_clarity ?? 75.0}/100</span>
-                  </div>
-                  <div className="flex justify-between pb-2">
-                    <span className="text-slate-400">Acoustic Flags:</span>
-                    <span className="text-emerald-400">None (Optimal Cadence)</span>
-                  </div>
+              <div className={`rounded-2xl border p-6 shadow-xs ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-white/10'}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className={`text-sm font-bold flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    <Mic className="h-4 w-4 text-violet-600" />
+                    Vocal Acoustic & Speech Metrics
+                  </h3>
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                    isTextMode
+                      ? isLight ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-sky-500/10 text-sky-400 border-sky-500/30'
+                      : isLight ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  }`}>
+                    {isTextMode ? 'Written Text Mode' : 'Audio Tracked'}
+                  </span>
                 </div>
+                {isTextMode ? (
+                  <div className={`rounded-xl border p-4 text-xs space-y-2 ${
+                    isLight ? 'border-sky-200 bg-sky-50 text-sky-900' : 'border-sky-500/20 bg-sky-500/10 text-sky-300'
+                  }`}>
+                    <p className="font-semibold flex items-center gap-1.5">
+                      <FileText className="h-4 w-4 text-sky-600 shrink-0" />
+                      Candidate Answered via Written Text Input
+                    </p>
+                    <p className="leading-relaxed">
+                      Candidate answered interview questions in text mode. Acoustic parameters (speaking rate WPM, pause ratios, audio speech clarity) are not applicable.
+                      Communication score ({commScore.toFixed(1)}/100) is evaluated 100% from written response articulation, clarity, and terminology precision.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 text-xs">
+                    <div className={`flex justify-between border-b pb-2 ${isLight ? 'border-slate-100' : 'border-white/5'}`}>
+                      <span className="text-slate-500">Conversational Speaking Rate:</span>
+                      <span className={`font-mono font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>{(report.speaking_rate_wpm ?? 138.0).toFixed(1)} WPM</span>
+                    </div>
+                    <div className={`flex justify-between border-b pb-2 ${isLight ? 'border-slate-100' : 'border-white/5'}`}>
+                      <span className="text-slate-500">Pause Duration Ratio:</span>
+                      <span className={`font-mono font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>{(report.pause_duration_ratio ?? 0.18).toFixed(2)}</span>
+                    </div>
+                    <div className={`flex justify-between border-b pb-2 ${isLight ? 'border-slate-100' : 'border-white/5'}`}>
+                      <span className="text-slate-500">Speech Clarity Score:</span>
+                      <span className={`font-mono font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>{(report.speech_clarity ?? 0).toFixed(1)}/100</span>
+                    </div>
+                    <div className="flex justify-between pb-2">
+                      <span className="text-slate-500">Acoustic Flags:</span>
+                      <span className="text-emerald-600 font-semibold">Vocal Tracked</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="rounded-xl border border-white/5 bg-slate-950/40 p-4 text-xs text-slate-500">
+            <div className={`rounded-xl border p-4 text-xs ${
+              isLight ? 'bg-white border-slate-200 text-slate-500' : 'border-white/5 bg-slate-950/40 text-slate-500'
+            }`}>
               <i>
                 System Invariant: All computer vision and vocal acoustic metrics strictly quantify objective physical signals.
                 HireSIGHT does not perform psychological mind-reading or emotion classification.
@@ -739,52 +875,52 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
         {/* TAB 5: QUESTION RUBRICS */}
         {activeTab === 'questions' && (
           <div className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6">
-              <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                <FileText className="h-4 w-4 text-indigo-400" />
+            <div className={`rounded-2xl border p-6 shadow-xs ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-white/10'}`}>
+              <h3 className={`text-sm font-bold mb-4 flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                <FileText className="h-4 w-4 text-indigo-600" />
                 Question Performance & Rubric Comparisons
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-                <div className="rounded-xl bg-slate-950/50 p-4 border border-white/5">
-                  <p className="text-2xl font-black text-white">{report.questions_answered ?? 0}</p>
-                  <p className="text-xs text-slate-400 mt-1">Answered</p>
+                <div className={`rounded-xl p-4 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/50 border-white/5'}`}>
+                  <p className={`text-2xl font-black ${isLight ? 'text-slate-900' : 'text-white'}`}>{report.questions_answered ?? 0}</p>
+                  <p className="text-xs text-slate-500 mt-1 font-semibold uppercase">Answered</p>
                 </div>
-                <div className="rounded-xl bg-slate-950/50 p-4 border border-white/5">
-                  <p className="text-2xl font-black text-yellow-400">{report.questions_skipped ?? 0}</p>
-                  <p className="text-xs text-slate-400 mt-1">Skipped</p>
+                <div className={`rounded-xl p-4 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/50 border-white/5'}`}>
+                  <p className="text-2xl font-black text-amber-600">{report.questions_skipped ?? 0}</p>
+                  <p className="text-xs text-slate-500 mt-1 font-semibold uppercase">Skipped</p>
                 </div>
-                <div className="rounded-xl bg-slate-950/50 p-4 border border-white/5">
-                  <p className="text-2xl font-black text-indigo-400">{report.follow_ups_triggered ?? 0}</p>
-                  <p className="text-xs text-slate-400 mt-1">Follow-ups</p>
+                <div className={`rounded-xl p-4 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/50 border-white/5'}`}>
+                  <p className="text-2xl font-black text-indigo-600">{report.follow_ups_triggered ?? 0}</p>
+                  <p className="text-xs text-slate-500 mt-1 font-semibold uppercase">Follow-ups</p>
                 </div>
-                <div className="rounded-xl bg-slate-950/50 p-4 border border-white/5">
-                  <p className="text-2xl font-black text-emerald-400">
+                <div className={`rounded-xl p-4 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/50 border-white/5'}`}>
+                  <p className="text-2xl font-black text-emerald-600">
                     {report.coding_challenges_passed ?? 0}/{report.coding_challenges_total ?? 0}
                   </p>
-                  <p className="text-xs text-slate-400 mt-1">Coding Passed</p>
+                  <p className="text-xs text-slate-500 mt-1 font-semibold uppercase">Coding Passed</p>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 space-y-4">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Detailed Analyses</h4>
+            <div className={`rounded-2xl border p-6 space-y-4 shadow-xs ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-white/10'}`}>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Detailed Analyses</h4>
               <div className="space-y-3 text-xs sm:text-sm">
                 {report.technical_analysis && (
-                  <div className="rounded-xl bg-slate-950/40 p-4 border border-white/5">
-                    <p className="font-semibold text-white mb-1">Technical Performance:</p>
-                    <p className="text-slate-300 leading-relaxed">{report.technical_analysis}</p>
+                  <div className={`rounded-xl p-4 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}>
+                    <p className={`font-semibold mb-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>Technical Performance:</p>
+                    <p className={`leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>{report.technical_analysis}</p>
                   </div>
                 )}
                 {report.communication_analysis && (
-                  <div className="rounded-xl bg-slate-950/40 p-4 border border-white/5">
-                    <p className="font-semibold text-white mb-1">Communication Effectiveness:</p>
-                    <p className="text-slate-300 leading-relaxed">{report.communication_analysis}</p>
+                  <div className={`rounded-xl p-4 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}>
+                    <p className={`font-semibold mb-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>Communication Effectiveness:</p>
+                    <p className={`leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>{report.communication_analysis}</p>
                   </div>
                 )}
                 {report.behavioral_analysis && (
-                  <div className="rounded-xl bg-slate-950/40 p-4 border border-white/5">
-                    <p className="font-semibold text-white mb-1">Behavioral Demeanor:</p>
-                    <p className="text-slate-300 leading-relaxed">{report.behavioral_analysis}</p>
+                  <div className={`rounded-xl p-4 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}>
+                    <p className={`font-semibold mb-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>Behavioral Demeanor:</p>
+                    <p className={`leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>{report.behavioral_analysis}</p>
                   </div>
                 )}
               </div>
@@ -795,81 +931,94 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
 
       {/* MATHEMATICAL AUDIT MODAL */}
       {showAuditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-          <div className="relative w-full max-w-2xl rounded-2xl border border-white/15 bg-slate-900 p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className={`relative w-full max-w-2xl rounded-2xl border p-6 shadow-2xl ${
+            isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900 border-white/15 text-slate-100'
+          }`}>
+            <div className={`flex items-center justify-between border-b pb-4 ${isLight ? 'border-slate-100' : 'border-white/10'}`}>
               <div className="flex items-center gap-2.5">
-                <Calculator className="h-5 w-5 text-indigo-400" />
-                <h3 className="text-lg font-bold text-white">5-Dimensional Scoring Audit Trail</h3>
+                <Calculator className="h-5 w-5 text-indigo-600" />
+                <h3 className={`text-lg font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>5-Dimensional Scoring Audit Trail</h3>
               </div>
               <button
                 onClick={() => setShowAuditModal(false)}
-                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+                className={`rounded-lg p-1.5 transition ${
+                  isLight ? 'text-slate-400 hover:bg-slate-100 hover:text-slate-700' : 'text-slate-400 hover:bg-white/10 hover:text-white'
+                }`}
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="mt-4 space-y-4 text-xs">
-              <div className="rounded-xl bg-slate-950/60 p-4 border border-white/10">
-                <p className="font-bold text-slate-300 mb-1">Mathematical Formula:</p>
-                <code className="font-mono text-indigo-300 text-xs break-all">
-                  Overall = 0.35 × Tech + 0.20 × Coding + 0.15 × RoleFit + 0.15 × Comm + 0.15 × Behavioral
+              <div className={`rounded-xl p-4 border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/60 border-white/10'}`}>
+                <p className={`font-bold mb-1 ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>Mathematical Formula:</p>
+                <code className={`font-mono text-xs break-all ${isLight ? 'text-indigo-700 font-semibold' : 'text-indigo-300'}`}>
+                  {auditData.formula ||
+                    `Overall = ${((effWeights.technical_knowledge || 0.45) * 100).toFixed(0)}% × Tech + ${((effWeights.coding_ability || 0.25) * 100).toFixed(0)}% × Coding + ${((effWeights.communication || 0.15) * 100).toFixed(0)}% × Comm + ${((effWeights.behavioral_indicators || 0.15) * 100).toFixed(0)}% × Behavioral`}
                 </code>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-white/10 text-[11px] text-slate-400 uppercase">
+                    <tr className={`border-b text-[11px] uppercase ${isLight ? 'border-slate-200 text-slate-500 font-semibold' : 'border-white/10 text-slate-400'}`}>
                       <th className="py-2 px-3">Dimension</th>
                       <th className="py-2 px-3">Weight</th>
                       <th className="py-2 px-3">Raw Score</th>
                       <th className="py-2 px-3 text-right">Contribution</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5">
+                  <tbody className={isLight ? 'divide-y divide-slate-100' : 'divide-y divide-white/5'}>
                     <tr>
-                      <td className="py-2.5 px-3 font-medium text-white">Technical Knowledge</td>
-                      <td className="py-2.5 px-3 text-slate-400">35%</td>
-                      <td className="py-2.5 px-3 font-mono text-indigo-300">{techScore.toFixed(1)}</td>
-                      <td className="py-2.5 px-3 text-right font-mono text-white">{(techScore * 0.35).toFixed(2)} pts</td>
+                      <td className={`py-2.5 px-3 font-medium ${isLight ? 'text-slate-900' : 'text-white'}`}>Technical Knowledge</td>
+                      <td className="py-2.5 px-3 text-slate-500">{((effWeights.technical_knowledge || 0.45) * 100).toFixed(0)}%</td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-indigo-600">{techScore.toFixed(1)}</td>
+                      <td className={`py-2.5 px-3 text-right font-mono font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        {(contributions.technical_knowledge ?? (techScore * (effWeights.technical_knowledge || 0.45))).toFixed(2)} pts
+                      </td>
                     </tr>
                     <tr>
-                      <td className="py-2.5 px-3 font-medium text-white">Coding Ability</td>
-                      <td className="py-2.5 px-3 text-slate-400">20%</td>
-                      <td className="py-2.5 px-3 font-mono text-emerald-300">{codingScore.toFixed(1)}</td>
-                      <td className="py-2.5 px-3 text-right font-mono text-white">{(codingScore * 0.20).toFixed(2)} pts</td>
+                      <td className={`py-2.5 px-3 font-medium ${isLight ? 'text-slate-900' : 'text-white'}`}>Coding Ability</td>
+                      <td className="py-2.5 px-3 text-slate-500">{((effWeights.coding_ability || 0.25) * 100).toFixed(0)}%</td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-emerald-600">{codingScore.toFixed(1)}</td>
+                      <td className={`py-2.5 px-3 text-right font-mono font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        {(contributions.coding_ability ?? (codingScore * (effWeights.coding_ability || 0.25))).toFixed(2)} pts
+                      </td>
                     </tr>
                     <tr>
-                      <td className="py-2.5 px-3 font-medium text-white">Role Fit Alignment</td>
-                      <td className="py-2.5 px-3 text-slate-400">15%</td>
-                      <td className="py-2.5 px-3 font-mono text-sky-300">{roleFitScore.toFixed(1)}</td>
-                      <td className="py-2.5 px-3 text-right font-mono text-white">{(roleFitScore * 0.15).toFixed(2)} pts</td>
+                      <td className={`py-2.5 px-3 font-medium ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        Communication {isTextMode ? '(Written)' : '(Verbal)'}
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-500">{((effWeights.communication || 0.15) * 100).toFixed(0)}%</td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-violet-600">{commScore.toFixed(1)}</td>
+                      <td className={`py-2.5 px-3 text-right font-mono font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        {(contributions.communication ?? (commScore * (effWeights.communication || 0.15))).toFixed(2)} pts
+                      </td>
                     </tr>
                     <tr>
-                      <td className="py-2.5 px-3 font-medium text-white">Communication</td>
-                      <td className="py-2.5 px-3 text-slate-400">15%</td>
-                      <td className="py-2.5 px-3 font-mono text-violet-300">{commScore.toFixed(1)}</td>
-                      <td className="py-2.5 px-3 text-right font-mono text-white">{(commScore * 0.15).toFixed(2)} pts</td>
+                      <td className={`py-2.5 px-3 font-medium ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        Behavioral Indicators {isVideoCalibrated ? '' : '(Uncalibrated / Deducted)'}
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-500">
+                        {((effWeights.behavioral_indicators || 0.15) * 100).toFixed(0)}%
+                      </td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-amber-600">{behScore.toFixed(1)}</td>
+                      <td className={`py-2.5 px-3 text-right font-mono font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        {(contributions.behavioral_indicators ?? (behScore * (effWeights.behavioral_indicators || 0.15))).toFixed(2)} pts
+                      </td>
                     </tr>
-                    <tr>
-                      <td className="py-2.5 px-3 font-medium text-white">Behavioral Indicators</td>
-                      <td className="py-2.5 px-3 text-slate-400">15%</td>
-                      <td className="py-2.5 px-3 font-mono text-amber-300">{behScore.toFixed(1)}</td>
-                      <td className="py-2.5 px-3 text-right font-mono text-white">{(behScore * 0.15).toFixed(2)} pts</td>
-                    </tr>
-                    <tr className="bg-white/5 font-bold">
-                      <td className="py-2.5 px-3 text-white">Composite Total</td>
-                      <td className="py-2.5 px-3 text-slate-300">100%</td>
+                    <tr className={`font-bold ${isLight ? 'bg-slate-100' : 'bg-white/5'}`}>
+                      <td className={`py-2.5 px-3 ${isLight ? 'text-slate-900' : 'text-white'}`}>Composite Total</td>
+                      <td className="py-2.5 px-3 text-slate-600">100%</td>
                       <td className="py-2.5 px-3 text-slate-400">—</td>
-                      <td className="py-2.5 px-3 text-right font-mono text-indigo-400">{overallScore.toFixed(2)} pts</td>
+                      <td className="py-2.5 px-3 text-right font-mono text-indigo-600">{overallScore.toFixed(2)} pts</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
-              <p className="text-[11px] text-slate-400 leading-relaxed">
+              <p className={`text-[11px] leading-relaxed ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                 HireSIGHT guarantees 100% explainable scoring. Every score is mathematically computable
                 from observable evaluations, sandboxed test runs, and objective physical metrics.
               </p>
@@ -879,7 +1028,7 @@ export default function RecruiterReportViewer({ report, sessionId, onClose }) {
               <button
                 type="button"
                 onClick={() => setShowAuditModal(false)}
-                className="rounded-xl bg-white/10 px-5 py-2 text-xs font-semibold text-white transition hover:bg-white/20"
+                className="rounded-xl bg-indigo-600 px-5 py-2 text-xs font-semibold text-white transition hover:bg-indigo-700 shadow-xs"
               >
                 Close Audit
               </button>

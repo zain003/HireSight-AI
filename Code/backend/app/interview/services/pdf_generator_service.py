@@ -366,45 +366,92 @@ class PDFReportGenerator:
         """Aggregate behavioral computer vision metrics into canonical ObservableCVMetrics."""
         if not behavioral_metrics:
             return ObservableCVMetrics(
-                gaze_stability_ratio=75.0,
-                head_pose_variance=75.0,
-                facial_movement_dynamics=70.0,
-                frame_presence_ratio=85.0,
-                blink_frequency_cpm=18.0,
-                observable_flags=[],
+                gaze_stability_ratio=0.0,
+                head_pose_variance=0.0,
+                facial_movement_dynamics=0.0,
+                frame_presence_ratio=0.0,
+                blink_frequency_cpm=0.0,
+                observable_flags=["Video tracking uncalibrated / No video frames provided"],
             )
 
         gazes, heads, dynamics, presences, blinks, flags = [], [], [], [], [], []
         for m in behavioral_metrics:
             if isinstance(m, dict):
-                gazes.append(float(m.get("gaze_stability_ratio", m.get("eye_contact", 75.0))))
-                heads.append(float(m.get("head_pose_variance", m.get("head_stability", 75.0))))
-                dynamics.append(float(m.get("facial_movement_dynamics", m.get("engagement", 70.0))))
-                presences.append(float(m.get("frame_presence_ratio", m.get("attention_span", 85.0))))
-                blinks.append(float(m.get("blink_frequency_cpm", 18.0)))
-                flags.extend(m.get("observable_flags", m.get("red_flags", [])))
+                obs = m.get("observable_cv_metrics") if isinstance(m.get("observable_cv_metrics"), dict) else {}
+                details = m.get("analysis_details") if isinstance(m.get("analysis_details"), dict) else {}
+                gazes.append(float(
+                    obs.get("gaze_stability_ratio")
+                    or details.get("gaze_stability_ratio")
+                    or m.get("gaze_stability_ratio")
+                    or m.get("eye_contact_score")
+                    or m.get("eye_contact")
+                    or 0.0
+                ))
+                heads.append(float(
+                    obs.get("head_pose_variance")
+                    or details.get("head_pose_variance")
+                    or m.get("head_pose_variance")
+                    or m.get("head_stability_score")
+                    or m.get("head_stability")
+                    or 0.0
+                ))
+                dynamics.append(float(
+                    obs.get("facial_movement_dynamics")
+                    or details.get("facial_movement_dynamics")
+                    or m.get("facial_movement_dynamics")
+                    or m.get("facial_engagement_score")
+                    or m.get("engagement")
+                    or 0.0
+                ))
+                presences.append(float(
+                    obs.get("frame_presence_ratio")
+                    or details.get("frame_presence_ratio")
+                    or m.get("frame_presence_ratio")
+                    or m.get("attention_span_score")
+                    or m.get("attention_span")
+                    or 0.0
+                ))
+                blinks.append(float(
+                    obs.get("blink_frequency_cpm")
+                    or details.get("blink_frequency_cpm")
+                    or m.get("blink_frequency_cpm")
+                    or 0.0
+                ))
+                flags.extend(obs.get("observable_flags") or m.get("observable_flags") or m.get("red_flags") or [])
             elif hasattr(m, "gaze_stability_ratio"):
-                gazes.append(float(m.gaze_stability_ratio))
-                heads.append(float(m.head_pose_variance))
-                dynamics.append(float(m.facial_movement_dynamics))
-                presences.append(float(m.frame_presence_ratio))
-                blinks.append(float(m.blink_frequency_cpm))
+                gazes.append(float(getattr(m, "gaze_stability_ratio", 0.0) or 0.0))
+                heads.append(float(getattr(m, "head_pose_variance", 0.0) or 0.0))
+                dynamics.append(float(getattr(m, "facial_movement_dynamics", 0.0) or 0.0))
+                presences.append(float(getattr(m, "frame_presence_ratio", 0.0) or 0.0))
+                blinks.append(float(getattr(m, "blink_frequency_cpm", 0.0) or 0.0))
                 flags.extend(getattr(m, "observable_flags", []))
+            elif hasattr(m, "eye_contact_score"):
+                gazes.append(float(getattr(m, "eye_contact_score", 0.0) or 0.0))
+                heads.append(float(getattr(m, "head_stability_score", 0.0) or 0.0))
+                dynamics.append(float(getattr(m, "facial_engagement_score", 0.0) or 0.0))
+                presences.append(float(getattr(m, "attention_span_score", 0.0) or 0.0))
+                blinks.append(float(getattr(m, "blink_frequency_cpm", 0.0) or 0.0))
+                flags.extend(getattr(m, "red_flags", []))
             else:
-                gazes.append(75.0)
-                heads.append(75.0)
-                dynamics.append(70.0)
-                presences.append(85.0)
-                blinks.append(18.0)
+                gazes.append(0.0)
+                heads.append(0.0)
+                dynamics.append(0.0)
+                presences.append(0.0)
+                blinks.append(0.0)
 
         n = max(1, len(behavioral_metrics))
+        avg_presence = sum(presences) / n
+        obs_flags = list(dict.fromkeys(flags))
+        if avg_presence < 25.0 and not obs_flags:
+            obs_flags.append("Video tracking uncalibrated (Face presence < 25%)")
+
         return ObservableCVMetrics(
             gaze_stability_ratio=round(sum(gazes) / n, 1),
             head_pose_variance=round(sum(heads) / n, 1),
             facial_movement_dynamics=round(sum(dynamics) / n, 1),
-            frame_presence_ratio=round(sum(presences) / n, 1),
+            frame_presence_ratio=round(avg_presence, 1),
             blink_frequency_cpm=round(sum(blinks) / n, 1),
-            observable_flags=list(dict.fromkeys(flags)),
+            observable_flags=obs_flags,
         )
 
     def _aggregate_vocal_metrics(self, vocal_metrics: List[Any]) -> ObservableVocalMetrics:
@@ -569,9 +616,9 @@ class PDFReportGenerator:
         return elements
 
     def _build_scoring_breakdown_section(self, payload: RecruiterReportExportPayload) -> List[Any]:
-        """Generate 5-dimensional explainable scoring table and mathematical audit box."""
+        """Generate explainable scoring table and mathematical audit box."""
         elements = []
-        elements.append(Paragraph("1. 5-Dimensional Explainable Scoring Breakdown", self.style_section_heading))
+        elements.append(Paragraph("1. Explainable Scoring Breakdown & Evaluation Pillars", self.style_section_heading))
 
         scores = payload.scores
 
@@ -585,24 +632,17 @@ class PDFReportGenerator:
             ],
             [
                 Paragraph("<b>Technical Knowledge</b>", self.style_body),
-                Paragraph("35%", self.style_body),
+                Paragraph("45%", self.style_body),
                 Paragraph(f"<b>{scores.technical_knowledge_score:.1f}</b>", self.style_body),
-                Paragraph(f"{scores.technical_knowledge_score * 0.35:.2f} pts", self.style_body),
+                Paragraph(f"{scores.technical_knowledge_score * 0.45:.2f} pts", self.style_body),
                 Paragraph("Rubric relevance (30%), depth (40%), accuracy (30%)", self.style_body_muted),
             ],
             [
                 Paragraph("<b>Coding Ability</b>", self.style_body),
-                Paragraph("20%", self.style_body),
+                Paragraph("25%", self.style_body),
                 Paragraph(f"<b>{scores.coding_ability_score:.1f}</b>", self.style_body),
-                Paragraph(f"{scores.coding_ability_score * 0.20:.2f} pts", self.style_body),
+                Paragraph(f"{scores.coding_ability_score * 0.25:.2f} pts", self.style_body),
                 Paragraph("Sandboxed public & hidden test execution", self.style_body_muted),
-            ],
-            [
-                Paragraph("<b>Role Fit Alignment</b>", self.style_body),
-                Paragraph("15%", self.style_body),
-                Paragraph(f"<b>{scores.role_fit_score:.1f}</b>", self.style_body),
-                Paragraph(f"{scores.role_fit_score * 0.15:.2f} pts", self.style_body),
-                Paragraph("Competency taxonomy & skill coverage matrix", self.style_body_muted),
             ],
             [
                 Paragraph("<b>Communication</b>", self.style_body),
@@ -645,8 +685,8 @@ class PDFReportGenerator:
         # Audit Formula Explanation
         audit_note = (
             "<b>Mathematical Audit Formula:</b> "
-            "Composite = 0.35 × Tech + 0.20 × Coding + 0.15 × RoleFit + 0.15 × Comm + 0.15 × Behavioral. "
-            "All weights strictly sum to 1.00 with zero opaque or arbitrary adjustments."
+            "Composite = 0.45 × Tech + 0.25 × Coding + 0.15 × Comm + 0.15 × Behavioral. "
+            "All weights strictly sum to 1.00 (100%) with zero opaque or arbitrary adjustments."
         )
         audit_table = Table([[Paragraph(audit_note, self.style_body_muted)]], colWidths=[540])
         audit_table.setStyle(TableStyle([

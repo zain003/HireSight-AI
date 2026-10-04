@@ -10,10 +10,16 @@ import json as json_lib
 import os
 import tempfile
 import wave
+import subprocess
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+
+try:
+    import imageio_ffmpeg
+except ImportError:
+    imageio_ffmpeg = None
 
 try:
     import scipy.io.wavfile
@@ -218,11 +224,51 @@ class VocalAnalysisService:
     def _convert_to_wav(self, audio_data: bytes, audio_format: str) -> Tuple[Optional[np.ndarray], int]:
         """
         Converts in-memory audio bytes to 16kHz mono float32 numpy array.
+        Supports WebM (Opus), OGG, MP4, WAV, MP3 via FFmpeg, wave, SoundFile, and Librosa.
         """
-        if not audio_data:
+        if not audio_data or len(audio_data) == 0:
             return None, 16000
 
-        # 1. Try standard library wave module for PCM WAV
+        # 1. Fast, universal decoding via FFmpeg temporary file (handles WebM/Opus, MP4, OGG, WAV without pipe deadlock)
+        if imageio_ffmpeg is not None:
+            tmp_in_path = None
+            try:
+                ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+                suffix = f".{audio_format.lstrip('.')}" if audio_format else ".webm"
+                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp_in:
+                    tmp_in.write(audio_data)
+                    tmp_in_path = tmp_in.name
+
+                cmd = [
+                    ffmpeg_exe,
+                    "-y",
+                    "-nostdin",
+                    "-i", tmp_in_path,
+                    "-f", "s16le",
+                    "-ac", "1",
+                    "-ar", "16000",
+                    "pipe:1",
+                ]
+                proc = subprocess.run(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                    timeout=5.0,
+                )
+                if proc.returncode == 0 and proc.stdout and len(proc.stdout) > 0:
+                    pcm_array = np.frombuffer(proc.stdout, dtype=np.int16).astype(np.float32) / 32768.0
+                    return pcm_array, 16000
+            except Exception:
+                pass
+            finally:
+                if tmp_in_path and os.path.exists(tmp_in_path):
+                    try:
+                        os.unlink(tmp_in_path)
+                    except Exception:
+                        pass
+
+        # 2. Try standard library wave module for PCM WAV
         try:
             buf = io.BytesIO(audio_data)
             with wave.open(buf, "rb") as wf:
@@ -249,7 +295,7 @@ class VocalAnalysisService:
         except Exception:
             pass
 
-        # 2. Try scipy.io.wavfile
+        # 3. Try scipy.io.wavfile
         try:
             buf = io.BytesIO(audio_data)
             sr, data = scipy.io.wavfile.read(buf)
@@ -272,7 +318,7 @@ class VocalAnalysisService:
         except Exception:
             pass
 
-        # 3. Try SoundFile if available
+        # 4. Try SoundFile if available
         if sf is not None:
             try:
                 buf = io.BytesIO(audio_data)
@@ -286,19 +332,21 @@ class VocalAnalysisService:
             except Exception:
                 pass
 
-        # 4. Fallback to temp file decoding with Librosa (supports WebM Opus, MP3, etc.)
+        # 5. Fallback to temp file decoding with Librosa (with warnings filtered)
         if librosa is not None:
             tmp_path = None
             try:
-                suffix = f".{audio_format.lstrip('.')}"
+                import warnings
+                suffix = f".{audio_format.lstrip('.')}" if audio_format else ".webm"
                 with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                     tmp.write(audio_data)
                     tmp_path = tmp.name
 
-                data, sr = librosa.load(tmp_path, sr=16000, mono=True)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    data, sr = librosa.load(tmp_path, sr=16000, mono=True)
                 return data.astype(np.float32), sr
-            except Exception as e:
-                print(f"[Librosa load error] {e}")
+            except Exception:
                 return None, 16000
             finally:
                 if tmp_path and os.path.exists(tmp_path):
@@ -444,9 +492,10 @@ class VocalAnalysisService:
     def _calculate_clarity_score(self, wav_data: np.ndarray, sr: int, rms_energy: float) -> float:
         """
         Computes speech clarity score (0-100) from zero-crossing rate and spectral centroid.
+        Returns 0.0 if audio is silent, below ambient noise floor, or unvoiced.
         """
-        if len(wav_data) < 512:
-            return 50.0
+        if wav_data is None or len(wav_data) < 512 or rms_energy < 0.005:
+            return 0.0
 
         score = 80.0
 
@@ -461,8 +510,8 @@ class VocalAnalysisService:
         elif mean_zcr < 0.015 or mean_zcr > 0.30:
             score -= 25.0
 
-        if rms_energy < 0.005:
-            score -= 30.0
+        if rms_energy < 0.010:
+            score -= 20.0
         elif rms_energy > 0.02:
             score += 5.0
 

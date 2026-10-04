@@ -135,11 +135,11 @@ def _extract_cv_attributes(cv_metrics: Any) -> Dict[str, Any]:
     if isinstance(cv_metrics, list):
         if not cv_metrics:
             return {
-                "gaze": 75.0,
-                "head": 75.0,
-                "presence": 85.0,
-                "dynamics": 70.0,
-                "blink_cpm": 16.0,
+                "gaze": 0.0,
+                "head": 0.0,
+                "presence": 0.0,
+                "dynamics": 0.0,
+                "blink_cpm": 0.0,
                 "flags": [],
                 "empty": True,
             }
@@ -153,56 +153,99 @@ def _extract_cv_attributes(cv_metrics: Any) -> Dict[str, Any]:
             b_vals.append(attr["blink_cpm"])
             flags.extend(attr.get("flags", []))
         n = max(1, len(cv_metrics))
+        avg_presence = sum(p_vals) / n
         return {
             "gaze": sum(g_vals) / n,
             "head": sum(h_vals) / n,
-            "presence": sum(p_vals) / n,
+            "presence": avg_presence,
             "dynamics": sum(d_vals) / n,
             "blink_cpm": sum(b_vals) / n,
             "flags": list(dict.fromkeys(flags)),
-            "empty": False,
+            "empty": avg_presence < 25.0,
         }
 
     if isinstance(cv_metrics, dict):
+        obs = cv_metrics.get("observable_cv_metrics") if isinstance(cv_metrics.get("observable_cv_metrics"), dict) else {}
+        details = cv_metrics.get("analysis_details") if isinstance(cv_metrics.get("analysis_details"), dict) else {}
+        gaze = float(
+            obs.get("gaze_stability_ratio")
+            or details.get("gaze_stability_ratio")
+            or cv_metrics.get("gaze_stability_ratio")
+            or cv_metrics.get("eye_contact_score")
+            or cv_metrics.get("eye_contact")
+            or 0.0
+        )
+        head = float(
+            obs.get("head_pose_variance")
+            or details.get("head_pose_variance")
+            or cv_metrics.get("head_pose_variance")
+            or cv_metrics.get("head_stability_score")
+            or cv_metrics.get("head_stability")
+            or 0.0
+        )
+        presence = float(
+            obs.get("frame_presence_ratio")
+            or details.get("frame_presence_ratio")
+            or cv_metrics.get("frame_presence_ratio")
+            or cv_metrics.get("attention_span_score")
+            or cv_metrics.get("attention_span")
+            or 0.0
+        )
+        dynamics = float(
+            obs.get("facial_movement_dynamics")
+            or details.get("facial_movement_dynamics")
+            or cv_metrics.get("facial_movement_dynamics")
+            or cv_metrics.get("facial_engagement_score")
+            or cv_metrics.get("engagement")
+            or 0.0
+        )
+        blink_cpm = float(
+            obs.get("blink_frequency_cpm")
+            or details.get("blink_frequency_cpm")
+            or cv_metrics.get("blink_frequency_cpm")
+            or 0.0
+        )
+        flags = obs.get("observable_flags") or cv_metrics.get("observable_flags") or cv_metrics.get("red_flags") or []
         return {
-            "gaze": float(cv_metrics.get("gaze_stability_ratio", cv_metrics.get("eye_contact", 75.0))),
-            "head": float(cv_metrics.get("head_pose_variance", cv_metrics.get("head_stability", 75.0))),
-            "presence": float(cv_metrics.get("frame_presence_ratio", cv_metrics.get("attention_span", 85.0))),
-            "dynamics": float(cv_metrics.get("facial_movement_dynamics", cv_metrics.get("engagement", 70.0))),
-            "blink_cpm": float(cv_metrics.get("blink_frequency_cpm", 16.0)),
-            "flags": list(cv_metrics.get("observable_flags", cv_metrics.get("red_flags", []))),
-            "empty": False,
+            "gaze": gaze,
+            "head": head,
+            "presence": presence,
+            "dynamics": dynamics,
+            "blink_cpm": blink_cpm,
+            "flags": list(flags),
+            "empty": presence < 25.0,
         }
 
     if hasattr(cv_metrics, "gaze_stability_ratio"):
+        presence = float(getattr(cv_metrics, "frame_presence_ratio", 0.0) or 0.0)
         return {
-            "gaze": float(cv_metrics.gaze_stability_ratio),
-            "head": float(cv_metrics.head_pose_variance),
-            "presence": float(cv_metrics.frame_presence_ratio),
-            "dynamics": float(cv_metrics.facial_movement_dynamics),
-            "blink_cpm": float(getattr(cv_metrics, "blink_frequency_cpm", 16.0)),
+            "gaze": float(getattr(cv_metrics, "gaze_stability_ratio", 0.0) or 0.0),
+            "head": float(getattr(cv_metrics, "head_pose_variance", 0.0) or 0.0),
+            "presence": presence,
+            "dynamics": float(getattr(cv_metrics, "facial_movement_dynamics", 0.0) or 0.0),
+            "blink_cpm": float(getattr(cv_metrics, "blink_frequency_cpm", 0.0) or 0.0),
             "flags": list(getattr(cv_metrics, "observable_flags", [])),
-            "empty": False,
+            "empty": presence < 25.0,
         }
 
     if hasattr(cv_metrics, "eye_contact_score"):
-        # Legacy BehavioralMetrics dataclass
+        presence = float(getattr(cv_metrics, "attention_span_score", 0.0) or 0.0)
         return {
-            "gaze": float(cv_metrics.eye_contact_score),
-            "head": float(getattr(cv_metrics, "head_stability_score", 75.0)),
-            "presence": float(getattr(cv_metrics, "attention_span_score", 85.0)),
-            "dynamics": float(getattr(cv_metrics, "facial_engagement_score", 70.0)),
-            "blink_cpm": 16.0,
+            "gaze": float(getattr(cv_metrics, "eye_contact_score", 0.0) or 0.0),
+            "head": float(getattr(cv_metrics, "head_stability_score", 0.0) or 0.0),
+            "presence": presence,
+            "dynamics": float(getattr(cv_metrics, "facial_engagement_score", 0.0) or 0.0),
+            "blink_cpm": float(getattr(cv_metrics, "blink_frequency_cpm", 0.0) or 0.0),
             "flags": list(getattr(cv_metrics, "red_flags", [])),
-            "empty": False,
+            "empty": presence < 25.0,
         }
 
     return {
-        "gaze": 75.0,
-        "head": 75.0,
-        "presence": 85.0,
-        "dynamics": 70.0,
-        "blink_cpm": 16.0,
+        "gaze": 0.0,
+        "head": 0.0,
+        "presence": 0.0,
+        "dynamics": 0.0,
+        "blink_cpm": 0.0,
         "flags": [],
         "empty": True,
     }
@@ -416,32 +459,40 @@ def generate_tailored_feedback(
 
     beh_obs: List[str] = []
 
-    # Camera presence
-    if presence >= 85.0:
-        beh_obs.append(f"Maintained steady camera presence with face detected in {presence:.1f}% of analyzed video frames.")
+    if cv.get("empty", True) or presence < 25.0:
+        beh_obs.append(
+            "Video behavioral tracking was uncalibrated or candidate face was not detected in camera view during the session."
+        )
+        beh_obs.append(
+            "Non-verbal behavioral metrics (gaze stability, head pose, blink frequency) were excluded to maintain scoring integrity."
+        )
     else:
-        beh_obs.append(f"Camera presence was {presence:.1f}%, indicating periodic movement outside the primary camera field of view.")
+        # Camera presence
+        if presence >= 85.0:
+            beh_obs.append(f"Maintained steady camera presence with face detected in {presence:.1f}% of analyzed video frames.")
+        else:
+            beh_obs.append(f"Camera presence was {presence:.1f}%, indicating periodic movement outside the primary camera field of view.")
 
-    # Gaze stability
-    if gaze >= 70.0:
-        beh_obs.append(f"Gaze stability ratio was {gaze:.1f}%, reflecting consistent eye orientation toward the central display area.")
-    else:
-        beh_obs.append(f"Gaze stability ratio was {gaze:.1f}%, indicating frequent shifts in eye orientation away from the screen center.")
+        # Gaze stability
+        if gaze >= 70.0:
+            beh_obs.append(f"Gaze stability ratio was {gaze:.1f}%, reflecting consistent eye orientation toward the central display area.")
+        else:
+            beh_obs.append(f"Gaze stability ratio was {gaze:.1f}%, indicating frequent shifts in eye orientation away from the screen center.")
 
-    # Head pose variance
-    if head >= 70.0:
-        beh_obs.append(f"Head stability index of {head:.1f}% demonstrated balanced posture throughout question delivery.")
-    else:
-        beh_obs.append(f"Head pose stability index was {head:.1f}%, reflecting active head rotational variance during responses.")
+        # Head pose variance
+        if head >= 70.0:
+            beh_obs.append(f"Head stability index of {head:.1f}% demonstrated balanced posture throughout question delivery.")
+        else:
+            beh_obs.append(f"Head pose stability index was {head:.1f}%, reflecting active head rotational variance during responses.")
 
-    # Blink frequency
-    if blink > 0:
-        beh_obs.append(f"Blink rate averaged {blink:.1f} blinks per minute (conversational baseline: 12–20 CPM).")
+        # Blink frequency
+        if blink > 0:
+            beh_obs.append(f"Blink rate averaged {blink:.1f} blinks per minute (conversational baseline: 12–20 CPM).")
 
-    # Observable physical flags
-    if cv_flags:
-        flags_str = ", ".join(cv_flags)
-        beh_obs.append(f"Physical camera observations flagged: {flags_str}.")
+        # Observable physical flags
+        if cv_flags:
+            flags_str = ", ".join(cv_flags)
+            beh_obs.append(f"Physical camera observations flagged: {flags_str}.")
 
     # ---------------------------------------------------------
     # 5. Target Role Gap Analysis (Competencies with Score < 60%)

@@ -12,19 +12,18 @@ from pydantic import BaseModel, Field
 
 
 class ScoringWeights:
-    """Canonical weights for the 5-dimensional explainable scoring model.
+    """Canonical weights for the explainable scoring model (Role Fit removed).
 
     Weights sum exactly to 1.00 (100%):
-    - Technical Knowledge: 35%
-    - Coding Ability: 20%
-    - Role Fit: 15%
+    - Technical Knowledge: 45%
+    - Coding Ability: 25%
     - Communication: 15%
     - Behavioral Indicators: 15%
     """
 
-    TECHNICAL_KNOWLEDGE = 0.35
-    CODING_ABILITY = 0.20
-    ROLE_FIT = 0.15
+    TECHNICAL_KNOWLEDGE = 0.45
+    CODING_ABILITY = 0.25
+    ROLE_FIT = 0.0
     COMMUNICATION = 0.15
     BEHAVIORAL_INDICATORS = 0.15
 
@@ -33,7 +32,6 @@ class ScoringWeights:
         return {
             "technical_knowledge": cls.TECHNICAL_KNOWLEDGE,
             "coding_ability": cls.CODING_ABILITY,
-            "role_fit": cls.ROLE_FIT,
             "communication": cls.COMMUNICATION,
             "behavioral_indicators": cls.BEHAVIORAL_INDICATORS,
         }
@@ -53,16 +51,16 @@ class CandidateFitStatus(str, Enum):
 
 
 class FiveDimensionScores(BaseModel):
-    """5-dimensional transparent scoring breakdown with mathematical audit trail."""
+    """Transparent scoring breakdown with mathematical audit trail."""
 
     technical_knowledge_score: float = Field(
-        ..., ge=0.0, le=100.0, description="Technical knowledge and depth score (Weight: 35%)"
+        ..., ge=0.0, le=100.0, description="Technical knowledge and depth score (Weight: 45%)"
     )
     coding_ability_score: float = Field(
-        ..., ge=0.0, le=100.0, description="Sandboxed code execution & test score (Weight: 20%)"
+        ..., ge=0.0, le=100.0, description="Sandboxed code execution & test score (Weight: 25%)"
     )
-    role_fit_score: float = Field(
-        ..., ge=0.0, le=100.0, description="Competency matrix alignment score (Weight: 15%)"
+    role_fit_score: Optional[float] = Field(
+        default=0.0, ge=0.0, le=100.0, description="Deprecated / 0% weight"
     )
     communication_score: float = Field(
         ..., ge=0.0, le=100.0, description="Verbal & acoustic communication score (Weight: 15%)"
@@ -71,7 +69,7 @@ class FiveDimensionScores(BaseModel):
         ..., ge=0.0, le=100.0, description="Observable computer vision dynamics score (Weight: 15%)"
     )
     overall_composite_score: float = Field(
-        ..., ge=0.0, le=100.0, description="Weighted composite score across all 5 dimensions (0-100)"
+        ..., ge=0.0, le=100.0, description="Weighted composite score across active dimensions (0-100)"
     )
     fit_status: CandidateFitStatus = Field(
         ..., description="Deterministic multi-variable candidate fit classification"
