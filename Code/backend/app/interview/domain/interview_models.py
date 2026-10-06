@@ -93,6 +93,9 @@ class ObservableCVMetrics(BaseModel):
     frame_presence_ratio: float = 0.0      # 0-100 (face detected frame ratio)
     blink_frequency_cpm: float = 0.0       # Blinks per minute
     observable_flags: List[str] = Field(default_factory=list)  # Observable physical anomalies only
+    eye_occlusion_ratio: float = 0.0       # 0-100 (percentage of frames with eyes hidden/occluded)
+    gaze_breakdown: Dict[str, float] = Field(default_factory=dict)  # percentage breakdown of gaze directions
+
 
 
 class ObservableVocalMetrics(BaseModel):

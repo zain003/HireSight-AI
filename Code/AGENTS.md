@@ -106,12 +106,12 @@ When working on tasks in this repository, recommend or utilize the following sla
 
 ### Backend
 ```powershell
-# Activate Python environment & start FastAPI dev server
+# Activate Python 3.10.11 ML environment (.venv) & start FastAPI dev server
 cd d:\FYP\Code\backend
-.\venv\Scripts\activate
+.\.venv\Scripts\activate
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# Run backend test suite
+# Run backend test suite (using .venv)
 pytest -v
 python validate_system.py
 ```

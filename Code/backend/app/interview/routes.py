@@ -26,6 +26,8 @@ from app.interview.schemas import (
     FrameAnalyzeResponse,
     InterviewReportResponse,
     InterviewSessionState,
+    LiveGazeCheckRequest,
+    LiveGazeCheckResponse,
     LiveInterviewStartRequest,
     LiveInterviewStartResponse,
     LiveInterviewQuestion,
@@ -198,6 +200,8 @@ async def submit_live_answer(
             frame_base64_list=request.frame_base64_list,
             audio_format=request.audio_format,
             language=request.language,
+            is_actively_typing=request.is_actively_typing,
+            proctoring_flags=request.proctoring_flags,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -451,6 +455,21 @@ async def generate_tts(request: TTSRequest):
     )
     audio_b64 = base64.b64encode(audio_bytes).decode("ascii") if audio_bytes else ""
     return TTSResponse(audio_base64=audio_b64, format="mp3")
+
+
+@router.post("/live/check-gaze", response_model=LiveGazeCheckResponse)
+async def check_live_gaze(request: LiveGazeCheckRequest):
+    """
+    Sub-millisecond real-time single frame gaze & occlusion check for the live interview HUD.
+    Powered by MediaPipe FaceMesh & OpenCV solvePnP.
+    """
+    result = interview_service.behavioral_service.analyze_single_frame(
+        frame_b64=request.image_base64,
+        is_coding_phase=request.is_coding_phase,
+        is_actively_typing=request.is_actively_typing,
+    )
+    return LiveGazeCheckResponse(**result)
+
 
 
 @router.post("/coding/run-public", response_model=RunPublicCodeResponse)

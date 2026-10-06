@@ -77,6 +77,22 @@ export const interviewService = {
     return response.data;
   },
 
+  /**
+   * Sub-millisecond single-frame real-time proctoring telemetry via MediaPipe FaceMesh & OpenCV.
+   */
+  checkLiveGaze: async (imageBase64, isCodingPhase = false, isActivelyTyping = false) => {
+    try {
+      const response = await api.post('/interview/live/check-gaze', {
+        image_base64: imageBase64,
+        is_coding_phase: isCodingPhase,
+        is_actively_typing: isActivelyTyping,
+      });
+      return response.data;
+    } catch {
+      return null;
+    }
+  },
+
   endSession: async (sessionId) => {
     const response = await api.post(`/interview/live/${sessionId}/end`);
     return response.data;

@@ -59,6 +59,7 @@ export default function CodingWorkspace({
   publicTestCases = [],
   theme = 'light',
   onEditorFocus,
+  onTyping,
   onSubmitSuccess,
 }) {
   const isLight = theme === 'light';
@@ -116,6 +117,7 @@ export default function CodingWorkspace({
   };
 
   const handleCodeChange = (newVal) => {
+    onTyping?.();
     setCodeByLang((prev) => ({
       ...prev,
       [selectedLang]: newVal ?? '',

@@ -171,6 +171,8 @@ class InterviewService:
         frame_base64_list: List[str],
         audio_format: str = "webm",
         language: str = "en",
+        is_actively_typing: Optional[bool] = None,
+        proctoring_flags: Optional[List[str]] = None,
     ) -> Dict:
         if question_index < 0 or question_index >= len(session.questions):
             raise ValueError("Invalid question index")
@@ -184,6 +186,14 @@ class InterviewService:
         question = session.questions[question_index]
         question_text = question.get("question_text") or ""
         question_type = question.get("question_type") or QuestionType.TECHNICAL.value
+
+        # Determine coding phase & active typing state for keyboard exception
+        is_coding = (
+            str(question_type).strip().lower() in ("coding", "challenge")
+            or str(question.get("stage", "")).strip().lower() == "coding"
+            or bool(question.get("coding_challenge"))
+        )
+        typing_state = bool(is_actively_typing) if is_actively_typing is not None else is_coding
 
         # Subsample frame list to max 6 evenly distributed frames if list is long to reduce CV latency
         sampled_frames = frame_base64_list
@@ -201,7 +211,12 @@ class InterviewService:
             audio_format=audio_format,
         )
         behavioral_task = loop.run_in_executor(
-            None, self.behavioral_service.analyze_frames, sampled_frames
+            None,
+            lambda: self.behavioral_service.analyze_frames(
+                frame_base64_list=sampled_frames,
+                is_coding_phase=is_coding,
+                is_actively_typing=typing_state,
+            ),
         )
         face_task = self.face_service.analyze(sampled_frames)
 
@@ -224,6 +239,18 @@ class InterviewService:
                 transcript_text=transcript,
                 audio_format=audio_format,
             )
+
+        # Merge client-side proctoring flags into behavioral metrics
+        if proctoring_flags:
+            for pf in proctoring_flags:
+                if pf and pf not in behavioral_metrics.red_flags:
+                    behavioral_metrics.red_flags.append(pf)
+                if (
+                    behavioral_metrics.observable_cv_metrics
+                    and pf
+                    and pf not in behavioral_metrics.observable_cv_metrics.observable_flags
+                ):
+                    behavioral_metrics.observable_cv_metrics.observable_flags.append(pf)
         
         # Store metrics for final report (convert to serializable dicts for MongoDB)
         if not hasattr(session, 'behavioral_metrics') or session.behavioral_metrics is None:

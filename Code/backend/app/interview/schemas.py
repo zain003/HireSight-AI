@@ -63,6 +63,9 @@ class SubmitAnswerRequest(BaseModel):
     audio_format: str = "webm"
     language: str = "en"
     frame_base64_list: List[str] = Field(default_factory=list)
+    is_actively_typing: Optional[bool] = None
+    proctoring_flags: Optional[List[str]] = None
+
 
 
 class SubmitAnswerResponse(BaseModel):
@@ -262,5 +265,23 @@ class LiveSTTRequest(BaseModel):
 
 class LiveSTTResponse(BaseModel):
     text: str
+
+
+class LiveGazeCheckRequest(BaseModel):
+    image_base64: str
+    is_coding_phase: bool = False
+    is_actively_typing: bool = False
+
+
+class LiveGazeCheckResponse(BaseModel):
+    detected: bool
+    is_centered: bool
+    gaze: str
+    is_occluded: bool
+    head_pose: Optional[Dict[str, float]] = None
+    presence: int = 100
+    score: float = 100.0
+    ear: Optional[float] = None
+
 
 

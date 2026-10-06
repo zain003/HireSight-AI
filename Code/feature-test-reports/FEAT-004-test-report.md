@@ -1,19 +1,19 @@
 # FEAT-004 Verification Test Report: Observable Computer Vision Engine
-**Execution Timestamp**: 2026-09-08T21:54:25.795944Z
+**Execution Timestamp**: 2026-10-05T23:06:41.164271Z
 **Target Spec**: `FEAT-004-BE-cv-facial-movement-engine.md`
 **Verification Spec**: `context/feature-specs/FEAT-004-VERIFY-cv-engine.md`
 
 ---
 
 ## 1. Automated Unit & Algorithmic Tests
-- [x] **Gaze Normalization Resolution Invariance (480p vs 1080p diff < 1%, 1080p vs 4K exact)**: `PASSED` 480p score=83.894, 1080p score=84.103, 4K score=84.103, diff=0.2480%
-- [x] **solvePnP 3D Head Pose Frontal Face Angles within ±5°**: `PASSED` Pitch=0.00°, Yaw=0.00°, Roll=0.00°
+- [x] **Gaze Normalization Resolution Invariance (480p vs 1080p diff < 1%, 1080p vs 4K exact)**: `PASSED` 480p score=95.542, 1080p score=95.600, 4K score=95.600, diff=0.0604%
+- [x] **solvePnP 3D Head Pose Frontal Face Angles within ±5°**: `PASSED` Pitch=0.00°, Yaw=-0.00°, Roll=0.00°
 - [x] **Blink Detection via Eyelid Aspect Ratio (EAR) Transition Counting**: `PASSED` Simulated 3 blinks in 13 frames -> Detected 3 blinks
-- [x] **ObservableCVMetrics Invariant: Physical Metrics Only (No Emotion Labels)**: `PASSED` Fields: ['blink_frequency_cpm', 'facial_movement_dynamics', 'frame_presence_ratio', 'gaze_stability_ratio', 'head_pose_variance', 'observable_flags']
+- [x] **ObservableCVMetrics Invariant: Physical Metrics Only (No Emotion Labels)**: `PASSED` Fields: ['blink_frequency_cpm', 'eye_occlusion_ratio', 'facial_movement_dynamics', 'frame_presence_ratio', 'gaze_breakdown', 'gaze_stability_ratio', 'head_pose_variance', 'observable_flags']
 - [x] **Graceful Fallback Handling for Empty or Missing Frames**: `PASSED` Flags: ['No frames provided']
 
 ## 2. Performance & Benchmark Checks
-- [x] **Average Algorithmic Computation Latency < 20ms per frame**: `PASSED` Average execution time: 0.049ms per frame across 200 iterations
+- [x] **Average Algorithmic Computation Latency < 20ms per frame**: `PASSED` Average execution time: 0.196ms per frame across 200 iterations
 - [x] **Memory Stability across 100 Consecutive Batch Evaluations**: `PASSED` No uncollected references or buffer overflow exceptions across 100 cycles
 
 ## 3. Acceptance Criteria Checklist

@@ -202,3 +202,111 @@ def test_ear_blink_calculation():
     
     assert ear_open > ear_closed, f"Open EAR ({ear_open}) should be greater than closed EAR ({ear_closed})"
     assert ear_closed < 0.20, f"Closed EAR ({ear_closed}) should be under blink threshold"
+
+
+def test_eye_occlusion_detection_and_red_flag():
+    """
+    Assert that eye occlusion (e.g. collapsed landmarks / hands over eyes) is explicitly classified
+    as 'eyes_hidden', yields 0 gaze score, and produces 'eye_occlusion_detected' observable flag.
+    """
+    service = BehavioralAnalysisService()
+    
+    # 1. Normal face with open eyes
+    mock_normal = _create_synthetic_face_landmarks(ear_factor=0.30)
+    is_occ_normal, _ = service._detect_eye_occlusion(mock_normal, frame=None, w=640, h=480)
+    assert not is_occ_normal, "Normal open eyes should not be classified as occluded"
+
+    # 2. Occluded eyes (EAR collapsed < 0.03)
+    mock_occluded = _create_synthetic_face_landmarks(ear_factor=0.01)
+    is_occ_occluded, occ_type = service._detect_eye_occlusion(mock_occluded, frame=None, w=640, h=480)
+    assert is_occ_occluded, "Occluded / covered eyes must be detected as occluded"
+
+    # 3. Gaze direction when occluded
+    pose = {"pitch": 0.0, "yaw": 0.0, "roll": 0.0}
+    gaze_dir, is_center, score = service._classify_gaze_direction(
+        landmarks=mock_occluded,
+        pose=pose,
+        w=640,
+        h=480,
+        is_occluded=True,
+    )
+    assert gaze_dir == "eyes_hidden", f"Expected 'eyes_hidden', got '{gaze_dir}'"
+    assert not is_center, "Occluded eyes must not be assumed looking at screen"
+    assert score == 0.0, "Gaze score for occluded eyes must be 0.0"
+
+
+def test_keyboard_typing_exception():
+    """
+    Assert looking downward at keyboard is allowed while actively coding/typing (keyboard exception),
+    but warned and deducted when downward gaze has no typing activity.
+    """
+    service = BehavioralAnalysisService()
+    mock_down = _create_synthetic_face_landmarks(gaze_offset_y=-0.02)
+    down_pose = {"pitch": -28.0, "yaw": 2.0, "roll": 0.0}
+
+    # Case A: Downward gaze WITH active typing -> Allowed (keyboard exception)
+    gaze_dir_typing, is_c_typing, score_typing = service._classify_gaze_direction(
+        landmarks=mock_down,
+        pose=down_pose,
+        w=640,
+        h=480,
+        is_occluded=False,
+        is_actively_typing=True,
+        is_coding_phase=True,
+    )
+    assert gaze_dir_typing == "keyboard", f"Expected 'keyboard', got '{gaze_dir_typing}'"
+    assert is_c_typing, "Active typing downward gaze should be treated as engaged"
+    assert score_typing >= 90.0, f"Score should be >= 90, got {score_typing}"
+
+    # Case B: Downward gaze WITHOUT active typing -> Deducted / warned
+    gaze_dir_notyping, is_c_notyping, score_notyping = service._classify_gaze_direction(
+        landmarks=mock_down,
+        pose=down_pose,
+        w=640,
+        h=480,
+        is_occluded=False,
+        is_actively_typing=False,
+        is_coding_phase=False,
+    )
+    assert gaze_dir_notyping == "down_no_typing", f"Expected 'down_no_typing', got '{gaze_dir_notyping}'"
+    assert not is_c_notyping, "Downward gaze without typing should not be treated as center"
+    assert score_notyping < score_typing, "Downward gaze without typing must have lower score"
+
+
+def test_gaze_direction_horizontal_and_vertical():
+    """
+    Assert left, right, and up gaze directions are classified accurately with appropriate deductions.
+    """
+    service = BehavioralAnalysisService()
+    mock_center = _create_synthetic_face_landmarks()
+
+    # Center
+    center_dir, is_c, score_c = service._classify_gaze_direction(
+        landmarks=mock_center, pose={"pitch": 0.0, "yaw": 0.0, "roll": 0.0}, w=640, h=480, is_occluded=False
+    )
+    assert center_dir == "center" and is_c and score_c == 100.0
+
+    # Left
+    left_dir, is_l, score_l = service._classify_gaze_direction(
+        landmarks=mock_center, pose={"pitch": 0.0, "yaw": -35.0, "roll": 0.0}, w=640, h=480, is_occluded=False
+    )
+    assert left_dir == "left" and not is_l and score_l < 100.0
+
+    # Right
+    right_dir, is_r, score_r = service._classify_gaze_direction(
+        landmarks=mock_center, pose={"pitch": 0.0, "yaw": 35.0, "roll": 0.0}, w=640, h=480, is_occluded=False
+    )
+    assert right_dir == "right" and not is_r and score_r < 100.0
+
+    # Far Left
+    far_left_dir, is_fl, score_fl = service._classify_gaze_direction(
+        landmarks=mock_center, pose={"pitch": 0.0, "yaw": -55.0, "roll": 0.0}, w=640, h=480, is_occluded=False
+    )
+    assert far_left_dir == "far_left" and not is_fl and score_fl <= 35.0
+
+    # Up
+    up_dir, is_u, score_u = service._classify_gaze_direction(
+        landmarks=mock_center, pose={"pitch": 24.0, "yaw": 0.0, "roll": 0.0}, w=640, h=480, is_occluded=False
+    )
+    assert up_dir == "up" and not is_u and score_u < 100.0
+

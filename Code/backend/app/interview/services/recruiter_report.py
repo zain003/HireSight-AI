@@ -302,18 +302,30 @@ def calculate_five_dimension_scores(
                     or cm.get("engagement")
                     or 0.0
                 )
+                occlusion = float(
+                    obs.get("eye_occlusion_ratio")
+                    or details.get("eye_occlusion_ratio")
+                    or cm.get("eye_occlusion_ratio")
+                    or 0.0
+                )
+                flags = obs.get("observable_flags") or cm.get("observable_flags") or cm.get("red_flags") or []
             elif hasattr(cm, "gaze_stability_ratio"):
                 gaze = float(getattr(cm, "gaze_stability_ratio", 0.0) or 0.0)
                 head = float(getattr(cm, "head_pose_variance", 0.0) or 0.0)
                 presence = float(getattr(cm, "frame_presence_ratio", 0.0) or 0.0)
                 dynamics = float(getattr(cm, "facial_movement_dynamics", 0.0) or 0.0)
+                occlusion = float(getattr(cm, "eye_occlusion_ratio", 0.0) or 0.0)
+                flags = getattr(cm, "observable_flags", getattr(cm, "red_flags", []))
             elif hasattr(cm, "eye_contact_score"):
                 gaze = float(getattr(cm, "eye_contact_score", 0.0) or 0.0)
                 head = float(getattr(cm, "head_stability_score", 0.0) or 0.0)
                 presence = float(getattr(cm, "attention_span_score", 0.0) or 0.0)
                 dynamics = float(getattr(cm, "facial_engagement_score", 0.0) or 0.0)
+                occlusion = 0.0
+                flags = getattr(cm, "red_flags", [])
             else:
-                gaze, head, presence, dynamics = 0.0, 0.0, 0.0, 0.0
+                gaze, head, presence, dynamics, occlusion = 0.0, 0.0, 0.0, 0.0, 0.0
+                flags = []
 
             # Normalize ratios in (0.0, 1.0] to 0-100 percentage scale
             if 0.0 < gaze <= 1.0:
@@ -324,11 +336,31 @@ def calculate_five_dimension_scores(
                 presence = presence * 100.0
             if 0.0 < dynamics <= 1.0:
                 dynamics = dynamics * 100.0
+            if 0.0 < occlusion <= 1.0:
+                occlusion = occlusion * 100.0
 
             b_score = gaze * 0.35 + head * 0.25 + presence * 0.25 + dynamics * 0.15
+
+            # Deductions for intentional eye occlusion or severe proctoring violations
+            if occlusion > 0.0:
+                occ_penalty = min(50.0, occlusion * 1.5)
+                b_score = max(0.0, b_score - occ_penalty)
+
+            if "prolonged_eye_occlusion" in flags:
+                b_score = max(0.0, b_score - 20.0)
+            if "sustained_far_gaze_deviation" in flags:
+                b_score = max(0.0, b_score - 15.0)
+
             beh_scores.append(b_score)
             presence_values.append(presence)
-            beh_details.append({"gaze": gaze, "head_pose": head, "presence": presence, "dynamics": dynamics, "score": round(b_score, 2)})
+            beh_details.append({
+                "gaze": gaze,
+                "head_pose": head,
+                "presence": presence,
+                "dynamics": dynamics,
+                "eye_occlusion": occlusion,
+                "score": round(b_score, 2),
+            })
 
         avg_presence = (sum(presence_values) / len(presence_values)) if presence_values else 0.0
 
@@ -721,6 +753,7 @@ class RecruiterReportGenerator:
         fidgetings = []
         confidence_postures = []
         attention_spans = []
+        eye_occlusions = []
 
         for m in behavioral_metrics:
             if isinstance(m, dict):
@@ -759,7 +792,7 @@ class RecruiterReportGenerator:
                 presence = float(
                     obs.get("frame_presence_ratio")
                     or details.get("frame_presence_ratio")
-                    or m.get("frame_presence_ratio")
+                    or cm.get("frame_presence_ratio")
                     or m.get("attention_span_score")
                     or m.get("attention_span")
                     or 0.0
@@ -770,6 +803,12 @@ class RecruiterReportGenerator:
                     or head
                     or 0.0
                 )
+                occlusion = float(
+                    obs.get("eye_occlusion_ratio")
+                    or details.get("eye_occlusion_ratio")
+                    or m.get("eye_occlusion_ratio")
+                    or 0.0
+                )
             elif hasattr(m, "gaze_stability_ratio"):
                 gaze = float(getattr(m, "gaze_stability_ratio", 0.0) or 0.0)
                 head = float(getattr(m, "head_pose_variance", 0.0) or 0.0)
@@ -777,6 +816,7 @@ class RecruiterReportGenerator:
                 fidgeting = float(getattr(m, "head_pose_variance", 0.0) or 0.0)
                 presence = float(getattr(m, "frame_presence_ratio", 0.0) or 0.0)
                 posture = float(getattr(m, "gaze_stability_ratio", 0.0) or 0.0)
+                occlusion = float(getattr(m, "eye_occlusion_ratio", 0.0) or 0.0)
             elif hasattr(m, "eye_contact_score"):
                 gaze = float(getattr(m, "eye_contact_score", 0.0) or 0.0)
                 head = float(getattr(m, "head_stability_score", 0.0) or 0.0)
@@ -784,8 +824,9 @@ class RecruiterReportGenerator:
                 fidgeting = float(getattr(m, "fidgeting_score", 0.0) or 0.0)
                 presence = float(getattr(m, "attention_span_score", 0.0) or 0.0)
                 posture = float(getattr(m, "confidence_posture_score", 0.0) or 0.0)
+                occlusion = 0.0
             else:
-                gaze, head, engagement, fidgeting, presence, posture = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+                gaze, head, engagement, fidgeting, presence, posture, occlusion = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 
             # Normalize ratios in (0.0, 1.0] to 0-100 percentage scale
             if 0.0 < gaze <= 1.0:
@@ -800,6 +841,8 @@ class RecruiterReportGenerator:
                 presence *= 100.0
             if 0.0 < posture <= 1.0:
                 posture *= 100.0
+            if 0.0 < occlusion <= 1.0:
+                occlusion *= 100.0
 
             eye_contacts.append(gaze)
             head_stabilities.append(head)
@@ -807,6 +850,7 @@ class RecruiterReportGenerator:
             fidgetings.append(fidgeting)
             confidence_postures.append(posture)
             attention_spans.append(presence)
+            eye_occlusions.append(occlusion)
 
         n = len(behavioral_metrics)
         avg_attention = sum(attention_spans) / n if n else 0.0
@@ -819,6 +863,7 @@ class RecruiterReportGenerator:
             "fidgeting": sum(fidgetings) / n if is_calibrated else 0.0,
             "confidence_posture": sum(confidence_postures) / n if is_calibrated else 0.0,
             "attention_span": avg_attention if is_calibrated else 0.0,
+            "eye_occlusion": sum(eye_occlusions) / n if is_calibrated else 0.0,
             "is_video_available": is_calibrated,
             "video_status": "calibrated" if is_calibrated else "insufficient_face_tracking",
         }
@@ -1286,11 +1331,15 @@ class RecruiterReportGenerator:
             narrative_parts.append(f"active head movement during responses ({head_stability:.1f}%)")
             
         if attention >= 85.0:
-            narrative_parts.append(f"and steady camera frame presence ({attention:.1f}%).")
+            narrative_parts.append(f"and steady camera frame presence ({attention:.1f}%)")
         else:
-            narrative_parts.append(f"with occasional movement near camera frame boundaries ({attention:.1f}%).")
-            
-        return "Behavioral analysis demonstrated " + ", ".join(narrative_parts)
+            narrative_parts.append(f"with occasional movement near camera frame boundaries ({attention:.1f}%)")
+
+        occlusion = avg_behavioral.get("eye_occlusion", 0.0)
+        if occlusion >= 5.0:
+            narrative_parts.append(f"with detected eye occlusion / hidden episodes ({occlusion:.1f}% frames)")
+
+        return "Behavioral analysis demonstrated " + ", ".join(narrative_parts) + "."
     
     def _generate_communication_narrative(
         self,

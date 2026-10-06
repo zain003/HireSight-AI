@@ -53,6 +53,8 @@ const CodingWorkspace = dynamic(
   }
 );
 
+import FaceTrackingOverlay from '@/components/Interview/FaceTrackingOverlay';
+
 /** Sent to the API so the session advances; backend uses transcript_text when non-empty. */
 const SKIP_QUESTION_TRANSCRIPT =
   '[Skipped] Candidate chose to skip this question. No verbal answer was provided.';
@@ -127,6 +129,74 @@ export default function InterviewPage() {
   const skipSpeechListenAfterRef = useRef(false);
   const autoSubmittedIdxRef = useRef(null);
 
+  // Keyboard typing monitor & proctoring flags for gaze tracking
+  const [isActivelyTyping, setIsActivelyTyping] = useState(false);
+  const lastTypingTimestampRef = useRef(0);
+  const sessionProctoringFlagsRef = useRef(new Set());
+
+  // Global & Monaco keyboard typing monitor for keyboard exception in gaze tracking
+  useEffect(() => {
+    const handleKeyDown = () => {
+      lastTypingTimestampRef.current = Date.now();
+      setIsActivelyTyping(true);
+    };
+
+    window.addEventListener('keydown', handleKeyDown, { passive: true });
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - lastTypingTimestampRef.current;
+      if (elapsed >= 3500) {
+        setIsActivelyTyping(false);
+      }
+    }, 500);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      clearInterval(interval);
+    };
+  }, []);
+
+  const handleFaceStatusChange = useCallback((status) => {
+    if (!status) return;
+    if (Array.isArray(status.redFlags)) {
+      status.redFlags.forEach((f) => {
+        // Only collect genuine security flags (e.g. camera disabled), not natural keyboard/reading behavior
+        if (f && f !== 'downward_gaze_without_typing' && f !== 'sustained_gaze_deviation') {
+          sessionProctoringFlagsRef.current.add(f);
+        }
+      });
+    }
+
+    if (cameraOff) return;
+
+    if (status.isOccluded || status.gaze === 'eyes_hidden') {
+      setVisionWarning({
+        type: 'eye_occlusion',
+        title: 'Eyes Covered / Hidden',
+        message: 'Kindly keep your eyes visible toward the camera and screen for AI proctoring verification.',
+      });
+    } else if (status.gaze === 'turned_side') {
+      setVisionWarning({
+        type: 'turned_side',
+        title: 'Head Turned Away',
+        message: 'Kindly face toward the interview screen and workspace.',
+      });
+    } else if (!status.detected) {
+      setVisionWarning({
+        type: 'face_missing',
+        title: 'Face Not Detected',
+        message: 'Kindly position your face within the camera view.',
+      });
+    } else {
+      setVisionWarning((prev) => {
+        if (!prev || prev.type === 'camera_off') {
+          return prev;
+        }
+        return null;
+      });
+    }
+  }, [cameraOff]);
+
   // Initialize theme from localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -138,6 +208,7 @@ export default function InterviewPage() {
       }
     }
   }, []);
+
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
@@ -545,6 +616,42 @@ export default function InterviewPage() {
     }
   }, [isCodingPhase, currentIdx, cameraOff]);
 
+  /** Continuous Computer Vision Frame Sampling (Active for both Voice and Text answering modes) */
+  useEffect(() => {
+    if (!sessionId || !currentQuestion || Boolean(report) || cameraOff) {
+      if (frameSamplingIntervalRef.current) {
+        clearInterval(frameSamplingIntervalRef.current);
+        frameSamplingIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const capturePeriodicSample = async () => {
+      if (conversationStateRef.current === 'processing' || cameraOff) return;
+      try {
+        const frameBlob = await captureFrame();
+        if (frameBlob) {
+          const b64 = await blobToBase64(frameBlob);
+          if (b64) {
+            frameSnapshotsRef.current.push(b64);
+            if (frameSnapshotsRef.current.length > 8) {
+              frameSnapshotsRef.current.shift();
+            }
+          }
+        }
+      } catch { }
+    };
+
+    capturePeriodicSample();
+    const interval = setInterval(capturePeriodicSample, 1600);
+    frameSamplingIntervalRef.current = interval;
+
+    return () => {
+      clearInterval(interval);
+      frameSamplingIntervalRef.current = null;
+    };
+  }, [sessionId, currentIdx, report, cameraOff, currentQuestion]);
+
   const cleanupMedia = () => {
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
@@ -867,79 +974,6 @@ export default function InterviewPage() {
       }
     }
 
-    if (!frameSamplingIntervalRef.current) {
-      frameSamplingIntervalRef.current = setInterval(async () => {
-        if (conversationStateRef.current === 'listening') {
-          if (cameraOff) {
-            setVisionWarning({
-              type: 'camera_off',
-              title: 'Camera is Off',
-              message: 'Kindly turn on your camera. Computer vision requires live video for facial engagement and proctoring verification.',
-            });
-            return;
-          }
-          try {
-            const frameBlob = await captureFrame();
-            if (frameBlob) {
-              const b64 = await blobToBase64(frameBlob);
-              if (b64) {
-                frameSnapshotsRef.current.push(b64);
-                if (frameSnapshotsRef.current.length > 6) {
-                  frameSnapshotsRef.current.shift();
-                }
-              }
-
-              // Real-time Computer Vision lighting, contrast & quality analysis
-              const video = videoRef.current;
-              if (video && video.videoWidth && video.videoHeight) {
-                const testCanvas = document.createElement('canvas');
-                testCanvas.width = 64;
-                testCanvas.height = 48;
-                const ctx = testCanvas.getContext('2d');
-                if (ctx) {
-                  ctx.drawImage(video, 0, 0, 64, 48);
-                  const imgData = ctx.getImageData(0, 0, 64, 48).data;
-                  let totalLum = 0;
-                  let totalSq = 0;
-                  const pixelCount = 64 * 48;
-                  for (let i = 0; i < imgData.length; i += 4) {
-                    const lum = 0.299 * imgData[i] + 0.587 * imgData[i + 1] + 0.114 * imgData[i + 2];
-                    totalLum += lum;
-                    totalSq += lum * lum;
-                  }
-                  const meanLum = totalLum / pixelCount;
-                  const variance = (totalSq / pixelCount) - (meanLum * meanLum);
-                  const stdDev = Math.sqrt(Math.max(0, variance));
-
-                  if (meanLum < 28) {
-                    setVisionWarning({
-                      type: 'weak_lighting',
-                      title: 'Lighting is Too Dark',
-                      message: 'Environment is dark. Kindly turn on your room lighting so computer vision can analyze your facial engagement.',
-                    });
-                  } else if (stdDev < 9) {
-                    setVisionWarning({
-                      type: 'weak_camera',
-                      title: 'Camera Result is Weak',
-                      message: 'Camera image is blurry or obstructed. Kindly adjust your webcam angle and focus for clear analysis.',
-                    });
-                  } else {
-                    setVisionWarning((prev) => (prev?.type === 'camera_off' ? prev : null));
-                  }
-                }
-              }
-            } else {
-              setVisionWarning({
-                type: 'no_feed',
-                title: 'No Camera Feed',
-                message: 'No camera feed detected. Kindly turn on your camera.',
-              });
-            }
-          } catch { }
-        }
-      }, 2500);
-    }
-
     if (!liveTranscriptionIntervalRef.current) {
       liveTranscriptionIntervalRef.current = setInterval(async () => {
         if (
@@ -1112,10 +1146,6 @@ export default function InterviewPage() {
   };
 
   const stopListening = () => {
-    if (frameSamplingIntervalRef.current) {
-      clearInterval(frameSamplingIntervalRef.current);
-      frameSamplingIntervalRef.current = null;
-    }
     if (liveTranscriptionIntervalRef.current) {
       clearInterval(liveTranscriptionIntervalRef.current);
       liveTranscriptionIntervalRef.current = null;
@@ -1405,7 +1435,11 @@ export default function InterviewPage() {
         audio_format: audioFormat,
         language: 'en',
         frame_base64_list: allFrames,
+        is_actively_typing: isActivelyTyping || isCodingPhase,
+        proctoring_flags: Array.from(sessionProctoringFlagsRef.current || []),
       };
+
+      sessionProctoringFlagsRef.current = new Set();
 
       const score = await interviewService.submitAnswer(sessionId, payload);
 
@@ -2605,18 +2639,14 @@ export default function InterviewPage() {
                         <p className="text-[11px] text-slate-400 mt-0.5">Turn on camera for proctoring</p>
                       </div>
                     )}
-                    {visionWarning && !cameraOff && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-xs p-3 text-center z-10 animate-in fade-in duration-200">
-                        <div className="h-10 w-10 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center mb-1.5">
-                          <AlertTriangle className="h-5 w-5 text-amber-400 animate-pulse" />
-                        </div>
-                        <p className="text-xs font-bold text-amber-300">{visionWarning.title}</p>
-                        <p className="text-[10px] text-slate-200 mt-0.5 max-w-[200px] leading-tight opacity-90">{visionWarning.message}</p>
-                      </div>
-                    )}
-                    <div className="absolute bottom-2.5 left-2.5 z-20 rounded-md bg-black/70 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm border border-white/10">
-                      You
-                    </div>
+                    <FaceTrackingOverlay
+                      videoRef={videoRef}
+                      cameraOff={cameraOff}
+                      theme={theme}
+                      isCodingPhase={true}
+                      isActivelyTyping={isActivelyTyping}
+                      onFaceStatusChange={handleFaceStatusChange}
+                    />
                   </div>
 
                   {/* Real-time Computer Vision & Camera Warning Banner */}
@@ -2765,19 +2795,15 @@ export default function InterviewPage() {
                         <p className="text-[11px] text-slate-400 mt-0.5">Turn on camera for proctoring</p>
                       </div>
                     )}
-                    {visionWarning && !cameraOff && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-xs p-3 text-center z-10 animate-in fade-in duration-200">
-                        <div className="h-12 w-12 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center mb-2">
-                          <AlertTriangle className="h-6 w-6 text-amber-400 animate-pulse" />
-                        </div>
-                        <p className="text-xs font-bold text-amber-300">{visionWarning.title}</p>
-                        <p className="text-[11px] text-slate-200 mt-0.5 max-w-[240px] leading-tight opacity-90">{visionWarning.message}</p>
-                      </div>
-                    )}
 
-                    <div className="absolute bottom-2.5 left-2.5 z-20 rounded-md bg-black/70 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm border border-white/10">
-                      You
-                    </div>
+                    <FaceTrackingOverlay
+                      videoRef={videoRef}
+                      cameraOff={cameraOff}
+                      theme={theme}
+                      isCodingPhase={false}
+                      isActivelyTyping={isActivelyTyping}
+                      onFaceStatusChange={handleFaceStatusChange}
+                    />
                   </div>
 
                   {/* Real-time Computer Vision & Camera Warning Banner */}
@@ -3001,6 +3027,10 @@ export default function InterviewPage() {
                   publicTestCases={currentQuestion.coding_challenge.public_test_cases || []}
                   theme={theme}
                   onEditorFocus={stopListening}
+                  onTyping={() => {
+                    lastTypingTimestampRef.current = Date.now();
+                    setIsActivelyTyping(true);
+                  }}
                 />
               ) : null}
 

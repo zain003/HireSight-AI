@@ -60,12 +60,10 @@ All backend code lives in [`backend/app/`](file:///d:/FYP/Code/backend/app/):
 
 ## 4. Operational Commands & Testing
 
-### Run Development Server
-```powershell
+# Activate Python 3.10.11 environment (.venv) & start FastAPI dev server
 cd d:\FYP\Code\backend
-.\venv\Scripts\activate
+.\.venv\Scripts\activate
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
 
 ### Run Backend Tests & System Validation
 Use the skill helper script to run the test suite:
