@@ -755,7 +755,7 @@ JOB_TITLE_PATTERNS = [
     r'\b(?:sre|dba|sdet|devops\s+engineer|scrum\s+master|agile\s+coach|technical\s+writer|tech\s+writer|developer\s+advocate|developer\s+evangelist|developer\s+relations|solutions?\s+engineer|pre[\s-]?sales\s+engineer|support\s+engineer|field\s+engineer|customer\s+success\s+engineer|implementation\s+engineer)\b',
 
     # ── Intern / Entry Level ──
-    r'(?:software|engineering|development|data|design|it|web|mobile|ai|ml|devops|cloud|qa|security)?\s*(?:intern(?:ship)?|trainee|apprentice|co[\s-]?op|working\s+student)',
+    r'\b(?:software|engineering|development|data|design|it|web|mobile|ai|ml|devops|cloud|qa|security\s+)?(?:intern(?:ship)?|trainee|apprentice|co[\s-]?op|working\s+student)\b',
     r'(?:graduate|entry[\s-]?level|junior|associate)\s+(?:engineer|developer|analyst|designer|programmer|consultant)',
 
     # ── Niche / Emerging Roles ──
@@ -767,6 +767,24 @@ JOB_TITLE_PATTERNS = [
     r'(?:technical\s+)?(?:support|help\s+desk|service\s+desk)\s+(?:engineer|specialist|analyst)',
     r'(?:technical\s+)?(?:account|sales|partner)\s+(?:manager|executive|director)',
     r'(?:it|technology)\s+(?:manager|director|administrator|coordinator|specialist|officer|support)',
+]
+
+# Non-computing job title patterns for detecting and extracting non-tech roles
+NON_COMPUTING_JOB_TITLE_PATTERNS = [
+    # Medical & Healthcare
+    r'\b(?:chief\s+|attending\s+|resident\s+|fellow\s+|senior\s+|junior\s+|consultant\s+|licensed\s+|registered\s+)?(?:physician|internist|cardiologist|neurologist|pediatrician|surgeon|radiologist|pathologist|psychiatrist|dermatologist|oncologist|anesthesiologist|endocrinologist|nephrologist|urologist|gynecologist|obstetrician|general\s+practitioner|gp|doctor|medical\s+officer|clinical\s+officer|dentist|orthodontist|nurse|registered\s+nurse|nurse\s+practitioner|pharmacist|pharmacy\s+technician|physical\s+therapist|physiotherapist|occupational\s+therapist|optometrist|paramedic|clinical\s+researcher|veterinarian|hospitalist|medical\s+director)\b',
+    # Civil / Mechanical / Construction
+    r'\b(?:senior\s+|junior\s+|lead\s+|chief\s+|site\s+|project\s+)?(?:civil\s+engineer|mechanical\s+engineer|structural\s+engineer|site\s+engineer|construction\s+manager|surveyor|architectural\s+engineer|hvac\s+engineer|geotechnical\s+engineer|mining\s+engineer|petroleum\s+engineer|chemical\s+engineer|materials\s+engineer|quantity\s+surveyor|piping\s+engineer)\b',
+    # Finance, Accounting & Banking
+    r'\b(?:senior\s+|lead\s+|chief\s+|assistant\s+)?(?:accountant|auditor|tax\s+consultant|bookkeeper|banker|investment\s+banker|financial\s+analyst|credit\s+analyst|loan\s+officer|treasurer|controller|cpa|chartered\s+accountant)\b',
+    # Sales & Marketing
+    r'\b(?:senior\s+|lead\s+|chief\s+|regional\s+)?(?:sales\s+representative|sales\s+executive|account\s+executive|sales\s+manager|salesperson|cashier|retail\s+associate|real\s+estate\s+agent|broker|store\s+manager)\b',
+    # Legal & Government
+    r'\b(?:attorney|lawyer|judge|paralegal|legal\s+counsel|barrister|solicitor|prosecutor|public\s+defender|court\s+clerk|diplomat|civil\s+servant|policy\s+analyst)\b',
+    # Education & Academia
+    r'\b(?:headmaster|principal|school\s+teacher|elementary\s+teacher|high\s+school\s+teacher|kindergarten\s+teacher|curriculum\s+designer)\b',
+    # Skilled Trades & Hospitality
+    r'\b(?:chef|cook|waiter|waitress|bartender|barista|hotel\s+manager|housekeeper|electrician|plumber|carpenter|welder|mechanic|machinist|auto\s+mechanic)\b',
 ]
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1070,6 +1088,93 @@ DOMAIN_KEYWORDS = {
             "python", "power platform", "zapier",
         ],
     },
+    # ── Non-Computing Domains (for accurate domain classification & validation) ──
+    "medical_healthcare": {
+        "title_patterns": [
+            "physician", "doctor", "internist", "cardiologist", "neurologist",
+            "pediatrician", "surgeon", "radiologist", "pathologist", "psychiatrist",
+            "anesthesiologist", "medical officer", "general practitioner", "gp",
+            "dentist", "nurse", "registered nurse", "pharmacist", "therapist",
+            "paramedic", "clinical researcher", "veterinarian", "attending physician",
+            "resident physician", "clinician", "hospitalist", "medical director",
+        ],
+        "skill_indicators": [
+            "patient care", "clinical", "diagnosis", "treatment", "ehr", "emr",
+            "pacs", "cpoe", "telemedicine", "telehealth", "medical", "hospital",
+            "acls", "bls", "hipaa", "pathology", "pharmacology", "surgery",
+            "internal medicine", "triage", "cardiology", "radiology", "epidemiology",
+            "healthcare", "vital signs", "phlebotomy", "good clinical practice",
+            "clinical trials", "bedside", "inpatient", "outpatient", "opd",
+            "lis", "health data", "remote patient monitoring",
+        ],
+    },
+    "civil_mechanical_engineering": {
+        "title_patterns": [
+            "civil engineer", "mechanical engineer", "structural engineer",
+            "site engineer", "construction manager", "surveyor",
+            "architectural engineer", "hvac engineer", "geotechnical engineer",
+            "mining engineer", "petroleum engineer", "chemical engineer",
+            "materials engineer", "quantity surveyor", "piping engineer",
+        ],
+        "skill_indicators": [
+            "autocad", "revit", "solidworks", "ansys", "civil 3d",
+            "construction", "concrete", "structural design", "surveying",
+            "hvac", "mep", "building codes", "plumbing", "site supervision",
+            "estimation", "quantity surveying", "manufacturing", "thermodynamics",
+        ],
+    },
+    "finance_accounting": {
+        "title_patterns": [
+            "accountant", "financial analyst", "auditor", "tax consultant",
+            "bookkeeper", "banker", "investment banker", "portfolio manager",
+            "cpa", "chartered accountant", "loan officer", "treasurer",
+            "controller", "credit analyst",
+        ],
+        "skill_indicators": [
+            "accounting", "financial modeling", "auditing", "taxation",
+            "gaap", "ifrs", "bookkeeping", "payroll", "financial statements",
+            "accounts payable", "accounts receivable", "reconciliation",
+            "corporate finance", "general ledger", "balance sheet",
+        ],
+    },
+    "sales_marketing": {
+        "title_patterns": [
+            "sales executive", "sales representative", "account executive",
+            "marketing specialist", "digital marketer", "seo specialist",
+            "content marketer", "brand manager", "sales manager",
+            "real estate agent", "broker", "salesperson", "store manager",
+        ],
+        "skill_indicators": [
+            "b2b sales", "b2c sales", "lead generation", "cold calling",
+            "sales pipeline", "crm", "salesforce crm", "market research",
+            "content strategy", "social media marketing", "seo", "sem",
+            "branding", "customer retention", "closing deals",
+        ],
+    },
+    "legal": {
+        "title_patterns": [
+            "lawyer", "attorney", "paralegal", "legal counsel", "advocate",
+            "barrister", "solicitor", "prosecutor", "public defender",
+            "court clerk", "diplomat", "civil servant", "judge",
+        ],
+        "skill_indicators": [
+            "contract law", "litigation", "legal research", "compliance",
+            "intellectual property", "due diligence", "corporate governance",
+            "arbitration", "brief writing", "legal drafting", "case management",
+        ],
+    },
+    "education_academia": {
+        "title_patterns": [
+            "teacher", "lecturer", "school principal", "tutor",
+            "instructor", "curriculum designer", "headmaster",
+            "elementary teacher", "high school teacher", "educator",
+        ],
+        "skill_indicators": [
+            "pedagogy", "curriculum development", "classroom management",
+            "lesson planning", "student evaluation", "educational technology",
+            "grading", "teaching", "instructional design",
+        ],
+    },
 }
 
 
@@ -1226,7 +1331,10 @@ class ExtractionService:
                 continue
             if not self._contains_skill(text_lower, ns_clean.lower()):
                 continue
-            skills.add(ns_clean)
+        # Context-aware disambiguation:
+        # "Good Clinical Practice (GCP)" is clinical research compliance, not Google Cloud Platform.
+        if "good clinical practice" in text_lower and not re.search(r"\bgoogle\s+cloud\b", text_lower):
+            skills.discard("GCP")
 
         return sorted(list(skills))
 
@@ -1309,7 +1417,11 @@ class ExtractionService:
                 # If no word matched, just add the character
                 result.append(title_lower[i])
                 i += 1
-        
+
+        # If any fragment is a single character, the title was not a clean concatenation of words
+        if any(len(r) == 1 for r in result):
+            return title.strip().title()
+
         # Join and clean up
         formatted = ' '.join(result)
         
@@ -1358,7 +1470,7 @@ class ExtractionService:
         text_lower = text.lower()
 
         # ── Method 1: Regex pattern matching ──
-        for pattern in JOB_TITLE_PATTERNS:
+        for pattern in JOB_TITLE_PATTERNS + NON_COMPUTING_JOB_TITLE_PATTERNS:
             matches = re.finditer(pattern, text_lower)
             for m in matches:
                 title = m.group(0).strip()
@@ -1372,9 +1484,11 @@ class ExtractionService:
         exp_title_pat = r'(?:^|\n)\s*([A-Z][A-Za-z\s/\-]+?)\s*(?:at|@|\||-|–|—|,)\s*[A-Z]'
         for m in re.finditer(exp_title_pat, text):
             candidate = m.group(1).strip()
+            if '\n' in candidate:
+                candidate = candidate.split('\n')[-1].strip()
             if 5 <= len(candidate) <= 60:
                 cl = candidate.lower()
-                for tp in JOB_TITLE_PATTERNS:
+                for tp in JOB_TITLE_PATTERNS + NON_COMPUTING_JOB_TITLE_PATTERNS:
                     if re.search(tp, cl):
                         # Format title with proper spacing
                         formatted_title = self._add_spaces_to_title(candidate)
@@ -1400,14 +1514,19 @@ class ExtractionService:
 
         # ── Method 1: Regex patterns ──
         degree_patterns = [
-            r'((?:Bachelor|Master|Doctor|PhD|B\.?S\.?c?|M\.?S\.?c?|B\.?A\.?|M\.?A\.?|B\.?E\.?|M\.?E\.?|B\.?Tech|M\.?Tech|MBA|BBA|BS|MS|BE|ME|Associate|Diploma)[\w\s,.]{0,60}?)\s+(?:from|at|in)\s+([\w\s,.\-\']+?)(?:\s*[\(,\|]\s*(\d{4})\s*[\),\|]|\s+(\d{4})|\s*(?:\n|$))',
+            # Standard Degree with from/at/in
+            r'((?:Bachelor|Master|Doctor|PhD|MD|MBBS|MPH|BDS|PharmD|DVM|DO|RN|BSN|MSN|JD|LLB|LLM|CA|CPA|B\.?S\.?c?|M\.?S\.?c?|B\.?A\.?|M\.?A\.?|B\.?E\.?|M\.?E\.?|B\.?Tech|M\.?Tech|MBA|BBA|BS|MS|BE|ME|Associate|Diploma)[\w\s,.()/\-]{0,60}?)\s+(?:from|at|in)\s+([\w\s,.\-\']+?)(?:\s*[\(,\|]\s*(\d{4})\s*[\),\|]|\s+(\d{4})|\s*(?:\n|$))',
+            # Comma-delimited line format: Degree, Institution Year (e.g., "MD, Dow University 2014", "MPH (...), Aga Khan University 2018")
+            r'(?:^|\n)\s*([A-Za-z.()/\-\s]{0,25}(?:Bachelor|Master|Doctor|PhD|MD|MBBS|MPH|BDS|PharmD|DVM|DO|RN|BSN|MSN|JD|LLB|LLM|CA|CPA|B\.?S\.?c?|M\.?S\.?c?|B\.?A\.?|M\.?A\.?|B\.?E\.?|M\.?E\.?|B\.?Tech|M\.?Tech|MBA|BBA|BS|MS|BE|ME|Associate|Diploma)(?:\s*\([^)\n]+\))?)\s*,\s*([A-Za-z0-9\s.\-\'&]+?)(?:\s*[\(,\|]\s*(\d{4})\s*[\),\|]|\s+(\d{4})|\s*(?:\n|$))',
         ]
         for pat in degree_patterns:
             for m in re.finditer(pat, text, re.IGNORECASE | re.MULTILINE):
                 degree = m.group(1).strip().rstrip(',.- ')
+                if '\n' in degree:
+                    degree = degree.split('\n')[-1].strip()
                 institution = m.group(2).strip().rstrip(',.- ') if m.group(2) else ""
                 year = m.group(3) or (m.group(4) if len(m.groups()) > 3 else None)
-                if len(degree) > 3 and len(degree) < 100 and len(institution) > 2:
+                if len(degree) >= 2 and len(degree) < 100 and len(institution) > 2:
                     entry = {"degree": degree, "institution": institution}
                     if year:
                         entry["year"] = year
@@ -1416,11 +1535,11 @@ class ExtractionService:
 
         # Standalone degree keywords
         if not education:
-            standalone_pat = r'((?:Bachelor|Master|Doctor|PhD|B\.?S\.?c?|M\.?S\.?c?|B\.?A\.?|M\.?A\.?|B\.?E\.?|M\.?E\.?|B\.?Tech|M\.?Tech|MBA|BBA|Diploma|Associate)\s+(?:of|in)\s+[\w\s]+?)(?:\s*[,\(\|]\s*(\d{4})|(\d{4})|\s*(?:\n|$))'
+            standalone_pat = r'((?:Bachelor|Master|Doctor|PhD|MD|MBBS|MPH|BDS|PharmD|DVM|DO|RN|BSN|MSN|JD|LLB|LLM|CA|CPA|B\.?S\.?c?|M\.?S\.?c?|B\.?A\.?|M\.?A\.?|B\.?E\.?|M\.?E\.?|B\.?Tech|M\.?Tech|MBA|BBA|Diploma|Associate)\s+(?:of|in)\s+[\w\s]+?)(?:\s*[,\(\|]\s*(\d{4})|(\d{4})|\s*(?:\n|$))'
             for m in re.finditer(standalone_pat, text, re.IGNORECASE):
                 degree = m.group(1).strip().rstrip(',.- ')
                 year = m.group(2) or m.group(3)
-                if 5 < len(degree) < 100:
+                if 2 <= len(degree) < 100:
                     entry = {"degree": degree, "institution": "", "year": year or ""}
                     if not any(e["degree"].lower() == degree.lower() for e in education):
                         education.append(entry)
@@ -1433,13 +1552,14 @@ class ExtractionService:
             grad_years = entities.get("graduation_year", [])
             max_entries = max(len(degrees), len(colleges), 1)
             for i in range(min(max_entries, 5)):
-                entry = {
-                    "degree": degrees[i] if i < len(degrees) else "",
-                    "institution": colleges[i] if i < len(colleges) else "",
-                    "year": grad_years[i] if i < len(grad_years) else "",
-                }
-                if entry["degree"] or entry["institution"]:
-                    education.append(entry)
+                d = degrees[i].strip() if i < len(degrees) else ""
+                c = colleges[i].strip() if i < len(colleges) else ""
+                y = grad_years[i].strip() if i < len(grad_years) else ""
+                # Clean out noisy sentence fragments
+                if d and (len(d) > 60 or ';' in d or 'analysis in' in d.lower() or 'management with' in d.lower()):
+                    d = ""
+                if d or c:
+                    education.append({"degree": d, "institution": c, "year": y})
 
         return education[:5]
 
@@ -1616,12 +1736,26 @@ class ExtractionService:
                 title_lower = title.lower()
                 for tp in config["title_patterns"]:
                     if tp in title_lower:
-                        score += 10
+                        score += 15
             for skill in skills:
                 skill_lower = skill.lower()
                 for indicator in config["skill_indicators"]:
-                    if indicator in skill_lower or skill_lower in indicator:
+                    if indicator == skill_lower or (len(indicator) > 3 and indicator in skill_lower):
                         score += 2
+
+            # Specialized education & phrase boosts
+            if domain == "medical_healthcare":
+                if any(re.search(rf"\b{re.escape(d)}\b", text_lower) for d in ["md", "mbbs", "mph", "bds", "pharmd", "do", "pmdc"]):
+                    score += 15
+                if any(phrase in text_lower for phrase in ["practicing physician", "bedside medicine", "clinical care", "patient monitoring", "hospitalist"]):
+                    score += 10
+            elif domain == "civil_mechanical_engineering":
+                if any(phrase in text_lower for phrase in ["civil engineering", "mechanical engineering", "structural engineering", "site engineer"]):
+                    score += 15
+            elif domain in ("software_engineering", "frontend", "backend", "fullstack"):
+                if any(phrase in text_lower for phrase in ["computer science", "software engineering", "software developer", "full stack"]):
+                    score += 10
+
             domain_scores[domain] = score
         if domain_scores:
             best = max(domain_scores, key=domain_scores.get)

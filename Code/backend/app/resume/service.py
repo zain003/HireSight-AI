@@ -72,6 +72,17 @@ class ResumeService:
         "beautician", "hair stylist", "makeup artist", "personal trainer", "fitness instructor", "real estate developer", "property manager", "event manager", "event coordinator", "interior designer", "landscaper", "pet groomer", "childcare worker", "babysitter", "nanny", "housekeeper", "janitor", "security guard", "bouncer", "doorman", "parking attendant", "laundry worker", "cleaner", "maintenance worker", "receptionist", "secretary", "admin assistant", "office manager", "office clerk", "data entry operator", "call center agent", "telemarketer", "customer support", "help desk", "community manager", "social worker", "counselor", "psychologist", "therapist", "nutritionist", "dietitian", "speech therapist", "occupational therapist", "physical therapist", "massage therapist", "chiropractor", "acupuncturist", "home health aide", "elder care worker", "funeral director", "mortician", "embalmer", "cemetery manager", "religious leader", "priest", "imam", "rabbi", "pastor", "monk", "nun", "missionary", "volunteer coordinator", "ngo worker", "charity worker", "fundraiser", "grant writer", "donor relations", "philanthropist"
     }
 
+    # Non-computing domains from extraction service that are strictly rejected
+    NON_COMPUTING_DOMAINS = {
+        "medical_healthcare": "Medical & Healthcare",
+        "civil_mechanical_engineering": "Civil & Mechanical Engineering",
+        "finance_accounting": "Finance & Accounting",
+        "sales_marketing": "Sales & Marketing",
+        "legal": "Legal",
+        "education_academia": "Education & Academia",
+        "non_computing": "Non-Computing",
+    }
+
     def __init__(self):
         self.parser = get_parser()
         self.extraction_service = get_extraction_service()
@@ -80,25 +91,110 @@ class ResumeService:
     def _validate_computing_resume(self, text: str, extracted_data: Dict) -> Tuple[bool, str]:
         """
         Multi-layered validation to ensure resume is computing-related.
+        Detects and rejects non-computing professions (medical, civil, finance, sales, legal, etc.)
+        even if auxiliary digital tools (Excel, Power BI, EHR, statistical packages) are mentioned.
         
         Returns:
             Tuple[bool, str]: (is_valid, error_message)
         """
+        import re
         text_lower = text.lower()
-        
+        domain = extracted_data.get("domain", "general")
+        job_titles = [str(t).lower() for t in extracted_data.get("job_titles", [])]
+        education_entries = extracted_data.get("education", [])
+        skills = extracted_data.get("skills", [])
+
         # ═══════════════════════════════════════════════════════════════════
-        # LAYER 1: Check for non-computing keywords and section-based evidence (REJECT immediately)
+        # LAYER 0: Domain Classification Gate (REJECT if detected non-computing domain)
+        # ═══════════════════════════════════════════════════════════════════
+        if domain in self.NON_COMPUTING_DOMAINS:
+            domain_label = self.NON_COMPUTING_DOMAINS[domain]
+            return False, (
+                f"❌ This resume appears to be from a non-computing field ({domain_label}). "
+                f"Detected domain: {domain}. "
+                f"This system only accepts resumes for Software Engineering, Data Science, "
+                f"DevOps, Cloud Engineering, and other computing/IT fields."
+            )
+
+        # ═══════════════════════════════════════════════════════════════════
+        # LAYER 1: Non-Computing Job Title Rejection
+        # ═══════════════════════════════════════════════════════════════════
+        non_comp_title_keywords = [
+            "physician", "doctor", "internist", "surgeon", "medical officer",
+            "cardiologist", "radiologist", "pathologist", "pediatrician", "nurse",
+            "dentist", "pharmacist", "clinical officer", "attending physician",
+            "resident physician", "civil engineer", "mechanical engineer",
+            "structural engineer", "site engineer", "construction manager",
+            "accountant", "auditor", "sales representative", "sales executive",
+            "salesman", "lawyer", "attorney", "teacher", "headmaster"
+        ]
+        comp_title_keywords = [
+            "software", "developer", "engineer", "architect", "programmer",
+            "devops", "data scientist", "data engineer", "ml engineer", "cloud",
+            "qa", "sdet", "frontend", "backend", "full stack", "fullstack"
+        ]
+        
+        has_non_comp_title = any(
+            any(nct in title for nct in non_comp_title_keywords)
+            for title in job_titles
+        )
+        has_comp_title = any(
+            any(ct in title for ct in comp_title_keywords)
+            for title in job_titles
+        )
+        
+        if has_non_comp_title and not has_comp_title:
+            matched_titles = [
+                title for title in job_titles
+                if any(nct in title for nct in non_comp_title_keywords)
+            ]
+            return False, (
+                f"❌ Non-computing professional role detected ({', '.join(matched_titles[:3])}). "
+                f"This system only accepts resumes for Software Engineering, Data Science, "
+                f"DevOps, Cloud Engineering, and other computing/IT fields."
+            )
+
+        # ═══════════════════════════════════════════════════════════════════
+        # LAYER 2: Non-Computing Qualification / Education Gate
+        # ═══════════════════════════════════════════════════════════════════
+        non_comp_deg_keywords = ["mbbs", "md", "mph", "bds", "pharmd", "dvm", "nursing", "llb", "jd"]
+        comp_deg_keywords = ["computer science", "software", "information technology", "data science", "computer engineering", "computing"]
+        
+        has_non_comp_deg = any(
+            any(re.search(rf"\b{re.escape(ncd)}\b", str(e.get("degree", "")).lower()) for ncd in non_comp_deg_keywords)
+            for e in education_entries if isinstance(e, dict)
+        )
+        has_comp_deg = any(
+            any(cd in str(e.get("degree", "")).lower() for cd in comp_deg_keywords)
+            for e in education_entries if isinstance(e, dict)
+        )
+        
+        if has_non_comp_deg and not has_comp_deg and not has_comp_title:
+            matched_degs = [
+                str(e.get("degree", "")) for e in education_entries
+                if isinstance(e, dict) and any(re.search(rf"\b{re.escape(ncd)}\b", str(e.get("degree", "")).lower()) for ncd in non_comp_deg_keywords)
+            ]
+            return False, (
+                f"❌ Non-computing qualification detected ({', '.join(matched_degs[:3])}). "
+                f"This platform is designed for computing and IT candidates."
+            )
+
+        # ═══════════════════════════════════════════════════════════════════
+        # LAYER 3: Word-boundary Non-Computing Keyword Analysis
         # ═══════════════════════════════════════════════════════════════════
         non_computing_matches = []
         for keyword in self.NON_COMPUTING_KEYWORDS:
-            if keyword in text_lower:
-                non_computing_matches.append(keyword)
+            if len(keyword) <= 4:
+                if re.search(rf"\b{re.escape(keyword)}\b", text_lower):
+                    non_computing_matches.append(keyword)
+            else:
+                if keyword in text_lower:
+                    non_computing_matches.append(keyword)
 
-        # Section-based checks
         section_fields = [
-            extracted_data.get("education", []),
+            education_entries,
             extracted_data.get("job_titles", []),
-            extracted_data.get("skills", []),
+            skills,
             extracted_data.get("projects", []),
             extracted_data.get("certifications", []),
         ]
@@ -107,32 +203,24 @@ class ResumeService:
             for entry in section:
                 entry_str = str(entry).lower()
                 for keyword in self.NON_COMPUTING_KEYWORDS:
-                    if keyword in entry_str:
-                        section_matches.append(keyword)
+                    if len(keyword) <= 4:
+                        if re.search(rf"\b{re.escape(keyword)}\b", entry_str):
+                            section_matches.append(keyword)
+                    else:
+                        if keyword in entry_str:
+                            section_matches.append(keyword)
 
-        # Strong tech signal: don't reject on substring noise (e.g. rare ambiguous overlaps).
-        skills_early = extracted_data.get("skills", []) or []
-        computing_hits_early = sum(
-            1 for kw in self.COMPUTING_KEYWORDS if kw in text_lower
-        )
-        strong_computing_signal = computing_hits_early >= 4 and len(skills_early) >= 3
-
-        # If 3+ non-computing keywords OR 2+ section matches, reject (unless clearly tech CV)
-        if not strong_computing_signal and (
-            len(non_computing_matches) >= 3 or len(section_matches) >= 2
-        ):
+        if (len(non_computing_matches) >= 3 or len(section_matches) >= 2) and not (has_comp_title and has_comp_deg):
             return False, (
                 f"❌ This resume appears to be from a non-computing field. "
                 f"Detected: {', '.join((non_computing_matches + section_matches)[:5])}. "
                 f"This system only accepts resumes for Software Engineering, Data Science, "
                 f"DevOps, Cloud Engineering, and other computing/IT fields."
             )
-        
+
         # ═══════════════════════════════════════════════════════════════════
-        # LAYER 2: Check extracted skills (PRIMARY validation)
+        # LAYER 4: Technical Skills Verification (Minimum 3 skills)
         # ═══════════════════════════════════════════════════════════════════
-        skills = extracted_data.get("skills", [])
-        
         if len(skills) < 3:
             return False, (
                 f"❌ Insufficient technical skills detected ({len(skills)} found). "
@@ -140,64 +228,41 @@ class ResumeService:
                 f"(e.g., Python, Java, React, AWS, Docker, SQL, etc.). "
                 f"Please ensure your resume highlights your technical expertise."
             )
-        
+
         # ═══════════════════════════════════════════════════════════════════
-        # LAYER 3: Check domain classification
+        # LAYER 5: Domain and Computing Keywords Cross-Validation
         # ═══════════════════════════════════════════════════════════════════
-        domain = extracted_data.get("domain", "general")
-        
-        if domain == "general":
-            # Check if there are computing keywords in text as fallback
-            computing_keyword_count = sum(
-                1 for keyword in self.COMPUTING_KEYWORDS 
-                if keyword in text_lower
+        computing_keyword_count = 0
+        for kw in self.COMPUTING_KEYWORDS:
+            if len(kw) <= 4:
+                if re.search(rf"\b{re.escape(kw)}\b", text_lower):
+                    computing_keyword_count += 1
+            else:
+                if kw in text_lower:
+                    computing_keyword_count += 1
+
+        if domain == "general" and computing_keyword_count < 5:
+            return False, (
+                f"❌ Could not identify a computing domain from your resume. "
+                f"This system only accepts resumes for: Software Engineering, "
+                f"Data Science, Machine Learning, DevOps, Cloud Engineering, "
+                f"Mobile Development, QA/Testing, Cybersecurity, and other IT fields. "
+                f"Please ensure your resume clearly mentions your technical role and skills."
             )
-            
-            if computing_keyword_count < 5:
-                return False, (
-                    f"❌ Could not identify a computing domain from your resume. "
-                    f"This system only accepts resumes for: Software Engineering, "
-                    f"Data Science, Machine Learning, DevOps, Cloud Engineering, "
-                    f"Mobile Development, QA/Testing, Cybersecurity, and other IT fields. "
-                    f"Please ensure your resume clearly mentions your technical role and skills."
-                )
-        
-        # ═══════════════════════════════════════════════════════════════════
-        # LAYER 4: Check job titles (SUPPLEMENTARY validation)
-        # ═══════════════════════════════════════════════════════════════════
-        job_titles = extracted_data.get("job_titles", [])
-        
-        # If we have skills but no job titles, check text for computing keywords
-        if len(job_titles) == 0 and len(skills) >= 3:
-            computing_keyword_count = sum(
-                1 for keyword in self.COMPUTING_KEYWORDS 
-                if keyword in text_lower
+
+        if len(job_titles) == 0 and len(skills) >= 3 and computing_keyword_count < 3:
+            return False, (
+                f"❌ Could not identify computing-related job roles in your resume. "
+                f"Please ensure your resume includes job titles like: Software Engineer, "
+                f"Data Scientist, DevOps Engineer, Full Stack Developer, etc."
             )
-            
-            if computing_keyword_count < 3:
-                return False, (
-                    f"❌ Could not identify computing-related job roles in your resume. "
-                    f"Please ensure your resume includes job titles like: Software Engineer, "
-                    f"Data Scientist, DevOps Engineer, Full Stack Developer, etc."
-                )
-        
-        # ═══════════════════════════════════════════════════════════════════
-        # LAYER 5: Cross-validation (skills + domain + keywords)
-        # ═══════════════════════════════════════════════════════════════════
-        computing_keyword_count = sum(
-            1 for keyword in self.COMPUTING_KEYWORDS 
-            if keyword in text_lower
-        )
-        
-        # Strong validation: Must have good skills AND computing keywords
+
         if len(skills) >= 3 and computing_keyword_count >= 5:
             return True, ""
-        
-        # Moderate validation: Good skills with recognized domain
-        if len(skills) >= 5 and domain != "general":
+
+        if len(skills) >= 5 and domain not in self.NON_COMPUTING_DOMAINS and domain != "general":
             return True, ""
-        
-        # Weak signal: Has some skills but not enough evidence
+
         if len(skills) >= 3 and computing_keyword_count < 5:
             return False, (
                 f"⚠️ Your resume has some technical skills ({len(skills)} found) but lacks "
@@ -205,8 +270,7 @@ class ResumeService:
                 f"your software development, data science, or IT experience with specific "
                 f"projects, technologies, and achievements."
             )
-        
-        # Default reject
+
         return False, (
             f"❌ This resume does not meet the requirements for computing/IT fields. "
             f"Please upload a resume with technical skills, programming experience, "

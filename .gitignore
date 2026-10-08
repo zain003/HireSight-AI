@@ -164,3 +164,7 @@ Code/backend/alembic/versions/*.py
 *.tmp
 *.temp
 package-lock.json
+
+*.mp4
+.vs/
+

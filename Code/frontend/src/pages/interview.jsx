@@ -438,26 +438,14 @@ export default function InterviewPage() {
 
   const handleInputModeChange = useCallback(
     (newMode) => {
-      if (newMode === inputMode) return;
-      if (newMode === 'text') {
-        stopListening();
-        const currentVoiceText = (
-          finalTranscript + (liveTranscript ? ' ' + liveTranscript : '')
-        ).trim();
-        if (currentVoiceText && !textAnswer.trim()) {
-          setTextAnswer(currentVoiceText);
-        }
-      } else if (newMode === 'voice') {
-        if (textAnswer.trim() && !finalTranscript.trim()) {
-          setFinalTranscript(textAnswer.trim());
-        }
-        if (conversationStateRef.current === 'listening' && !micMutedRef.current) {
-          startListening();
-        }
+      // Voice-only interview response mode: typing answers is disabled
+      if (newMode !== 'voice') return;
+      if (conversationStateRef.current === 'listening' && !micMutedRef.current) {
+        startListening();
       }
-      setInputMode(newMode);
+      setInputMode('voice');
     },
-    [inputMode, finalTranscript, liveTranscript, textAnswer]
+    []
   );
 
   useEffect(() => {
@@ -1360,20 +1348,15 @@ export default function InterviewPage() {
   }, [router.isReady, router.query, sessionId]);
 
   const handleSubmitAnswer = () => {
-    let transcript = '';
-    if (inputMode === 'text') {
-      transcript = textAnswer.trim();
-    } else {
-      transcript = displayTranscript.trim();
-    }
+    let transcript = displayTranscript.trim();
 
     if (!transcript && isCodingPhase) {
       transcript =
-        '[Coding round] Candidate continued in the code editor; verbal/text walkthrough optional.';
+        '[Coding round] Candidate continued in the code editor; verbal walkthrough optional.';
     }
 
-    if (inputMode === 'text' && !transcript) {
-      setError('Please enter your written response before submitting.');
+    if (!transcript) {
+      setError('Please speak your answer aloud before submitting.');
       return;
     }
 
@@ -1528,11 +1511,9 @@ export default function InterviewPage() {
         `Time expired for Question ${currentIdx + 1}. Auto-submitting response and advancing to next question…`
       );
 
-      let draft = '';
-      if (inputModeRef.current === 'text') {
+      let draft = (finalTranscriptRef.current || '').trim();
+      if (!draft && textAnswer) {
         draft = textAnswer.trim();
-      } else {
-        draft = (finalTranscriptRef.current || '').trim();
       }
 
       if (!draft) {
@@ -2299,45 +2280,24 @@ export default function InterviewPage() {
                     }`}
                   >
                     <div
-                      className={`inline-flex rounded-xl border p-1 ${
-                        isLight ? 'border-slate-200 bg-slate-100' : 'border-white/10 bg-black/50'
+                      className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold ${
+                        isLight
+                          ? 'border-indigo-200/90 bg-indigo-50/70 text-indigo-900'
+                          : 'border-indigo-500/20 bg-indigo-950/40 text-indigo-300'
                       }`}
                     >
-                      <button
-                        type="button"
-                        onClick={() => handleInputModeChange('voice')}
-                        className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
-                          inputMode === 'voice'
-                            ? isLight
-                              ? 'bg-white text-slate-900 shadow-xs'
-                              : 'bg-white text-slate-900 shadow-sm'
-                            : isLight
-                              ? 'text-slate-600 hover:text-slate-900'
-                              : 'text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        <Mic className="h-3.5 w-3.5" />
-                        <span>Speak</span>
-                        {inputMode === 'voice' && isListening && (
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                      <div className="relative flex items-center justify-center">
+                        <Mic className="h-3.5 w-3.5 text-indigo-500" />
+                        {isListening && !micMuted && (
+                          <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
                         )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleInputModeChange('text')}
-                        className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
-                          inputMode === 'text'
-                            ? isLight
-                              ? 'bg-white text-slate-900 shadow-xs'
-                              : 'bg-white text-slate-900 shadow-sm'
-                            : isLight
-                              ? 'text-slate-600 hover:text-slate-900'
-                              : 'text-slate-400 hover:text-white'
+                      </div>
+                      <span>Voice Response (Speech-to-Text)</span>
+                      <span
+                        className={`inline-block h-1.5 w-1.5 rounded-full ${
+                          micMuted ? 'bg-amber-400' : isListening ? 'bg-emerald-400' : 'bg-slate-400'
                         }`}
-                      >
-                        <FileText className="h-3.5 w-3.5" />
-                        <span>Type</span>
-                      </button>
+                      />
                     </div>
 
                     <div className="flex items-center gap-3 text-xs">
@@ -2387,186 +2347,154 @@ export default function InterviewPage() {
                     </div>
                   </div>
 
-                  {/* Body: Speak Transcript or Type Area */}
-                  {inputMode === 'text' ? (
-                    <div className="space-y-2">
-                      <textarea
-                        value={textAnswer}
-                        onChange={(e) => setTextAnswer(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                            e.preventDefault();
-                            handleSubmitAnswer();
-                          }
-                        }}
-                        disabled={loading || conversationState === 'processing'}
-                        placeholder="Type your answer here. Explain your reasoning as you would out loud."
-                        className={`w-full min-h-[190px] rounded-xl border p-4 text-sm leading-relaxed resize-none font-sans focus:outline-none transition ${
-                          isLight
-                            ? 'border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600/30'
-                            : 'border-white/10 bg-black/40 text-slate-100 placeholder:text-slate-500 focus:border-indigo-400/50 focus:ring-1 focus:ring-indigo-400/30'
-                        }`}
-                        rows={7}
-                      />
-                      <div className={`flex items-center justify-between text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                        <button
-                          type="button"
-                          onClick={() => setShowStarGuidance(!showStarGuidance)}
-                          className={`inline-flex items-center gap-1 font-medium ${
-                            isLight ? 'text-indigo-600 hover:text-indigo-800' : 'text-indigo-300 hover:text-indigo-200'
-                          }`}
-                        >
-                          <Lightbulb className="h-3 w-3 text-amber-500" />
-                          <span>{showStarGuidance ? 'Hide STAR Framework' : 'STAR Answer Framework'}</span>
-                        </button>
-                        <span className="font-mono">{textAnswer.trim().split(/\s+/).filter(Boolean).length} words</span>
-                      </div>
-                      {showStarGuidance && (
+                  {/* Body: Live Speech Transcription Only (Audio Only • Read-Only) */}
+                  <div className="space-y-2">
+                    <div
+                      className={`min-h-[190px] rounded-xl border p-4 flex flex-col justify-between transition ${
+                        isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/40'
+                      }`}
+                    >
+                      {speechNotice && (
                         <div
-                          className={`rounded-xl border p-3 text-[11px] space-y-1 shadow-inner ${
+                          className={`mb-3 rounded-lg border p-2.5 text-xs ${
                             isLight
-                              ? 'border-indigo-100 bg-indigo-50/70 text-slate-700'
-                              : 'border-indigo-400/20 bg-indigo-950/40 text-slate-300'
+                              ? 'border-indigo-200 bg-indigo-50 text-indigo-800'
+                              : 'border-indigo-500/30 bg-indigo-950/40 text-indigo-200'
                           }`}
                         >
-                          <p className={`font-semibold ${isLight ? 'text-indigo-900' : 'text-indigo-200'}`}>
-                            STAR Framework Guide:
-                          </p>
-                          <p><strong className={isLight ? 'text-slate-900' : 'text-white'}>Situation & Task:</strong> Define the background, scale, constraints and core problem.</p>
-                          <p><strong className={isLight ? 'text-slate-900' : 'text-white'}>Action & Result:</strong> Detail the architecture chosen, trade-offs made, and measured outcomes.</p>
+                          <p className="leading-relaxed">{speechNotice}</p>
                         </div>
                       )}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
+                      {displayTranscript ? (
+                        <div className="space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold ${
+                                isLight
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
+                              }`}
+                            >
+                              <Mic className="h-3 w-3 text-emerald-500 animate-pulse" />
+                              <span>Live Audio Transcription (Read-Only)</span>
+                            </span>
+                            <span className={`text-[11px] font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                              Audio transcribed automatically · No manual editing
+                            </span>
+                          </div>
+                          <textarea
+                            value={displayTranscript}
+                            readOnly={true}
+                            tabIndex={-1}
+                            onKeyDown={(e) => e.preventDefault()}
+                            placeholder="Your spoken words will appear here automatically..."
+                            className={`w-full bg-transparent text-sm leading-relaxed focus:outline-none resize-none cursor-default select-text ${
+                              isLight ? 'text-slate-900' : 'text-slate-100'
+                            }`}
+                            rows={5}
+                          />
+                          {liveTranscript && (
+                            <p
+                              className={`text-xs italic animate-pulse ${
+                                isLight ? 'text-indigo-600' : 'text-indigo-400'
+                              }`}
+                            >
+                              Live voice stream: {liveTranscript}…
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex h-full min-h-[140px] flex-col items-center justify-center text-center py-4">
+                          <div className="relative mb-2.5 flex items-center justify-center">
+                            <div
+                              className={`h-12 w-12 rounded-full border transition-all duration-150 flex items-center justify-center ${
+                                audioLevel > 5
+                                  ? isLight
+                                    ? 'border-emerald-500 bg-emerald-100 text-emerald-700 scale-110 shadow-md shadow-emerald-500/20'
+                                    : 'border-emerald-500/60 bg-emerald-500/15 scale-110 shadow-lg shadow-emerald-500/20'
+                                  : isLight
+                                    ? 'border-indigo-200 bg-indigo-50 text-indigo-600'
+                                    : 'border-indigo-500/20 bg-indigo-500/5 text-indigo-400'
+                              }`}
+                            >
+                              <Mic className={`h-6 w-6 transition ${audioLevel > 5 ? 'text-emerald-600' : ''}`} />
+                            </div>
+                          </div>
+                          <p className={`text-sm font-semibold ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                            {audioLevel > 5
+                              ? 'Voice detected — transcribing in real time…'
+                              : 'Start speaking — your answer is being captured in real time'}
+                          </p>
+                          <p className={`mt-1 text-xs ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>
+                            Speak naturally. Your acoustic delivery and transcribed answer are analyzed. Keyboard typing is disabled.
+                          </p>
+                        </div>
+                      )}
+
                       <div
-                        className={`min-h-[190px] rounded-xl border p-4 flex flex-col justify-between transition ${
-                          isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/40'
+                        className={`flex items-center justify-between pt-2 border-t text-xs ${
+                          isLight ? 'border-slate-200 text-slate-500' : 'border-white/5 text-slate-400'
                         }`}
                       >
-                        {speechNotice && (
-                          <div
-                            className={`mb-3 rounded-lg border p-2.5 text-xs ${
-                              isLight
-                                ? 'border-indigo-200 bg-indigo-50 text-indigo-800'
-                                : 'border-indigo-500/30 bg-indigo-950/40 text-indigo-200'
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (displayTranscript.trim()) {
+                                try {
+                                  await navigator.clipboard.writeText(displayTranscript.trim());
+                                } catch { }
+                              }
+                            }}
+                            disabled={!displayTranscript.trim()}
+                            className={`text-[11px] disabled:opacity-30 ${
+                              isLight ? 'hover:text-slate-900' : 'hover:text-white'
                             }`}
                           >
-                            <p className="leading-relaxed">{speechNotice}</p>
-                          </div>
-                        )}
-                        {displayTranscript ? (
-                          <div className="space-y-2.5">
-                            <div className="flex items-center justify-between">
-                              <span
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold ${
-                                  isLight
-                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                    : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
-                                }`}
-                              >
-                                <Mic className="h-3 w-3 text-emerald-500 animate-pulse" />
-                                <span>Live Voice Transcription (Voice Mode &bull; Read-Only)</span>
-                              </span>
-                              <span className={`text-[11px] ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
-                                Switch to &ldquo;Type&rdquo; mode to enter text manually
-                              </span>
-                            </div>
-                            <textarea
-                              value={displayTranscript}
-                              readOnly={true}
-                              placeholder="Your spoken words will appear here automatically..."
-                              className={`w-full bg-transparent text-sm leading-relaxed focus:outline-none resize-none cursor-default select-text ${
-                                isLight ? 'text-slate-900' : 'text-slate-100'
-                              }`}
-                              rows={5}
-                            />
-                            {liveTranscript && (
-                              <p
-                                className={`text-xs italic animate-pulse ${
-                                  isLight ? 'text-indigo-600' : 'text-indigo-400'
-                                }`}
-                              >
-                                Live voice stream: {liveTranscript}…
-                              </p>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex h-full min-h-[140px] flex-col items-center justify-center text-center py-4">
-                            <div className="relative mb-2.5 flex items-center justify-center">
-                              <div
-                                className={`h-12 w-12 rounded-full border transition-all duration-150 flex items-center justify-center ${
-                                  audioLevel > 5
-                                    ? isLight
-                                      ? 'border-emerald-500 bg-emerald-100 text-emerald-700 scale-110 shadow-md shadow-emerald-500/20'
-                                      : 'border-emerald-500/60 bg-emerald-500/15 scale-110 shadow-lg shadow-emerald-500/20'
-                                    : isLight
-                                      ? 'border-indigo-200 bg-indigo-50 text-indigo-600'
-                                      : 'border-indigo-500/20 bg-indigo-500/5 text-indigo-400'
-                                }`}
-                              >
-                                <Mic className={`h-6 w-6 transition ${audioLevel > 5 ? 'text-emerald-600' : ''}`} />
-                              </div>
-                            </div>
-                            <p className={`text-sm font-semibold ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
-                              {audioLevel > 5
-                                ? 'Voice detected — transcribing in real time…'
-                                : 'Start speaking — your answer is being captured in real time'}
-                            </p>
-                            <p className={`mt-1 text-xs ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>
-                              Speak naturally. Your acoustic delivery and technical content are analyzed.
-                            </p>
-                          </div>
-                        )}
-
-                        <div
-                          className={`flex items-center justify-between pt-2 border-t text-xs ${
-                            isLight ? 'border-slate-200 text-slate-500' : 'border-white/5 text-slate-400'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={clearTranscript}
-                              disabled={!displayTranscript.trim()}
-                              className={`text-[11px] disabled:opacity-30 ${
-                                isLight ? 'hover:text-slate-900' : 'hover:text-white'
-                              }`}
-                            >
-                              Clear
-                            </button>
-                            <span>·</span>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                if (displayTranscript.trim()) {
-                                  try {
-                                    await navigator.clipboard.writeText(displayTranscript.trim());
-                                  } catch { }
-                                }
-                              }}
-                              disabled={!displayTranscript.trim()}
-                              className={`text-[11px] disabled:opacity-30 ${
-                                isLight ? 'hover:text-slate-900' : 'hover:text-white'
-                              }`}
-                            >
-                              Copy
-                            </button>
-                          </div>
-                          <span className="font-mono text-[11px]">
-                            {displayTranscript.trim().split(/\s+/).filter(Boolean).length} words
-                          </span>
+                            Copy
+                          </button>
                         </div>
+                        <span className="font-mono text-[11px]">
+                          {displayTranscript.trim().split(/\s+/).filter(Boolean).length} words
+                        </span>
                       </div>
                     </div>
-                  )}
+
+                    <div className={`flex items-center justify-between text-[11px] pt-0.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                      <button
+                        type="button"
+                        onClick={() => setShowStarGuidance(!showStarGuidance)}
+                        className={`inline-flex items-center gap-1 font-medium ${
+                          isLight ? 'text-indigo-600 hover:text-indigo-800' : 'text-indigo-300 hover:text-indigo-200'
+                        }`}
+                      >
+                        <Lightbulb className="h-3 w-3 text-amber-500" />
+                        <span>{showStarGuidance ? 'Hide STAR Framework' : 'STAR Answer Framework'}</span>
+                      </button>
+                      <span className="text-[10px] opacity-75">Voice mode active</span>
+                    </div>
+
+                    {showStarGuidance && (
+                      <div
+                        className={`rounded-xl border p-3 text-[11px] space-y-1 shadow-inner ${
+                          isLight
+                            ? 'border-indigo-100 bg-indigo-50/70 text-slate-700'
+                            : 'border-indigo-400/20 bg-indigo-950/40 text-slate-300'
+                        }`}
+                      >
+                        <p className={`font-semibold ${isLight ? 'text-indigo-900' : 'text-indigo-200'}`}>
+                          STAR Framework Guide:
+                        </p>
+                        <p><strong className={isLight ? 'text-slate-900' : 'text-white'}>Situation &amp; Task:</strong> Define the background, scale, constraints and core problem.</p>
+                        <p><strong className={isLight ? 'text-slate-900' : 'text-white'}>Action &amp; Result:</strong> Detail the architecture chosen, trade-offs made, and measured outcomes.</p>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Footer Action Buttons */}
                   <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                     <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                      {inputMode === 'text'
-                        ? 'Add an answer to continue (or Ctrl+Enter).'
-                        : 'Speak your response or switch to Type mode.'}
+                      Speak your response clearly. Speech is transcribed automatically into text.
                     </p>
 
                     <div className="flex items-center gap-3">
@@ -2589,7 +2517,7 @@ export default function InterviewPage() {
                         disabled={
                           loading ||
                           conversationState === 'processing' ||
-                          (inputMode === 'text' && !textAnswer.trim())
+                          !displayTranscript.trim()
                         }
                         className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
                       >
@@ -3050,69 +2978,28 @@ export default function InterviewPage() {
                       }`}
                     >
                       <div
-                        className={`inline-flex rounded-xl border p-1 ${
-                          isLight ? 'border-slate-200 bg-slate-100' : 'border-white/10 bg-black/50'
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold ${
+                          isLight ? 'text-indigo-700' : 'text-indigo-300'
                         }`}
                       >
-                        <button
-                          type="button"
-                          onClick={() => handleInputModeChange('voice')}
-                          className={`flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition ${
-                            inputMode === 'voice'
-                              ? isLight
-                                ? 'bg-white text-slate-900 shadow-xs'
-                                : 'bg-white text-slate-900 shadow-sm'
-                              : isLight
-                                ? 'text-slate-600 hover:text-slate-900'
-                                : 'text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          <Mic className="h-3.5 w-3.5" />
-                          <span>Voice Notes</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleInputModeChange('text')}
-                          className={`flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition ${
-                            inputMode === 'text'
-                              ? isLight
-                                ? 'bg-white text-slate-900 shadow-xs'
-                                : 'bg-white text-slate-900 shadow-sm'
-                              : isLight
-                                ? 'text-slate-600 hover:text-slate-900'
-                                : 'text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          <FileText className="h-3.5 w-3.5" />
-                          <span>Text Notes</span>
-                        </button>
+                        <Mic className="h-3.5 w-3.5" />
+                        <span>Verbal Solution Walkthrough (Audio Only)</span>
+                        {isListening && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => {
-                            if (inputMode === 'text') setTextAnswer('');
-                            else clearTranscript();
-                          }}
-                          disabled={inputMode === 'text' ? !textAnswer.trim() : !displayTranscript.trim()}
-                          className={`text-[11px] disabled:opacity-30 ${
-                            isLight ? 'text-slate-500 hover:text-slate-900' : 'text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          Clear
-                        </button>
-                        <span className={isLight ? 'text-slate-300' : 'text-slate-600'}>·</span>
-                        <button
-                          type="button"
                           onClick={async () => {
-                            const t = inputMode === 'text' ? textAnswer.trim() : displayTranscript.trim();
+                            const t = displayTranscript.trim();
                             if (!t) return;
                             try {
                               await navigator.clipboard.writeText(t);
                             } catch { }
                           }}
-                          disabled={inputMode === 'text' ? !textAnswer.trim() : !displayTranscript.trim()}
+                          disabled={!displayTranscript.trim()}
                           className={`text-[11px] disabled:opacity-30 ${
                             isLight ? 'text-slate-500 hover:text-slate-900' : 'text-slate-400 hover:text-white'
                           }`}
@@ -3123,42 +3010,34 @@ export default function InterviewPage() {
                     </div>
                   </div>
 
-                  {/* Input Body */}
-                  {inputMode === 'voice' ? (
-                    <div
-                      className={`flex flex-1 flex-col min-h-[120px] rounded-xl border p-3 ${
-                        isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-[#0B1120]/80'
-                      }`}
-                    >
-                      {displayTranscript ? (
-                        <textarea
-                          value={displayTranscript}
-                          onChange={(e) => setFinalTranscript(e.target.value)}
-                          className={`w-full flex-1 bg-transparent text-xs leading-relaxed focus:outline-none resize-none ${
-                            isLight ? 'text-slate-900' : 'text-slate-100'
-                          }`}
-                          rows={3}
-                          placeholder="Spoken notes on your solution approach..."
-                        />
-                      ) : (
-                        <div className="flex h-full min-h-[100px] flex-col items-center justify-center text-center text-slate-500 text-xs">
-                          <p>Dictate your solution approach or code explanations verbally.</p>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <textarea
-                      value={textAnswer}
-                      onChange={(e) => setTextAnswer(e.target.value)}
-                      placeholder="Optional notes or complexity explanations..."
-                      className={`w-full min-h-[120px] rounded-xl border p-3 text-xs leading-relaxed focus:outline-none resize-none ${
-                        isLight
-                          ? 'border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white'
-                          : 'border-white/10 bg-[#0B1120]/80 text-slate-100 placeholder:text-slate-500'
-                      }`}
-                      rows={3}
-                    />
-                  )}
+                  {/* Input Body: Audio transcription only, strictly read-only */}
+                  <div
+                    className={`flex flex-1 flex-col min-h-[120px] rounded-xl border p-3 ${
+                      isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-[#0B1120]/80'
+                    }`}
+                  >
+                    {displayTranscript ? (
+                      <textarea
+                        value={displayTranscript}
+                        readOnly={true}
+                        tabIndex={-1}
+                        onKeyDown={(e) => e.preventDefault()}
+                        className={`w-full flex-1 bg-transparent text-xs leading-relaxed focus:outline-none resize-none cursor-default select-text ${
+                          isLight ? 'text-slate-900' : 'text-slate-100'
+                        }`}
+                        rows={3}
+                        placeholder="Spoken notes on your solution approach..."
+                      />
+                    ) : (
+                      <div className="flex h-full min-h-[100px] flex-col items-center justify-center text-center text-slate-500 text-xs">
+                        <Mic className="h-4 w-4 mb-1 text-indigo-400/60" />
+                        <p className="font-medium text-slate-400">Verbal explanation transcribes automatically</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Dictate your solution approach or code explanations verbally. Audio transcribed in real time (read-only).
+                        </p>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Footer Buttons */}
                   <div className="mt-4 flex gap-3">

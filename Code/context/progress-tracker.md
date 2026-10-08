@@ -90,4 +90,8 @@ Establish the complete spec-driven blueprint in `context/feature-specs/` and pre
   - Enforced **Invariant #6 (Report Secrecy)** in `backend/app/interview/routes.py` and `frontend/src/pages/interview.jsx`. Sanitized candidate-facing reports (`recommendation="Submitted for Recruiter Review"`, `red_flags=[]`, `hiring_decision_notes=""`, `recruiter_report=None`), preventing internal hiring decisions from leaking to candidates.
   - Implemented candidate & public job endpoints `GET /auth/jobs` and `GET /auth/jobs/{job_post_id}` (`JobPostService.get_active_job_posts()`, `JobPostService.get_active_job_post_by_id()`), updated `frontend/src/services/jobService.js`, and removed unexpected `authService.logout()` calls in `frontend/src/pages/jobs.jsx` and `jobs/[id].jsx`.
   - Refined Question Progress Counter UX in `frontend/src/pages/interview.jsx` to show clean `Question X of Y` and `Follow-up · QX` without confusing nested raw array fractions (`Q19/20 (28/29)`).
-  - All 128 backend unit tests passing with 100% success rate, Next.js production build cleanly compiled with 0 errors.
+- Resolved **Non-Computing CV Detection & Multi-Layer Domain Validation**:
+  - Fixed regex word boundary bug where "Internist" was corrupted into "intern" and added non-computing professional roles & titles in `backend/app/ai/extraction.py`.
+  - Added non-computing qualification support (`MD`, `MBBS`, `MPH`, `BDS`, `PharmD`, `JD`, `CPA`, etc.) and non-computing domain classifications (`medical_healthcare`, `civil_mechanical_engineering`, `finance_accounting`, `sales_marketing`, `legal`, `education_academia`).
+  - Implemented 6-layer validation engine in `backend/app/resume/service.py` to reject non-computing resumes with informative feedback while preserving genuine computing and HealthTech software candidates.
+  - Added comprehensive test suite in `backend/tests/test_non_computing_detection.py`. All 144 backend tests passing with 100% success rate.
