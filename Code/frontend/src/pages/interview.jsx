@@ -38,7 +38,11 @@ import {
   LogOut,
   SkipForward,
   Hourglass,
-  X
+  X,
+  ShieldAlert,
+  AlertOctagon,
+  Ban,
+  FileWarning
 } from 'lucide-react';
 
 const CodingWorkspace = dynamic(
@@ -102,6 +106,16 @@ export default function InterviewPage() {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [autoTransitionActive, setAutoTransitionActive] = useState(false);
   const [transitionStatusText, setTransitionStatusText] = useState('');
+
+  // Proctoring integrity & anti-cheating violation state
+  const [isViolated, setIsViolated] = useState(false);
+  const [violationData, setViolationData] = useState(null);
+  const violationHandledRef = useRef(false);
+  const sessionIdRef = useRef('');
+
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
 
   const videoRef = useRef(null);
   const mediaStreamRef = useRef(null);
@@ -196,6 +210,110 @@ export default function InterviewPage() {
       });
     }
   }, [cameraOff]);
+
+  // ── Tab Switching & Window Focus Integrity Violation Monitor ───────────
+  const handleViolation = useCallback(
+    async (
+      type = 'TAB_SWITCHING',
+      reason = 'Candidate switched tabs during the live proctored interview. Cheating violation.'
+    ) => {
+      if (violationHandledRef.current) return;
+      violationHandledRef.current = true;
+
+      // 1. Immediately abort media streams
+      if (mediaStreamRef.current) {
+        try {
+          mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        } catch (e) {
+          console.warn('Error stopping media tracks on violation:', e);
+        }
+      }
+
+      // 2. Stop TTS synthesis
+      if (ttsAudioRef.current) {
+        try {
+          ttsAudioRef.current.pause();
+        } catch {}
+      }
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try {
+          window.speechSynthesis.cancel();
+        } catch {}
+      }
+
+      // 3. Stop speech recognition and clear sampling intervals
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {}
+      }
+      if (liveTranscriptionIntervalRef.current) {
+        clearInterval(liveTranscriptionIntervalRef.current);
+      }
+      if (frameSamplingIntervalRef.current) {
+        clearInterval(frameSamplingIntervalRef.current);
+      }
+      if (restartListeningTimeoutRef.current) {
+        clearTimeout(restartListeningTimeoutRef.current);
+      }
+
+      setIsListening(false);
+      setIsSpeakingQuestion(false);
+      setConversationState('idle');
+      setIsViolated(true);
+      setViolationData({
+        type,
+        reason:
+          'You have violated interview integrity policies and cheated by switching tabs. Tab switching is strictly prohibited. You are blacklisted, and this interview has been cancelled.',
+      });
+
+      const currentSid = sessionIdRef.current || sessionId;
+      if (currentSid) {
+        try {
+          await interviewService.reportViolation(currentSid, {
+            violation_type: type,
+            reason,
+          });
+        } catch (err) {
+          console.error('Failed to notify backend of violation:', err);
+        }
+      }
+    },
+    [sessionId]
+  );
+
+  useEffect(() => {
+    // Only monitor tab switching during an active interview session
+    if (!sessionId || questions.length === 0 || report || isViolated) {
+      return;
+    }
+
+    const onVisibilityChange = () => {
+      if (document.hidden || document.visibilityState === 'hidden') {
+        handleViolation(
+          'TAB_SWITCHING',
+          'Candidate switched tabs during the live proctored interview. Cheating violation.'
+        );
+      }
+    };
+
+    const onWindowBlur = () => {
+      if (document.hidden || !document.hasFocus()) {
+        handleViolation(
+          'TAB_SWITCHING',
+          'Candidate switched away from the active interview window. Cheating violation.'
+        );
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', onWindowBlur);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onWindowBlur);
+    };
+  }, [sessionId, questions.length, report, isViolated, handleViolation]);
 
   // Initialize theme from localStorage
   useEffect(() => {
@@ -1226,6 +1344,19 @@ export default function InterviewPage() {
 
       setSessionId(state.session_id);
 
+      if (state.is_violated || state.status === 'cancelled' || state.status === 'blacklisted') {
+        violationHandledRef.current = true;
+        setIsViolated(true);
+        setViolationData({
+          type: state.violation_type || 'TAB_SWITCHING',
+          reason:
+            state.violation_reason ||
+            'You have violated interview integrity policies and cheated by switching tabs. Tab switching is strictly prohibited. You are blacklisted, and this interview has been cancelled.',
+        });
+        setLoading(false);
+        return;
+      }
+
       if (state.status === 'completed' || state.current_question_index >= state.total_questions) {
         try {
           const finalReport = await interviewService.getReport(targetSessionId);
@@ -1320,6 +1451,17 @@ export default function InterviewPage() {
         setTimeout(() => speakQuestion(data.questions[0].question_text, data.questions[0]), 300);
       }
     } catch (err) {
+      if (
+        err.response?.status === 403 &&
+        String(err.response?.data?.detail).toLowerCase().includes('blacklisted')
+      ) {
+        violationHandledRef.current = true;
+        setIsViolated(true);
+        setViolationData({
+          type: 'BLACKLISTED',
+          reason: err.response.data.detail,
+        });
+      }
       setError(formatApiDetail(err.response?.data?.detail) || 'Failed to start interview');
     } finally {
       setLoading(false);
@@ -1348,6 +1490,7 @@ export default function InterviewPage() {
   }, [router.isReady, router.query, sessionId]);
 
   const handleSubmitAnswer = () => {
+    if (isViolated || violationHandledRef.current) return;
     let transcript = displayTranscript.trim();
 
     if (!transcript && isCodingPhase) {
@@ -1365,6 +1508,7 @@ export default function InterviewPage() {
 
   /** Fast, optimized answer submission pipeline */
   const submitAnswer = async (transcript) => {
+    if (isViolated || violationHandledRef.current) return;
     if (!sessionId || !currentQuestion) return;
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -1474,6 +1618,18 @@ export default function InterviewPage() {
       setAutoTransitionActive(false);
       setTransitionStatusText('');
       const detailStr = formatApiDetail(err.response?.data?.detail) || '';
+      if (
+        err.response?.status === 403 &&
+        detailStr.toLowerCase().includes('blacklisted')
+      ) {
+        violationHandledRef.current = true;
+        setIsViolated(true);
+        setViolationData({
+          type: 'BLACKLISTED',
+          reason: detailStr,
+        });
+        return;
+      }
       if (
         detailStr.toLowerCase().includes('already been answered') ||
         detailStr.toLowerCase().includes('out of order') ||
@@ -1703,6 +1859,14 @@ export default function InterviewPage() {
               </>
             )}
           </div>
+
+          {/* Center: Proctoring Active Warning */}
+          {sessionId && !report && !isViolated && (
+            <div className="hidden lg:flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10 px-3.5 py-1 text-xs font-semibold text-amber-800 dark:text-amber-300">
+              <ShieldAlert className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>Proctored: Tab switching is strictly forbidden and triggers immediate blacklisting</span>
+            </div>
+          )}
 
           {/* Right: Comprehensive Live Timers, Status, Theme Switcher & Leave Button */}
           <div className="flex items-center gap-2 sm:gap-3">
@@ -2078,6 +2242,75 @@ export default function InterviewPage() {
                 Leave Session
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* INTEGRITY BREACH & CHEATING VIOLATION BARRIER */}
+      {isViolated && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4 sm:p-6 animate-in fade-in duration-300">
+          <div
+            className={`w-full max-w-lg rounded-3xl p-8 sm:p-10 text-center shadow-2xl border ${
+              isLight
+                ? 'bg-white border-rose-300 text-slate-900 shadow-rose-950/10'
+                : 'bg-slate-950 border-rose-500/40 text-slate-100 shadow-rose-950/50'
+            }`}
+          >
+            <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-rose-500/15 text-rose-600 dark:text-rose-400 ring-8 ring-rose-500/10 animate-bounce">
+              <ShieldAlert className="h-10 w-10 text-rose-600 dark:text-rose-400" />
+            </div>
+
+            <div className="space-y-2 mb-6">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-300 bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/20 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300">
+                Integrity Violation Detected
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-rose-600 dark:text-rose-400">
+                You Have Violated and Cheated
+              </h2>
+              <p className={`text-base font-semibold ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                You are blacklisted, and this interview has been cancelled.
+              </p>
+            </div>
+
+            <div className={`rounded-2xl border p-4 sm:p-5 mb-6 text-left text-xs space-y-3 leading-relaxed ${
+              isLight ? 'border-rose-200 bg-rose-50/70 text-rose-900' : 'border-rose-900/40 bg-rose-950/20 text-rose-200'
+            }`}>
+              <div className="flex items-start gap-2.5">
+                <AlertOctagon className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                <div>
+                  <p className="font-bold text-rose-700 dark:text-rose-300">Violation Details:</p>
+                  <p className="mt-0.5">{violationData?.reason || 'Tab switching detected during active proctored interview. Cheating violation.'}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <Ban className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                <div>
+                  <p className="font-bold text-rose-700 dark:text-rose-300">Account Action:</p>
+                  <p className="mt-0.5">Your candidate account has been permanently blacklisted. Further attempts to restart or complete this assessment are revoked.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <FileWarning className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                <div>
+                  <p className="font-bold text-rose-700 dark:text-rose-300">Recruiter Audit Feedback:</p>
+                  <p className="mt-0.5">The recruiting admin has received immediate telemetry and violation logs detailing this cheating incident, and your score has been set to 0.</p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  authService.logout();
+                }
+                router.push('/login');
+              }}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-rose-500"
+            >
+              <LogOut className="h-4 w-4" />
+              Exit & Return to Login
+            </button>
           </div>
         </div>
       )}

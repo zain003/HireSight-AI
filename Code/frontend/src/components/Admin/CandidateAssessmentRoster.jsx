@@ -31,6 +31,8 @@ import {
   Award,
   AlertCircle,
   X,
+  ShieldAlert,
+  AlertOctagon,
 } from 'lucide-react';
 import adminDashboardService from '@/services/adminDashboardService';
 
@@ -38,6 +40,7 @@ const STATUS_OPTIONS = [
   { id: 'all', label: 'All Statuses', color: 'slate' },
   { id: 'completed', label: 'Completed', color: 'emerald' },
   { id: 'in_progress', label: 'In Progress', color: 'sky' },
+  { id: 'blacklisted', label: 'Blacklisted (Cheating)', color: 'rose' },
   { id: 'not_started', label: 'Not Started', color: 'slate' },
 ];
 
@@ -335,6 +338,17 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
             In Progress
           </span>
         );
+      case 'blacklisted':
+      case 'violated':
+      case 'cancelled':
+        return (
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${
+            isLight ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-rose-500/40 bg-rose-500/15 text-rose-300'
+          }`}>
+            <ShieldAlert className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
+            Blacklisted (Cheating)
+          </span>
+        );
       case 'abandoned':
         return (
           <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
@@ -360,6 +374,16 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
   const getFitBadge = (recommendation) => {
     if (!recommendation) return null;
     const rec = recommendation.trim();
+    if (rec.toLowerCase().includes('blacklisted') || rec.toLowerCase().includes('cheating')) {
+      return (
+        <span className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-bold ${
+          isLight ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-rose-500/40 bg-rose-500/15 text-rose-300'
+        }`}>
+          <ShieldAlert className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
+          {rec}
+        </span>
+      );
+    }
     if (rec === 'Strong Fit' || rec === 'Strong Hire') {
       return (
         <span className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold ${
@@ -911,6 +935,14 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
                                 {item.experience_years} yrs exp
                               </span>
                             )}
+                            {(item.violation_reason || item.blacklist_reason || item.is_blacklisted || (item.status || '').toLowerCase() === 'blacklisted') && (
+                              <div className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                                <AlertOctagon className="h-3 w-3 shrink-0" />
+                                <span className="truncate max-w-[220px]" title={item.violation_reason || item.blacklist_reason || 'Cheating violation: tab switching detected.'}>
+                                  {item.violation_reason || item.blacklist_reason || 'Cheating violation (Tab switched)'}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -972,16 +1004,20 @@ export default function CandidateAssessmentRoster({ onViewReport, jobPostId = nu
 
                       {/* Actions */}
                       <td className="px-5 py-4 align-top text-right">
-                        {isCompleted && item.session_id ? (
+                        {(isCompleted || (item.status || '').toLowerCase() === 'blacklisted' || item.is_blacklisted) && item.session_id ? (
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
                               onClick={() => onViewReport(item.session_id)}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-indigo-700"
-                              title="Open Full 5-Dimensional Recruiter Dossier"
+                              className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition ${
+                                (item.status || '').toLowerCase() === 'blacklisted' || item.is_blacklisted
+                                  ? 'bg-rose-600 hover:bg-rose-700'
+                                  : 'bg-indigo-600 hover:bg-indigo-700'
+                              }`}
+                              title={(item.status || '').toLowerCase() === 'blacklisted' || item.is_blacklisted ? 'Open Cheating Violation & Recruiter Dossier' : 'Open Full 5-Dimensional Recruiter Dossier'}
                             >
                               <FileText className="h-3.5 w-3.5" />
-                              View Report
+                              {(item.status || '').toLowerCase() === 'blacklisted' || item.is_blacklisted ? 'Violation Report' : 'View Report'}
                             </button>
                             <a
                               href={`/admin/candidates/${item.session_id}`}

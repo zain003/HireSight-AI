@@ -147,7 +147,24 @@ async def get_candidate_roster(
             dur_mins = round((s.ended_at - s.started_at).total_seconds() / 60.0, 1)
 
         st = (s.status or "in_progress").lower()
-        if st not in ("completed", "in_progress", "not_started", "abandoned"):
+        is_violated = (
+            getattr(s, "is_violated", False)
+            or (u and getattr(u, "is_blacklisted", False))
+            or (p and getattr(p, "is_blacklisted", False))
+            or st in ("cancelled", "blacklisted")
+        )
+        violation_reason = (
+            getattr(s, "violation_reason", None)
+            or (u and getattr(u, "blacklist_reason", None))
+            or (p and getattr(p, "blacklist_reason", None))
+        )
+        if is_violated:
+            st = "blacklisted"
+            rec = "Blacklisted (Cheating)"
+            score = 0.0
+            if not violation_reason:
+                violation_reason = "Tab switching detected during live interview. Cheating violation."
+        elif st not in ("completed", "in_progress", "not_started", "abandoned"):
             st = "in_progress"
 
         item = CandidateRosterItem(
@@ -171,6 +188,8 @@ async def get_candidate_roster(
             experience_years=p.experience_years if p else None,
             resume_score=getattr(p, "resume_score", None) if p else None,
             skills=list(dict.fromkeys([*(p.skills or [] if p else []), *(s.candidate_skills or [])])),
+            is_blacklisted=is_violated,
+            violation_reason=violation_reason,
         )
         raw_items.append(item)
         if uid:
@@ -182,6 +201,8 @@ async def get_candidate_roster(
             uid = str(u.id)
             if uid not in seen_user_ids:
                 p = profiles_by_user.get(uid)
+                is_u_blacklisted = getattr(u, "is_blacklisted", False) or (p and getattr(p, "is_blacklisted", False))
+                u_blacklist_reason = getattr(u, "blacklist_reason", None) or (p and getattr(p, "blacklist_reason", None))
                 item = CandidateRosterItem(
                     user_id=uid,
                     candidate_name=u.full_name or u.username or "Candidate",
@@ -191,25 +212,27 @@ async def get_candidate_roster(
                     job_post_id=None,
                     job_post_title="General Candidate",
                     session_id=None,
-                    status="not_started",
+                    status="blacklisted" if is_u_blacklisted else "not_started",
                     started_at=None,
                     ended_at=None,
-                    overall_score=None,
+                    overall_score=0.0 if is_u_blacklisted else None,
                     five_dimension_scores=None,
-                    hiring_recommendation=None,
-                    fit_status=None,
+                    hiring_recommendation="Blacklisted (Cheating)" if is_u_blacklisted else None,
+                    fit_status="Blacklisted" if is_u_blacklisted else None,
                     duration_minutes=None,
                     has_report=False,
                     experience_years=p.experience_years if p else None,
                     resume_score=getattr(p, "resume_score", None) if p else None,
                     skills=p.skills if p else [],
+                    is_blacklisted=is_u_blacklisted,
+                    violation_reason=u_blacklist_reason,
                 )
                 raw_items.append(item)
 
     # 3. Calculate Global Facets before filtering
     available_roles_set = set()
     available_recs_set = set()
-    status_counts = {"total": len(raw_items), "completed": 0, "in_progress": 0, "not_started": 0}
+    status_counts = {"total": len(raw_items), "completed": 0, "in_progress": 0, "not_started": 0, "blacklisted": 0}
 
     for item in raw_items:
         if item.job_role:
@@ -221,6 +244,8 @@ async def get_candidate_roster(
         st = item.status.lower()
         if st == "completed":
             status_counts["completed"] += 1
+        elif st in ("blacklisted", "cancelled"):
+            status_counts["blacklisted"] += 1
         elif st in ("in_progress", "abandoned"):
             status_counts["in_progress"] += 1
         else:
@@ -375,6 +400,25 @@ async def get_candidate_session_report(session_id: str) -> Dict[str, Any]:
         or "Software Engineer"
     )
 
+    is_cand_blacklisted = (
+        getattr(session, "is_violated", False)
+        or (user and getattr(user, "is_blacklisted", False))
+        or (profile and getattr(profile, "is_blacklisted", False))
+        or (session.status in ("cancelled", "blacklisted"))
+    )
+    violation_reason = (
+        getattr(session, "violation_reason", None)
+        or (user and getattr(user, "blacklist_reason", None))
+        or (profile and getattr(profile, "blacklist_reason", None))
+        or "Tab switching detected during live interview. Cheating violation."
+    )
+    violation_type = getattr(session, "violation_type", "TAB_SWITCHING")
+    violation_feedback = (
+        session.recruiter_report.get("violation_feedback")
+        if session.recruiter_report and isinstance(session.recruiter_report, dict)
+        else "Candidate switched tabs during the live proctored interview. Cheating violation recorded and candidate blacklisted."
+    )
+
     return {
         "session_id": session.session_id,
         "job_post_id": session.job_post_id,
@@ -387,6 +431,8 @@ async def get_candidate_session_report(session_id: str) -> Dict[str, Any]:
             "experience_years": profile.experience_years if profile else None,
             "skills": profile.skills if profile else (session.candidate_skills or []),
             "resume_score": getattr(profile, "resume_score", None) if profile else None,
+            "is_blacklisted": is_cand_blacklisted,
+            "blacklist_reason": violation_reason if is_cand_blacklisted else None,
         },
         "interview_info": {
             "started_at": session.started_at.isoformat() if session.started_at else None,
@@ -400,10 +446,17 @@ async def get_candidate_session_report(session_id: str) -> Dict[str, Any]:
                     else None
                 )
             ),
-            "status": session.status,
+            "status": "blacklisted" if is_cand_blacklisted else session.status,
             "total_questions": len(session.questions),
             "evaluations_count": len(session.evaluations),
         },
+        "violation": {
+            "is_violated": True,
+            "violation_type": violation_type,
+            "violation_reason": violation_reason,
+            "violation_feedback": violation_feedback,
+            "violated_at": session.violated_at.isoformat() if getattr(session, "violated_at", None) else (session.ended_at.isoformat() if session.ended_at else None),
+        } if is_cand_blacklisted else None,
         "recruiter_report": session.recruiter_report,
         "aggregate_scores": session.aggregate_scores or {},
         "questions_count": len(session.questions),

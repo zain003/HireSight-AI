@@ -490,7 +490,10 @@ class InterviewService:
                 curr_q = q_dict
 
         status = session.status
-        if curr_idx >= total_q and total_q > 0 and status != InterviewStatus.COMPLETED.value:
+        is_violated = getattr(session, "is_violated", False) or status in (InterviewStatus.CANCELLED.value, "blacklisted")
+        if is_violated:
+            status = "blacklisted"
+        elif curr_idx >= total_q and total_q > 0 and status != InterviewStatus.COMPLETED.value:
             status = InterviewStatus.COMPLETED.value
 
         return {
@@ -501,4 +504,7 @@ class InterviewService:
             "current_question": curr_q,
             "questions": questions_list,
             "status": status,
+            "is_violated": getattr(session, "is_violated", False),
+            "violation_reason": getattr(session, "violation_reason", None),
+            "violation_type": getattr(session, "violation_type", None),
         }

@@ -211,17 +211,27 @@ async def get_job_candidates(
                     pass
 
         rec = None
-        if session.recruiter_report:
-            rec = session.recruiter_report.get("fit_status") or session.recruiter_report.get("hiring_recommendation")
-        elif session.aggregate_scores:
-            rec = session.aggregate_scores.get("fit_status")
+        is_violated = (
+            getattr(session, "is_violated", False)
+            or (user and getattr(user, "is_blacklisted", False))
+            or (profile and getattr(profile, "is_blacklisted", False))
+            or session.status in ("cancelled", "blacklisted")
+        )
+        violation_reason = (
+            getattr(session, "violation_reason", None)
+            or (user and getattr(user, "blacklist_reason", None))
+            or (profile and getattr(profile, "blacklist_reason", None))
+        )
+        if is_violated:
+            score = 0.0
+            rec = "Blacklisted (Cheating)"
 
         candidate_data = {
             "session_id": session.session_id,
             "candidate_id": session.candidate_id,
             "candidate_name": session.candidate_name,
             "user_email": user.email if user else None,
-            "status": session.status,
+            "status": "blacklisted" if is_violated else session.status,
             "started_at": session.started_at.isoformat() if session.started_at else None,
             "ended_at": session.ended_at.isoformat() if session.ended_at else None,
             "overall_score": score,
@@ -233,6 +243,8 @@ async def get_job_candidates(
             "experience_years": profile.experience_years if profile else None,
             "skills": profile.skills if profile else [],
             "resume_score": getattr(profile, "resume_score", None) if profile else None,
+            "is_blacklisted": is_violated,
+            "violation_reason": violation_reason,
         }
         candidates.append(candidate_data)
     

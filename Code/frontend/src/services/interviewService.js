@@ -93,6 +93,11 @@ export const interviewService = {
     }
   },
 
+  reportViolation: async (sessionId, payload) => {
+    const response = await api.post(`/interview/live/${sessionId}/violation`, payload);
+    return response.data;
+  },
+
   endSession: async (sessionId) => {
     const response = await api.post(`/interview/live/${sessionId}/end`);
     return response.data;

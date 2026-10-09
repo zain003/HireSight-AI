@@ -117,17 +117,37 @@ export default function RecruiterReportViewer({ report, sessionId, onClose, them
         return isLight
           ? 'bg-amber-50 text-amber-700 border-amber-200'
           : 'bg-orange-500/15 text-orange-400 border-orange-500/30';
+      case 'Blacklisted (Cheating)':
+        return isLight
+          ? 'bg-rose-100 text-rose-800 border-rose-300 font-bold'
+          : 'bg-rose-500/25 text-rose-300 border-rose-500/40 font-bold';
       case 'Not a Fit':
       case 'No Hire':
         return isLight
           ? 'bg-rose-50 text-rose-700 border-rose-200'
           : 'bg-red-500/15 text-red-400 border-red-500/30';
       default:
+        if (typeof status === 'string' && (status.toLowerCase().includes('blacklisted') || status.toLowerCase().includes('cheating'))) {
+          return isLight
+            ? 'bg-rose-100 text-rose-800 border-rose-300 font-bold'
+            : 'bg-rose-500/25 text-rose-300 border-rose-500/40 font-bold';
+        }
         return isLight
           ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
           : 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30';
     }
   };
+
+  const isViolated = Boolean(
+    report.violation_detected ||
+    report.is_violated ||
+    report.violation ||
+    (typeof fitStatus === 'string' && fitStatus.toLowerCase().includes('blacklisted'))
+  );
+  const violationReason =
+    report.violation_reason ||
+    report.violation?.violation_reason ||
+    'Tab switching detected during active proctored interview. Cheating violation recorded and candidate blacklisted.';
 
   const handleDownloadPdf = async () => {
     if (!effectiveSessionId) {
@@ -359,6 +379,44 @@ export default function RecruiterReportViewer({ report, sessionId, onClose, them
 
       {/* Main Container */}
       <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Integrity Breach & Cheating Feedback Alert Banner for Recruiter/Admin */}
+        {isViolated && (
+          <div className={`mb-6 rounded-2xl border p-5 sm:p-6 shadow-md transition-all ${
+            isLight
+              ? 'border-rose-300 bg-rose-50 text-rose-950 shadow-rose-950/5'
+              : 'border-rose-500/40 bg-rose-950/30 text-rose-100 shadow-rose-950/30'
+          }`}>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-600 text-white shadow-md shadow-rose-600/30">
+                  <ShieldAlert className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-md border border-rose-300 bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/20 px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-300">
+                      Cheating Breach
+                    </span>
+                    <h3 className="text-base font-bold text-rose-700 dark:text-rose-300">
+                      Integrity Violation Recorded — Candidate Blacklisted
+                    </h3>
+                  </div>
+                  <p className="mt-1 text-xs sm:text-sm font-semibold text-rose-900 dark:text-rose-200 leading-relaxed">
+                    {violationReason}
+                  </p>
+                  <p className="mt-1 text-[11px] text-rose-700 dark:text-rose-300">
+                    Audit Log: Proctored session was terminated immediately upon tab switch. Composite score set to 0.0, and user profile locked out.
+                  </p>
+                </div>
+              </div>
+              <div className="shrink-0 self-end sm:self-center">
+                <span className="inline-flex items-center gap-1.5 rounded-xl border border-rose-300 bg-white/80 dark:bg-rose-950/80 px-3.5 py-1.5 text-xs font-black text-rose-700 dark:text-rose-300 shadow-xs">
+                  Status: Blacklisted
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* TAB 1: EXECUTIVE SUMMARY (1-PAGE TABLE-DRIVEN DOSSIER) */}
         {activeTab === 'summary' && (
           <div className="space-y-6">

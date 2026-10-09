@@ -16,6 +16,9 @@ import {
   Mail,
   User,
   ShieldAlert,
+  AlertOctagon,
+  Ban,
+  FileWarning,
   Sparkles,
   Download,
   Share2,
@@ -214,6 +217,39 @@ export default function CandidateReportPage() {
             </div>
           ) : data ? (
             <>
+              {/* Integrity Violation & Cheating Feedback Banner for Admin */}
+              {(data.is_blacklisted || (data.status || '').toLowerCase() === 'blacklisted' || data.violation?.is_violated || candidate.is_blacklisted) && (
+                <div className={`rounded-2xl border p-5 sm:p-6 shadow-md transition-all ${
+                  isLight
+                    ? 'border-rose-300 bg-rose-50/90 text-rose-950 shadow-rose-950/5'
+                    : 'border-rose-500/40 bg-rose-950/40 text-rose-100 shadow-rose-950/30'
+                }`}>
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-600 text-white shadow-md shadow-rose-600/30">
+                      <ShieldAlert className="h-6 w-6" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-md border border-rose-300 bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/20 px-2.5 py-0.5 text-xs font-black uppercase tracking-wider text-rose-700 dark:text-rose-300">
+                          Cheating & Integrity Violation
+                        </span>
+                        <h2 className="text-lg font-bold text-rose-700 dark:text-rose-300">
+                          Candidate Blacklisted — Cheating Detected
+                        </h2>
+                      </div>
+                      <p className="mt-1.5 text-sm font-semibold text-rose-900 dark:text-rose-200 leading-relaxed">
+                        {data.violation?.violation_reason || candidate.blacklist_reason || 'Candidate switched tabs during the live proctored interview. Cheating violation recorded and candidate blacklisted.'}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-4 text-xs font-medium text-rose-700 dark:text-rose-300">
+                        <span>• Violation Trigger: {data.violation?.violation_type || 'TAB_SWITCHING'}</span>
+                        <span>• Action Taken: Interview cancelled & Score set to 0.0</span>
+                        <span>• Candidate Account: Blacklisted Permanently</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Candidate Summary Header Hero Banner */}
               <div className={`rounded-2xl border p-6 shadow-xs ${
                 isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900/60 border-white/10 text-white backdrop-blur-md shadow-xl'
@@ -288,10 +324,16 @@ export default function CandidateReportPage() {
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 block">
                           Overall Assessment
                         </span>
-                        <span className={`text-xs font-bold ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}>{fitStatus}</span>
+                        <span className={`text-xs font-bold ${
+                          String(fitStatus).toLowerCase().includes('blacklisted')
+                            ? 'text-rose-600 dark:text-rose-400'
+                            : isLight ? 'text-indigo-700' : 'text-indigo-300'
+                        }`}>{fitStatus}</span>
                       </div>
                       <div className={`flex h-14 w-14 items-center justify-center rounded-xl text-2xl font-black ${
-                        isLight
+                        String(fitStatus).toLowerCase().includes('blacklisted')
+                          ? 'bg-rose-600 text-white shadow-xs'
+                          : isLight
                           ? 'bg-indigo-600 text-white shadow-xs'
                           : 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/30'
                       }`}>

@@ -17,6 +17,8 @@ class User(Document):
     hashed_password: str
     full_name: Optional[str] = None
     is_active: bool = True
+    is_blacklisted: bool = False
+    blacklist_reason: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
@@ -45,6 +47,8 @@ class Profile(Document):
     job_role: Optional[str] = None
     difficulty_level: Optional[str] = None  # easy, medium, hard
     resume_path: Optional[str] = None
+    is_blacklisted: bool = False
+    blacklist_reason: Optional[str] = None
     
     # Skills stored as native lists (no JSON serialization needed!)
     skills: Optional[List[str]] = Field(default_factory=list)

@@ -11,6 +11,7 @@ from app.auth.job_post_model import JobPost
 from app.auth.models import Profile, User
 from bson import ObjectId
 from app.interview.application.interview_service import InterviewService
+from app.interview.domain.interview_models import InterviewStatus
 from app.interview.domain.role_taxonomy import (
     SeniorityLevel,
     StandardRole,
@@ -26,6 +27,8 @@ from app.interview.schemas import (
     FrameAnalyzeResponse,
     InterviewReportResponse,
     InterviewSessionState,
+    InterviewViolationRequest,
+    InterviewViolationResponse,
     LiveGazeCheckRequest,
     LiveGazeCheckResponse,
     LiveInterviewStartRequest,
@@ -95,6 +98,12 @@ async def start_live_interview(
     request: LiveInterviewStartRequest,
     current_user: User = Depends(get_current_active_user),
 ):
+    if getattr(current_user, "is_blacklisted", False):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Candidate account is blacklisted due to integrity violation: {getattr(current_user, 'blacklist_reason', 'Cheating violation')}. You cannot start interviews.",
+        )
+
     profile = await Profile.find_one({"user_id": str(current_user.id)})
     if not profile:
         profile = Profile(
@@ -183,6 +192,12 @@ async def submit_live_answer(
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
 
+    if getattr(session, "is_violated", False) or session.status in (InterviewStatus.CANCELLED.value, "blacklisted"):
+        raise HTTPException(
+            status_code=403,
+            detail="This interview has been cancelled due to an integrity violation (cheating). You are blacklisted.",
+        )
+
     # Guard against concurrent answer submissions for the same session
     lock_acquired = await interview_service.submission_lock.acquire(session_id)
     if not lock_acquired:
@@ -244,6 +259,81 @@ def sanitize_candidate_report(report_data: Any) -> Any:
     return report_data
 
 
+@router.post("/live/{session_id}/violation", response_model=InterviewViolationResponse)
+async def record_interview_violation(
+    session_id: str,
+    violation_req: InterviewViolationRequest,
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Handle live interview integrity violation (e.g., tab switching, cheating).
+    Terminates session immediately, zeroes scores, records recruiter audit feedback, and blacklists candidate.
+    """
+    session = await InterviewSession.find_one(
+        {"session_id": session_id, "user_id": str(current_user.id)}
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    session.status = InterviewStatus.CANCELLED.value
+    session.is_violated = True
+    session.violation_type = violation_req.violation_type
+    session.violation_reason = violation_req.reason
+    session.violated_at = datetime.utcnow()
+    session.ended_at = datetime.utcnow()
+
+    # Invalidate / zero out scores
+    session.aggregate_scores = {
+        "technical_knowledge": 0.0,
+        "coding_ability": 0.0,
+        "communication": 0.0,
+        "behavioral_indicators": 0.0,
+        "role_fit": 0.0,
+        "overall_composite_score": 0.0,
+        "overall_score": 0.0,
+        "status": "CANCELLED_CHEATING",
+        "violation_reason": violation_req.reason,
+    }
+
+    if not isinstance(session.recruiter_report, dict):
+        session.recruiter_report = {}
+
+    feedback_msg = (
+        f"Candidate violated examination integrity by switching tabs during the active interview. "
+        f"Assessment immediately terminated, candidate blacklisted for cheating, and overall score set to 0."
+    )
+    session.recruiter_report["violation_detected"] = True
+    session.recruiter_report["violation_type"] = violation_req.violation_type
+    session.recruiter_report["violation_reason"] = violation_req.reason
+    session.recruiter_report["violation_feedback"] = feedback_msg
+    session.recruiter_report["hiring_recommendation"] = "Blacklisted (Cheating)"
+    session.recruiter_report["fit_status"] = "Blacklisted"
+    session.recruiter_report["overall_score"] = 0.0
+
+    await session.save()
+
+    # Blacklist candidate User
+    current_user.is_blacklisted = True
+    current_user.blacklist_reason = f"Integrity violation ({violation_req.violation_type}): {violation_req.reason}"
+    await current_user.save()
+
+    # Blacklist candidate Profile
+    profile = await Profile.find_one({"user_id": str(current_user.id)})
+    if profile:
+        profile.is_blacklisted = True
+        profile.blacklist_reason = current_user.blacklist_reason
+        await profile.save()
+
+    return InterviewViolationResponse(
+        session_id=session.session_id,
+        status="blacklisted",
+        is_violated=True,
+        is_blacklisted=True,
+        violation_reason=violation_req.reason,
+        message="You have violated interview integrity policies and cheated by switching tabs. You are blacklisted and this interview has been cancelled.",
+    )
+
+
 @router.post("/live/{session_id}/end", response_model=InterviewReportResponse)
 async def end_live_interview(
     session_id: str,
@@ -254,6 +344,12 @@ async def end_live_interview(
     )
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
+
+    if getattr(session, "is_violated", False) or session.status in (InterviewStatus.CANCELLED.value, "blacklisted"):
+        raise HTTPException(
+            status_code=403,
+            detail="This interview has been cancelled due to an integrity violation (cheating). You are blacklisted.",
+        )
 
     result = await interview_service.end_interview(session)
     sanitized_report = sanitize_candidate_report(result["report"])
@@ -276,6 +372,12 @@ async def get_live_report(
     )
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
+
+    if getattr(session, "is_violated", False) or session.status in (InterviewStatus.CANCELLED.value, "blacklisted"):
+        raise HTTPException(
+            status_code=403,
+            detail="This interview was cancelled due to an integrity violation (cheating). You are blacklisted.",
+        )
     if not session.report:
         if session.current_question_index >= len(session.questions) or session.status == "completed":
             result = await interview_service.end_interview(session)
@@ -511,6 +613,12 @@ async def submit_live_coding_challenge(
     )
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
+
+    if getattr(session, "is_violated", False) or session.status in (InterviewStatus.CANCELLED.value, "blacklisted"):
+        raise HTTPException(
+            status_code=403,
+            detail="This interview has been cancelled due to an integrity violation (cheating). You are blacklisted.",
+        )
 
     custom_test_cases = None
     target_q = None

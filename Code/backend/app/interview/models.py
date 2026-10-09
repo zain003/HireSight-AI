@@ -42,6 +42,12 @@ class InterviewSession(Document):
 
     aggregate_scores: Dict[str, Any] = Field(default_factory=dict)
 
+    # Proctoring & Integrity Violation fields
+    is_violated: bool = False
+    violation_type: Optional[str] = None
+    violation_reason: Optional[str] = None
+    violated_at: Optional[datetime] = None
+
     started_at: datetime = Field(default_factory=datetime.utcnow)
     ended_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)

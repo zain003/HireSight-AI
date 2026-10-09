@@ -49,6 +49,24 @@ class InterviewSessionState(BaseModel):
     current_question: Optional[Dict[str, Any]] = None
     questions: List[LiveInterviewQuestion] = Field(default_factory=list)
     status: str
+    is_violated: bool = False
+    violation_reason: Optional[str] = None
+    violation_type: Optional[str] = None
+
+
+class InterviewViolationRequest(BaseModel):
+    violation_type: str = "TAB_SWITCHING"
+    reason: str = "Tab switching detected during live interview. Cheating violation."
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class InterviewViolationResponse(BaseModel):
+    session_id: str
+    status: str
+    is_violated: bool
+    is_blacklisted: bool
+    violation_reason: str
+    message: str
 
 
 class LiveInterviewStartResponse(BaseModel):

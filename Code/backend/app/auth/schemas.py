@@ -30,6 +30,8 @@ class UserResponse(UserBase):
     """Schema for user response"""
     id: str  # MongoDB ObjectId as string
     is_active: bool
+    is_blacklisted: bool = False
+    blacklist_reason: Optional[str] = None
     created_at: datetime
 
 
@@ -49,6 +51,8 @@ class ProfileResponse(BaseModel):
     difficulty_level: Optional[str] = None
     experience_years: Optional[int] = None
     resume_path: Optional[str] = None
+    is_blacklisted: bool = False
+    blacklist_reason: Optional[str] = None
     skills: Optional[List[str]] = None  # Native list (no JSON serialization!)
     experienced_skills: Optional[List[str]] = None
     known_skills: Optional[List[str]] = None
@@ -118,6 +122,8 @@ class CandidateRosterItem(BaseModel):
     experience_years: Optional[int] = None
     resume_score: Optional[float] = None
     skills: List[str] = Field(default_factory=list)
+    is_blacklisted: bool = False
+    violation_reason: Optional[str] = None
 
 
 class CandidateRosterResponse(BaseModel):
